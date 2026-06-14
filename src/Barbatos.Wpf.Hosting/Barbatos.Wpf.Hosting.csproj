@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Barbatos.Wpf.Hosting</PackageId>
+    <TargetFrameworks>net10.0-windows;net9.0-windows;net8.0-windows</TargetFrameworks>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <UseWPF>true</UseWPF>
+    <CommonTags>$(CommonTags)</CommonTags>
+    <Description>WPF Hosting</Description>
+  </PropertyGroup>
+
+</Project>

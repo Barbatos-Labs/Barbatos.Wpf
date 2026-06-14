@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/Barbatos.Wpf.Hosting.Sample/Barbatos.Wpf.Hosting.Sample.csproj" Id="f72ea242-3d79-4b4c-9c29-a64e2a6fb965" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="Directory.Packages.props" />
+    <File Path="nuget.config" />
+    <File Path="README.md" />
+    <File Path="ThirdPartyNotices.txt" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Barbatos.Wpf.Hosting/Barbatos.Wpf.Hosting.csproj" Id="59563806-f11b-4053-9261-b7d98e4676ad" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Barbatos.Wpf.Hosting.UnitTests/Barbatos.Wpf.Hosting.UnitTests.csproj" Id="5b6d2092-a0cf-4724-b66f-96ca16fc7649" />
+  </Folder>
+</Solution>

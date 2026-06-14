@@ -1,0 +1,81 @@
+name: barbatos-wpf-hosting-cd-nuget
+
+on:
+  # Chạy tự động khi anh publish một GitHub Release
+  release:
+    types: [published]
+  # Chạy thủ công từ tab Actions nếu cần
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    environment: production
+    
+    # 1. REQUIRED: Grant permissions to fetch the OIDC security token from GitHub
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET Core SDK 10.x
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.x
+
+      - uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Fetch the certificate
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.STRONG_NAME_KEY }}")) {
+            Write-Error "STRONG_NAME_KEY secret is not set or is empty."
+            exit 1
+          }
+          $signing_keys_payload = [System.Convert]::FromBase64String("${{ secrets.STRONG_NAME_KEY }}")
+          if ($signing_keys_payload.Length -eq 0) {
+            Write-Error "STRONG_NAME_KEY decoded to an empty byte array. Ensure it is a valid base64-encoded .snk file."
+            exit 1
+          }
+          $currentDirectory = Get-Location
+          $certificatePath = Join-Path -Path $currentDirectory -ChildPath "src\barbatos.snk"
+          [IO.File]::WriteAllBytes("$certificatePath", $signing_keys_payload)
+          Write-Host "Certificate written to $certificatePath ($($signing_keys_payload.Length) bytes)"
+
+      # 2. REQUIRED: Automatic login via Trusted Publishing
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: phamhung
+
+      - name: Remove samples and tests from solution
+        run: |
+          $slnx = Get-Content Barbatos.Wpf.Hosting.slnx -Raw
+          $slnx = $slnx -replace '(?s)\s*<Folder Name="/samples/">.*?</Folder>', '' -replace '(?s)\s*<Folder Name="/tests/">.*?</Folder>', ''
+          Set-Content -Path Barbatos.Wpf.Hosting.slnx -Value $slnx
+
+      - name: Install dependencies
+        run: |
+          dotnet workload restore
+          dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore -p:SourceLinkEnabled=true
+
+      # 3. USE 'dotnet nuget push' instead of 'nuget push' to automatically acquire the Token
+      # --skip-duplicate: nupkg của cùng version không thể push lại → bỏ qua an toàn
+      - name: Publish the package to NuGet.org
+        run: dotnet nuget push **\*.nupkg --source https://api.nuget.org/v3/index.json --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --skip-duplicate
+
+      - name: Publish the symbols to NuGet.org
+        run: dotnet nuget push **\*.snupkg --source https://api.nuget.org/v3/index.json --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --skip-duplicate
+
+      - name: Upload NuGet packages as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: '**\*.nupkg'
