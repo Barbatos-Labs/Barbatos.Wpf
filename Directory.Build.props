@@ -6,14 +6,14 @@
 
   <PropertyGroup>
     <Authors>Pham The Hung</Authors>
-    <Product>Barbatos.i18n</Product>
+    <Product>Barbatos.Wpf.Core</Product>
     <CommonTags>dotNet;wpf;windows;presentation;hosting;setup;foundation</CommonTags>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <Copyright>(c) 2026 Barbatos Labs | Pham The Hung and Barbatos.Wpf.Hosting. All rights reserved.</Copyright>
+    <Copyright>(c) 2026 Barbatos Labs | Pham The Hung and Barbatos.Wpf.Core. All rights reserved.</Copyright>
     <Description>WPF Hosting</Description>
-    <PackageProjectUrl>https://github.com/Barbatos-Labs/Barbatos.Wpf.Hosting</PackageProjectUrl>
-    <PackageReleaseNotes>https://github.com/Barbatos-Labs/Barbatos.Wpf.Hosting/releases</PackageReleaseNotes>
+    <PackageProjectUrl>https://github.com/Barbatos-Labs/Barbatos.Wpf.Core</PackageProjectUrl>
+    <PackageReleaseNotes>https://github.com/Barbatos-Labs/Barbatos.Wpf.Core/releases</PackageReleaseNotes>
     <PackageIcon>Icon.png</PackageIcon>
   </PropertyGroup>
 

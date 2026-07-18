@@ -54,9 +54,9 @@ jobs:
 
       - name: Remove samples and tests from solution
         run: |
-          $slnx = Get-Content Barbatos.Wpf.Hosting.slnx -Raw
+          $slnx = Get-Content Barbatos.Wpf.Core.slnx -Raw
           $slnx = $slnx -replace '(?s)\s*<Folder Name="/samples/">.*?</Folder>', '' -replace '(?s)\s*<Folder Name="/tests/">.*?</Folder>', ''
-          Set-Content -Path Barbatos.Wpf.Hosting.slnx -Value $slnx
+          Set-Content -Path Barbatos.Wpf.Core.slnx -Value $slnx
 
       - name: Install dependencies
         run: |

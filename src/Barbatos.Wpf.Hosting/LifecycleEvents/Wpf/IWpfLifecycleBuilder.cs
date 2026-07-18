@@ -3,19 +3,11 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf.Hosting Contributors.
 // All Rights Reserved.
 
-using System.Windows;
-
-namespace Barbatos.Wpf.Hosting.Sample;
+namespace Barbatos.Wpf.LifecycleEvents;
 
 /// <summary>
-/// Interaction logic for MainWindow.xaml
+/// The WPF counterpart of .NET MAUI's <c>IWindowsLifecycleBuilder</c>.
 /// </summary>
-public partial class MainWindow : Window
+public interface IWpfLifecycleBuilder : ILifecycleBuilder
 {
-    public MainWindow(MainViewModel viewModel)
-    {
-        InitializeComponent();
-
-        DataContext = viewModel;
-    }
 }

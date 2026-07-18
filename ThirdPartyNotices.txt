@@ -1,4 +1,4 @@
-Barbatos.Wpf.Hosting
+Barbatos.Wpf.Core
 
 THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 Do Not Translate or Localize

@@ -7,6 +7,20 @@
     <UseWPF>true</UseWPF>
     <CommonTags>$(CommonTags)</CommonTags>
     <Description>WPF Hosting</Description>
+    <RootNamespace>Barbatos.Wpf</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Physical" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Barbatos.Wpf.Hosting.UnitTests" />
+  </ItemGroup>
 
 </Project>

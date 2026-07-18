@@ -3,19 +3,15 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf.Hosting Contributors.
 // All Rights Reserved.
 
-using System.Windows;
-
-namespace Barbatos.Wpf.Hosting.Sample;
+namespace Barbatos.Wpf.Dispatching;
 
 /// <summary>
-/// Interaction logic for MainWindow.xaml
+/// Provides a way to get the <see cref="IDispatcher"/> for the current thread.
 /// </summary>
-public partial class MainWindow : Window
+public interface IDispatcherProvider
 {
-    public MainWindow(MainViewModel viewModel)
-    {
-        InitializeComponent();
-
-        DataContext = viewModel;
-    }
+    /// <summary>
+    /// Gets the <see cref="IDispatcher"/> for the current thread.
+    /// </summary>
+    IDispatcher? GetForCurrentThread();
 }

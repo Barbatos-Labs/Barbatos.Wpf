@@ -3,19 +3,15 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf.Hosting Contributors.
 // All Rights Reserved.
 
-using System.Windows;
-
-namespace Barbatos.Wpf.Hosting.Sample;
+namespace Barbatos.Wpf.LifecycleEvents;
 
 /// <summary>
-/// Interaction logic for MainWindow.xaml
+/// Provides access to the delegates registered for the lifecycle events.
 /// </summary>
-public partial class MainWindow : Window
+public interface ILifecycleEventService
 {
-    public MainWindow(MainViewModel viewModel)
-    {
-        InitializeComponent();
+    IEnumerable<TDelegate> GetEventDelegates<TDelegate>(string eventName)
+        where TDelegate : Delegate;
 
-        DataContext = viewModel;
-    }
+    bool ContainsEvent(string eventName);
 }
