@@ -115,6 +115,30 @@
                               VerticalAlignment="Center"
                               IsChecked="{Binding KeepAwakeEnabled}" />
                 </Grid>
+
+                <Separator Margin="0,2" />
+
+                <Grid Style="{StaticResource SettingRow}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Periodic background tasks" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Run the registered periodic services (heartbeat) on a schedule. Interval in seconds."
+                                   Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <TextBox Grid.Column="1"
+                             Width="60"
+                             Margin="0,0,12,0"
+                             VerticalAlignment="Center"
+                             TextAlignment="Center"
+                             Text="{Binding HeartbeatIntervalSeconds, UpdateSourceTrigger=LostFocus}" />
+                    <CheckBox Grid.Column="2"
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding PeriodicServicesEnabled}" />
+                </Grid>
             </StackPanel>
         </Border>
 

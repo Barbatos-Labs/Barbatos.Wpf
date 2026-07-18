@@ -64,7 +64,8 @@ public static class WpfProgram
             options.MenuItems.Add(new TrayMenuItem("Exit", App.ExitApplication));
         });
         builder.ConfigureGlobalHotkeys(hotkeys => hotkeys
-            .Add("QuickEntry", "Control+Alt+Space", App.ShowMainWindow));
+            .Add("QuickEntry", "Control+Alt+8", App.ShowMainWindow));
+        builder.ConfigurePeriodicServices<HeartbeatService>();
 
         builder.Services.AddSingleton<SettingsStore>();
         builder.Services.AddSingleton<IGreetingService, GreetingService>();

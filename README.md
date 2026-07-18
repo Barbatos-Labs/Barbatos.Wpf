@@ -95,6 +95,47 @@ public static class WpfProgram
   `DispatchAsync` / `DispatchIfRequiredAsync` helpers.
 - **Initialization services** — `IWpfInitializeService` runs once during `Build()`;
   `IWpfInitializeScopedService` runs once per window scope.
+- **Periodic services** — `IWpfPeriodicService` runs on a recurring schedule (see below).
+
+## Periodic services
+
+`IWpfPeriodicService` is the recurring counterpart of `IWpfInitializeService`: implement it,
+register it, and it runs every `Interval` (5 seconds, 5 minutes, 1 hour, ...) on the
+application dispatcher.
+
+```csharp
+public sealed class SyncService : IWpfPeriodicService
+{
+    public string Name => "Sync";
+    public TimeSpan Interval => TimeSpan.FromMinutes(5); // default, configurable
+    public async Task ExecuteAsync(IServiceProvider services, CancellationToken ct)
+    {
+        await Task.Run(() => { /* heavy work off the UI thread */ }, ct);
+    }
+}
+
+builder.ConfigurePeriodicServices<SyncService>();
+// or: builder.Services.AddSingleton<IWpfPeriodicService, SyncService>();
+//     builder.ConfigurePeriodicServices();
+```
+
+The interval can be configured in three ways (file overrides code; UI wins at runtime):
+
+1. **Code** — the service's own `Interval` property.
+2. **File** — the `Barbatos:PeriodicServices` section:
+
+   ```json
+   { "Barbatos": { "PeriodicServices": { "Enabled": true, "Intervals": { "Sync": "00:05:00" } } } }
+   ```
+
+3. **UI** — through `IPeriodicServiceScheduler`:
+   `scheduler.UpdateInterval("Sync", TimeSpan.FromHours(1))` reschedules immediately;
+   `SetEnabled(bool)` starts/stops all services; `Services` exposes live status
+   (interval, last run, run count) and `ServiceExecuted` reports every run, including failures.
+
+Failed executions are logged and do not stop the schedule; a tick is skipped while the
+previous run is still in progress; the cancellation token passed to `ExecuteAsync` is
+cancelled when the host is disposed.
 
 ## Optional desktop features
 

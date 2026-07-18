@@ -20,7 +20,7 @@ public sealed class SettingsStore
         "Barbatos.Wpf.Hosting.Sample",
         "user-settings.json");
 
-    public void Save(bool trayIconEnabled, bool keepAwakeEnabled, string quickEntryGesture)
+    public void Save(bool trayIconEnabled, bool keepAwakeEnabled, string quickEntryGesture, bool periodicServicesEnabled, TimeSpan heartbeatInterval)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
 
@@ -41,6 +41,13 @@ public sealed class SettingsStore
         writer.WriteStartObject("GlobalHotkeys");
         writer.WriteStartObject("Gestures");
         writer.WriteString("QuickEntry", quickEntryGesture);
+        writer.WriteEndObject();
+        writer.WriteEndObject();
+
+        writer.WriteStartObject("PeriodicServices");
+        writer.WriteBoolean("Enabled", periodicServicesEnabled);
+        writer.WriteStartObject("Intervals");
+        writer.WriteString("Heartbeat", heartbeatInterval.ToString("c"));
         writer.WriteEndObject();
         writer.WriteEndObject();
 

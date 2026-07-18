@@ -24,9 +24,11 @@ public class MainViewModel : INotifyPropertyChanged
     readonly IKeepAwakeService _keepAwake;
     readonly ITrayIconService _trayIcon;
     readonly IGlobalHotkeyService _hotkeys;
+    readonly IPeriodicServiceScheduler _periodicServices;
     readonly SettingsStore _settingsStore;
 
     string _quickEntryGesture;
+    string _heartbeatIntervalSeconds;
 
     public MainViewModel(
         IGreetingService greetingService,
@@ -34,6 +36,7 @@ public class MainViewModel : INotifyPropertyChanged
         IKeepAwakeService keepAwake,
         ITrayIconService trayIcon,
         IGlobalHotkeyService hotkeys,
+        IPeriodicServiceScheduler periodicServices,
         SettingsStore settingsStore)
     {
         Greeting = greetingService.GetGreeting();
@@ -43,10 +46,14 @@ public class MainViewModel : INotifyPropertyChanged
         _keepAwake = keepAwake;
         _trayIcon = trayIcon;
         _hotkeys = hotkeys;
+        _periodicServices = periodicServices;
         _settingsStore = settingsStore;
 
         _quickEntryGesture = _hotkeys.Hotkeys
             .FirstOrDefault(hotkey => hotkey.Name == "QuickEntry")?.Gesture.ToString() ?? string.Empty;
+        _heartbeatIntervalSeconds = (_periodicServices.Services
+            .FirstOrDefault(service => service.Name == "Heartbeat")?.Interval ?? TimeSpan.FromSeconds(5))
+            .TotalSeconds.ToString("0");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -110,8 +117,41 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool PeriodicServicesEnabled
+    {
+        get => _periodicServices.IsEnabled;
+        set
+        {
+            _periodicServices.SetEnabled(value);
+            PersistSettings();
+            OnPropertyChanged();
+        }
+    }
+
+    public string HeartbeatIntervalSeconds
+    {
+        get => _heartbeatIntervalSeconds;
+        set
+        {
+            // Invalid input simply reverts to the current interval.
+            if (double.TryParse(value, out var seconds) && seconds >= 1)
+            {
+                _periodicServices.UpdateInterval("Heartbeat", TimeSpan.FromSeconds(seconds));
+                _heartbeatIntervalSeconds = seconds.ToString("0");
+                PersistSettings();
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
     void PersistSettings() =>
-        _settingsStore.Save(_trayIcon.IsVisible, _keepAwake.IsEnabled, _quickEntryGesture);
+        _settingsStore.Save(
+            _trayIcon.IsVisible,
+            _keepAwake.IsEnabled,
+            _quickEntryGesture,
+            _periodicServices.IsEnabled,
+            TimeSpan.FromSeconds(double.Parse(_heartbeatIntervalSeconds)));
 
     void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
