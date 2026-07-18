@@ -139,12 +139,35 @@
                               VerticalAlignment="Center"
                               IsChecked="{Binding PeriodicServicesEnabled}" />
                 </Grid>
+
+                <Separator Margin="0,2" />
+
+                <Grid Style="{StaticResource SettingRow}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Notifications" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Allow this app to push desktop notifications"
+                                   Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Margin="0,0,12,0"
+                            Padding="10,2"
+                            Content="Send test notification"
+                            Click="SendTestNotificationButton_Click" />
+                    <CheckBox Grid.Column="2"
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding NotificationsEnabled}" />
+                </Grid>
             </StackPanel>
         </Border>
 
         <TextBlock Grid.Row="3"
                    Margin="0,16,0,4"
-                   Text="Lifecycle events:"
+                   Text="Logs:"
                    FontWeight="SemiBold" />
 
         <ListBox Grid.Row="4"

@@ -4,6 +4,7 @@
 // All Rights Reserved.
 
 using Barbatos.Wpf.Hotkeys;
+using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
 using Barbatos.Wpf.Startup;
 using Barbatos.Wpf.Tray;
@@ -78,4 +79,17 @@ public sealed class FakeTrayIconPlatform : ITrayIconPlatform
     public void RaiseClicked() => Clicked?.Invoke(this, EventArgs.Empty);
 
     public void RaiseDoubleClicked() => DoubleClicked?.Invoke(this, EventArgs.Empty);
+}
+
+public sealed class FakeNotificationPlatform : INotificationPlatform
+{
+    public List<(NotificationOptions Options, string Title, string Message, NotificationSeverity Severity)> Shown { get; } = new();
+
+    public event EventHandler<NotificationActivatedEventArgs>? Activated;
+
+    public void Show(NotificationOptions options, string title, string message, NotificationSeverity severity) =>
+        Shown.Add((options, title, message, severity));
+
+    public void RaiseActivated(string title, string message) =>
+        Activated?.Invoke(this, new NotificationActivatedEventArgs(title, message));
 }

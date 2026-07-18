@@ -149,6 +149,7 @@ section (file values override code values), and exposes a service for runtime (U
 | Global hotkeys / quick entry (`RegisterHotKey`) | `ConfigureGlobalHotkeys(...)` | `Barbatos:GlobalHotkeys` | `IGlobalHotkeyService` |
 | System tray icon (`NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` |
 | Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` |
+| Push notifications (toast, `NotifyIcon.ShowBalloonTip`) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` |
 
 ```csharp
 builder.ConfigureRunOnStartup();
@@ -160,6 +161,7 @@ builder.ConfigureTrayIcon(options =>
 });
 builder.ConfigureGlobalHotkeys(hotkeys => hotkeys
     .Add("QuickEntry", "Control+Alt+Space", App.ShowMainWindow));
+builder.ConfigureNotifications();
 ```
 
 And from a configuration file:
@@ -170,7 +172,8 @@ And from a configuration file:
     "RunOnStartup": { "Enabled": true },
     "TrayIcon": { "Enabled": true, "ToolTip": "My app" },
     "KeepAwake": { "Enabled": true, "KeepDisplayOn": false },
-    "GlobalHotkeys": { "Gestures": { "QuickEntry": "Control+Shift+K" } }
+    "GlobalHotkeys": { "Gestures": { "QuickEntry": "Control+Shift+K" } },
+    "Notifications": { "Enabled": true }
   }
 }
 ```
@@ -189,6 +192,12 @@ Notes:
 - `RunOnStartup` state is persisted by the OS registry; the other toggles can be
   persisted by writing their configuration sections back to a user settings file that is
   loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
+- Notifications are pushed via `NotifyIcon.ShowBalloonTip`, which Windows 10/11 renders as
+  a modern toast notification (it also appears in the notification center), attributed to
+  the notification's identity icon — the same mechanism used by the system tray feature.
+  `INotificationService.Show(title, message, severity)` is a no-op while `IsEnabled` is
+  `false`, so a single settings toggle can silence every call site; `Activated` fires when
+  the user clicks the notification.
 
 ## Repository layout
 

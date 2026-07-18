@@ -66,6 +66,7 @@ public static class WpfProgram
         builder.ConfigureGlobalHotkeys(hotkeys => hotkeys
             .Add("QuickEntry", "Control+Alt+8", App.ShowMainWindow));
         builder.ConfigurePeriodicServices<HeartbeatService>();
+        builder.ConfigureNotifications();
 
         builder.Services.AddSingleton<SettingsStore>();
         builder.Services.AddSingleton<IGreetingService, GreetingService>();

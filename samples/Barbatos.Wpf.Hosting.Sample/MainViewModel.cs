@@ -7,6 +7,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Barbatos.Wpf.Hotkeys;
+using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
 using Barbatos.Wpf.Startup;
 using Barbatos.Wpf.Tray;
@@ -25,6 +26,7 @@ public class MainViewModel : INotifyPropertyChanged
     readonly ITrayIconService _trayIcon;
     readonly IGlobalHotkeyService _hotkeys;
     readonly IPeriodicServiceScheduler _periodicServices;
+    readonly INotificationService _notifications;
     readonly SettingsStore _settingsStore;
 
     string _quickEntryGesture;
@@ -37,6 +39,7 @@ public class MainViewModel : INotifyPropertyChanged
         ITrayIconService trayIcon,
         IGlobalHotkeyService hotkeys,
         IPeriodicServiceScheduler periodicServices,
+        INotificationService notifications,
         SettingsStore settingsStore)
     {
         Greeting = greetingService.GetGreeting();
@@ -47,7 +50,11 @@ public class MainViewModel : INotifyPropertyChanged
         _trayIcon = trayIcon;
         _hotkeys = hotkeys;
         _periodicServices = periodicServices;
+        _notifications = notifications;
         _settingsStore = settingsStore;
+
+        _notifications.Activated += (sender, args) =>
+            LogLifecycleEvent($"Notification activated ({args.Title})");
 
         _quickEntryGesture = _hotkeys.Hotkeys
             .FirstOrDefault(hotkey => hotkey.Name == "QuickEntry")?.Gesture.ToString() ?? string.Empty;
@@ -145,13 +152,31 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool NotificationsEnabled
+    {
+        get => _notifications.IsEnabled;
+        set
+        {
+            _notifications.SetEnabled(value);
+            PersistSettings();
+            OnPropertyChanged();
+        }
+    }
+
+    public void SendTestNotification()
+    {
+        LogLifecycleEvent("Notification requested (Test notification)");
+        _notifications.Show("Barbatos.Wpf.Hosting Sample", "This is a test notification pushed from the sample app.");
+    }
+
     void PersistSettings() =>
-        _settingsStore.Save(
-            _trayIcon.IsVisible,
-            _keepAwake.IsEnabled,
-            _quickEntryGesture,
-            _periodicServices.IsEnabled,
-            TimeSpan.FromSeconds(double.Parse(_heartbeatIntervalSeconds)));
+        _settingsStore.Save(new SampleSettings(
+            TrayIconEnabled: _trayIcon.IsVisible,
+            KeepAwakeEnabled: _keepAwake.IsEnabled,
+            QuickEntryGesture: _quickEntryGesture,
+            PeriodicServicesEnabled: _periodicServices.IsEnabled,
+            HeartbeatInterval: TimeSpan.FromSeconds(double.Parse(_heartbeatIntervalSeconds)),
+            NotificationsEnabled: _notifications.IsEnabled));
 
     void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

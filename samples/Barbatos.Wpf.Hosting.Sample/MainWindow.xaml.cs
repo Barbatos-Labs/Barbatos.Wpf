@@ -18,4 +18,7 @@ public partial class MainWindow : Window
 
         DataContext = viewModel;
     }
+
+    void SendTestNotificationButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).SendTestNotification();
 }

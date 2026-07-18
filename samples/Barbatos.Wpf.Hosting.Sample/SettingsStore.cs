@@ -9,6 +9,17 @@ using System.Text.Json;
 namespace Barbatos.Wpf.Hosting.Sample;
 
 /// <summary>
+/// The subset of hosting feature settings the sample lets the user change from the UI.
+/// </summary>
+public sealed record SampleSettings(
+    bool TrayIconEnabled,
+    bool KeepAwakeEnabled,
+    string QuickEntryGesture,
+    bool PeriodicServicesEnabled,
+    TimeSpan HeartbeatInterval,
+    bool NotificationsEnabled);
+
+/// <summary>
 /// Persists the settings changed from the UI into a JSON file that is loaded back into
 /// the host configuration on the next start (file and UI configuration share the same
 /// configuration sections).
@@ -20,7 +31,7 @@ public sealed class SettingsStore
         "Barbatos.Wpf.Hosting.Sample",
         "user-settings.json");
 
-    public void Save(bool trayIconEnabled, bool keepAwakeEnabled, string quickEntryGesture, bool periodicServicesEnabled, TimeSpan heartbeatInterval)
+    public void Save(SampleSettings settings)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
 
@@ -31,24 +42,28 @@ public sealed class SettingsStore
         writer.WriteStartObject("Barbatos");
 
         writer.WriteStartObject("TrayIcon");
-        writer.WriteBoolean("Enabled", trayIconEnabled);
+        writer.WriteBoolean("Enabled", settings.TrayIconEnabled);
         writer.WriteEndObject();
 
         writer.WriteStartObject("KeepAwake");
-        writer.WriteBoolean("Enabled", keepAwakeEnabled);
+        writer.WriteBoolean("Enabled", settings.KeepAwakeEnabled);
         writer.WriteEndObject();
 
         writer.WriteStartObject("GlobalHotkeys");
         writer.WriteStartObject("Gestures");
-        writer.WriteString("QuickEntry", quickEntryGesture);
+        writer.WriteString("QuickEntry", settings.QuickEntryGesture);
         writer.WriteEndObject();
         writer.WriteEndObject();
 
         writer.WriteStartObject("PeriodicServices");
-        writer.WriteBoolean("Enabled", periodicServicesEnabled);
+        writer.WriteBoolean("Enabled", settings.PeriodicServicesEnabled);
         writer.WriteStartObject("Intervals");
-        writer.WriteString("Heartbeat", heartbeatInterval.ToString("c"));
+        writer.WriteString("Heartbeat", settings.HeartbeatInterval.ToString("c"));
         writer.WriteEndObject();
+        writer.WriteEndObject();
+
+        writer.WriteStartObject("Notifications");
+        writer.WriteBoolean("Enabled", settings.NotificationsEnabled);
         writer.WriteEndObject();
 
         writer.WriteEndObject();
