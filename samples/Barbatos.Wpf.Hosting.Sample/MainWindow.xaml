@@ -6,9 +6,23 @@
         xmlns:local="clr-namespace:Barbatos.Wpf.Hosting.Sample"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=local:MainViewModel}"
-        Title="Barbatos.Wpf.Hosting Sample" Height="450" Width="800">
+        Title="Barbatos.Wpf.Hosting Sample" Height="620" Width="820">
+    <Window.Resources>
+        <Style x:Key="SettingTitle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="SettingDescription" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="Gray" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SettingRow" TargetType="Grid">
+            <Setter Property="Margin" Value="0,8" />
+        </Style>
+    </Window.Resources>
     <Grid Margin="16">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -27,12 +41,89 @@
                    Foreground="Gray"
                    TextWrapping="Wrap" />
 
-        <TextBlock Grid.Row="2"
+        <Border Grid.Row="2"
+                Margin="0,16,0,0"
+                Padding="12"
+                BorderBrush="#DDDDDD"
+                BorderThickness="1"
+                CornerRadius="6">
+            <StackPanel>
+                <Grid Style="{StaticResource SettingRow}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Run on startup" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Automatically start this app when you log in to your computer"
+                                   Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="1"
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding RunOnStartupEnabled}" />
+                </Grid>
+
+                <Separator Margin="0,2" />
+
+                <Grid Style="{StaticResource SettingRow}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Quick Entry keyboard shortcut" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Quickly open this app from anywhere"
+                                   Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <TextBox Grid.Column="1"
+                             Width="180"
+                             VerticalAlignment="Center"
+                             TextAlignment="Center"
+                             Text="{Binding QuickEntryGesture, UpdateSourceTrigger=LostFocus}" />
+                </Grid>
+
+                <Separator Margin="0,2" />
+
+                <Grid Style="{StaticResource SettingRow}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="System tray" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Keep this app running in the system tray (closing the window hides it)"
+                                   Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="1"
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding TrayIconEnabled}" />
+                </Grid>
+
+                <Separator Margin="0,2" />
+
+                <Grid Style="{StaticResource SettingRow}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Keep computer awake" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Prevent your computer from idle-sleeping while this app is open. Your display can still turn off."
+                                   Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="1"
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding KeepAwakeEnabled}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="3"
                    Margin="0,16,0,4"
                    Text="Lifecycle events:"
                    FontWeight="SemiBold" />
 
-        <ListBox Grid.Row="3"
+        <ListBox Grid.Row="4"
                  ItemsSource="{Binding LifecycleEvents}"
                  FontFamily="Consolas" />
     </Grid>

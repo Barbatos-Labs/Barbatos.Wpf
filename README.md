@@ -96,6 +96,59 @@ public static class WpfProgram
 - **Initialization services** — `IWpfInitializeService` runs once during `Build()`;
   `IWpfInitializeScopedService` runs once per window scope.
 
+## Optional desktop features
+
+Four opt-in features cover the typical "settings screen" of a desktop app. Each one is
+only registered when its `Configure...` method is called, binds its own configuration
+section (file values override code values), and exposes a service for runtime (UI) toggling:
+
+| Feature | Builder method | Options section | Runtime service |
+| --- | --- | --- | --- |
+| Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` |
+| Global hotkeys / quick entry (`RegisterHotKey`) | `ConfigureGlobalHotkeys(...)` | `Barbatos:GlobalHotkeys` | `IGlobalHotkeyService` |
+| System tray icon (`NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` |
+| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` |
+
+```csharp
+builder.ConfigureRunOnStartup();
+builder.ConfigureKeepAwake();
+builder.ConfigureTrayIcon(options =>
+{
+    options.MenuItems.Add(new TrayMenuItem("Open", App.ShowMainWindow));
+    options.MenuItems.Add(new TrayMenuItem("Exit", App.ExitApplication));
+});
+builder.ConfigureGlobalHotkeys(hotkeys => hotkeys
+    .Add("QuickEntry", "Control+Alt+Space", App.ShowMainWindow));
+```
+
+And from a configuration file:
+
+```json
+{
+  "Barbatos": {
+    "RunOnStartup": { "Enabled": true },
+    "TrayIcon": { "Enabled": true, "ToolTip": "My app" },
+    "KeepAwake": { "Enabled": true, "KeepDisplayOn": false },
+    "GlobalHotkeys": { "Gestures": { "QuickEntry": "Control+Shift+K" } }
+  }
+}
+```
+
+Notes:
+
+- `KeepAwake` prevents idle sleep while still letting the display turn off
+  (set `KeepDisplayOn` to also keep the display on); the sleep block is released when
+  the host is disposed.
+- Hotkey gestures are parsed by `HotkeyGesture` (`"Control+Alt+Space"`, `"Ctrl+Shift+K"`,
+  `"Win+F12"`, ...). A failed OS registration (combination taken by another app) is
+  logged as a warning.
+- The tray icon supports a context menu, tooltip, and click/double-click events; the
+  sample uses it together with the `OnWindowClosing` lifecycle event to implement
+  minimize-to-tray.
+- `RunOnStartup` state is persisted by the OS registry; the other toggles can be
+  persisted by writing their configuration sections back to a user settings file that is
+  loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
+
 ## Repository layout
 
 - `src/Barbatos.Wpf.Hosting` — the library.
