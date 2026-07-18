@@ -1,4 +1,4 @@
-name: barbatos-wpf-hosting-cd-nuget
+name: barbatos-wpf-cd-nuget
 
 on:
   # Chạy tự động khi anh publish một GitHub Release

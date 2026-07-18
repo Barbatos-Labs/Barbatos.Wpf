@@ -32,8 +32,4 @@
     <Using Remove="System.Windows.Forms" />
   </ItemGroup>
 
-  <ItemGroup>
-    <InternalsVisibleTo Include="Barbatos.Wpf.Hosting.UnitTests" />
-  </ItemGroup>
-
 </Project>
