@@ -11,6 +11,7 @@ using Barbatos.Wpf.Devices;
 using Barbatos.Wpf.Networking;
 using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
+using Barbatos.Wpf.SingleInstance;
 using Barbatos.Wpf.Startup;
 using Barbatos.Wpf.Storage;
 using Barbatos.Wpf.Tray;
@@ -47,6 +48,7 @@ public class MainViewModel : INotifyPropertyChanged
         ITrayIconService trayIcon,
         IPeriodicServiceScheduler periodicServices,
         INotificationService notifications,
+        ISingleInstanceService singleInstance,
         IConnectivity connectivity,
         IPreferences preferences,
         ISecureStorage secureStorage,
@@ -77,6 +79,11 @@ public class MainViewModel : INotifyPropertyChanged
 
         _notifications.Activated += (sender, args) =>
             LogLifecycleEvent($"Notification activated ({args.Title})");
+
+        // ConfigureSingleInstance()'s default behavior already brings this window to the
+        // foreground; this just logs it too, the same way every other feature does.
+        singleInstance.SecondInstanceLaunched += (sender, args) =>
+            LogLifecycleEvent("SingleInstance: a second launch attempt was blocked");
 
         // Live-updates whenever the network connection changes.
         connectivity.ConnectivityChanged += (sender, args) =>

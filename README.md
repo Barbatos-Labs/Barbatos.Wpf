@@ -462,15 +462,21 @@ Opt-in features cover the typical "settings screen" of a desktop app. Each one i
 registered when its `Configure...` method is called, binds its own configuration section
 (file values override code values), and exposes a service for runtime (UI) toggling:
 
-| Feature | Builder method | Options section | Runtime service |
-| --- | --- | --- | --- |
-| Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` |
-| System tray icon (`NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` |
-| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` |
-| Push notifications (toast, `NotifyIcon.ShowBalloonTip`) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` |
-| Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` |
+| Feature | Builder method | Options section | Runtime service | Enabled by default? |
+| --- | --- | --- | --- | --- |
+| Single instance (block duplicate launches) | `ConfigureSingleInstance(...)` | `Barbatos:SingleInstance` | `ISingleInstanceService` | **Yes** |
+| Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` | No |
+| System tray icon (`NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` | No |
+| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` | No |
+| Push notifications (toast, `NotifyIcon.ShowBalloonTip`) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` | Yes |
+| Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
+
+"Enabled by default" means what happens the moment you call the `Configure...` method with no
+further setup — every feature is still opt-in at the *builder* level (call the method, or the
+service isn't registered at all).
 
 ```csharp
+builder.ConfigureSingleInstance();
 builder.ConfigureRunOnStartup();
 builder.ConfigureKeepAwake();
 builder.ConfigureTrayIcon(options =>
@@ -486,6 +492,7 @@ And from a configuration file:
 ```json
 {
   "Barbatos": {
+    "SingleInstance": { "Enabled": true, "ActivateMainWindow": true },
     "RunOnStartup": { "Enabled": true },
     "TrayIcon": { "Enabled": true, "ToolTip": "My app" },
     "KeepAwake": { "Enabled": true, "KeepDisplayOn": false },
@@ -496,6 +503,15 @@ And from a configuration file:
 
 Notes:
 
+- **Single instance** is keyed by `AppInfo.AppGuid` (see
+  [Configuring AppInfo and PublisherInfo](#configuring-appinfo-and-publisherinfo)) via a
+  named `Mutex`, scoped to the current user's session (not machine-wide). A second launch
+  detects the running instance during `Build()` — *before any window is created* — signals
+  it, and terminates immediately via `Environment.Exit(0)`; the first instance's
+  `SecondInstanceLaunched` event fires on the UI thread, and (unless you set
+  `ActivateMainWindow = false`) its `Application.Current.MainWindow` is automatically
+  restored, shown, and brought to the foreground. This has no .NET MAUI counterpart — mobile
+  platforms are inherently single-instance.
 - `KeepAwake` prevents idle sleep while still letting the display turn off
   (set `KeepDisplayOn` to also keep the display on); the sleep block is released when
   the host is disposed.

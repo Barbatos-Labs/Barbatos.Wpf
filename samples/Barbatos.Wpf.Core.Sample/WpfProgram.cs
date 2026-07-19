@@ -54,6 +54,11 @@ public static class WpfProgram
             })
             .OnWindowClosed((window, args) => LogLifecycleEvent($"Window.Closed ({window.Title})"))));
 
+        // Enabled by default (unlike the other optional features below): a second launch of
+        // this sample detects the running instance, brings its window to the foreground, and
+        // exits immediately instead of opening a second window.
+        builder.ConfigureSingleInstance();
+
         // The optional features from the settings screen. Each one binds its own
         // configuration section and is toggled at runtime by MainViewModel.
         builder.ConfigureRunOnStartup();

@@ -7,7 +7,7 @@ after the official .NET API documentation.
 
 | Namespace | Description |
 |-----------|-------------|
-| **[`Barbatos.Wpf.Hosting`](#barbatoswpfhosting-namespace)** | The application host: `WpfApp`/`WpfAppBuilder`, initialization services, Essentials wiring, and the optional desktop features (run on startup, tray icon, keep awake, notifications, periodic services). |
+| **[`Barbatos.Wpf.Hosting`](#barbatoswpfhosting-namespace)** | The application host: `WpfApp`/`WpfAppBuilder`, initialization services, Essentials wiring, and the optional desktop features (single instance, run on startup, tray icon, keep awake, notifications, periodic services). |
 | **[`Barbatos.Wpf.LifecycleEvents`](#barbatoswpflifecycleevents-namespace)** | The lifecycle event system and its WPF-specific (`WpfLifecycle`) application/window delegates. |
 | **[`Barbatos.Wpf.Dispatching`](#barbatoswpfdispatching-namespace)** | Dispatcher abstractions (`IDispatcher`, `IDispatcherTimer`, `IDispatcherProvider`) backed by the WPF `Dispatcher`. |
 | **[`Barbatos.Wpf.ApplicationModel`](#barbatoswpfapplicationmodel-namespace)** | App info, publisher info, version tracking, app actions, the launcher, and the shared Essentials exception types. |
@@ -20,6 +20,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.Power`](#barbatoswpfpower-namespace)** | The keep-awake optional feature. |
 | **[`Barbatos.Wpf.Startup`](#barbatoswpfstartup-namespace)** | The run-on-startup optional feature. |
 | **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The push notifications optional feature. |
+| **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
 
 ---
 
@@ -54,6 +55,7 @@ extension methods that wire up Essentials and every optional desktop feature.
 
 ### Extension Methods
 
+- **`ConfigureSingleInstance(this WpfAppBuilder, Action<SingleInstanceOptions>? = null)`** — registers `ISingleInstanceService` (`Barbatos.Wpf.SingleInstance`); enabled by default the moment this is called.
 - **`ConfigureRunOnStartup(this WpfAppBuilder, Action<RunOnStartupOptions>? = null)`** — registers `IRunOnStartupService` (`Barbatos.Wpf.Startup`).
 - **`ConfigureTrayIcon(this WpfAppBuilder, Action<TrayIconOptions>? = null)`** — registers `ITrayIconService` (`Barbatos.Wpf.Tray`).
 - **`ConfigureKeepAwake(this WpfAppBuilder, Action<KeepAwakeOptions>? = null)`** — registers `IKeepAwakeService` (`Barbatos.Wpf.Power`).
@@ -461,3 +463,34 @@ notification (also appearing in the notification center).
 ### `NotificationOptions`
 
 - **`Enabled`** (`bool`)
+
+---
+
+## `Barbatos.Wpf.SingleInstance` Namespace
+
+Blocks duplicate launches of the app. Has no .NET MAUI counterpart (mobile platforms are
+inherently single-instance).
+
+### `ISingleInstanceService`
+
+- **`IsPrimaryInstance`** (`bool`) — always `true` in practice: a non-primary process signals
+  the primary instance and calls `Environment.Exit(0)` during `Build()`, before anything can
+  observe this property being `false`.
+- **`SecondInstanceLaunched`** (`event EventHandler?`) — raised on the primary instance, on
+  the UI thread, when a second launch attempt is detected. Fires after the default
+  window-activation behavior (if `SingleInstanceOptions.ActivateMainWindow` is `true`) has
+  already run.
+
+### `SingleInstanceOptions`
+
+- **`Enabled`** (`bool`) — defaults to **`true`**, unlike every other optional feature.
+- **`ActivateMainWindow`** (`bool`) — defaults to `true`. When a second launch is detected,
+  restores (if minimized), shows, and brings `Application.Current.MainWindow` to the
+  foreground. Set to `false` to only receive `SecondInstanceLaunched` and handle it yourself.
+
+#### Remarks
+
+Implemented with a named `Mutex` (identity — session-local, not `Global\`) and a named
+`EventWaitHandle` (the wake signal), both keyed by `AppInfo.AppGuid`. See
+[Optional desktop features](README.md#optional-desktop-features) in the README for the full
+behavior description.
