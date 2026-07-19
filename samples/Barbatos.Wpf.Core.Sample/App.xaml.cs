@@ -26,9 +26,27 @@ public partial class App : WpfApplication
     protected override WpfApp CreateWpfApp() => WpfProgram.CreateWpfApp();
 
     /// <inheritdoc />
-    protected override void OnStartup(StartupEventArgs e)
+    protected override SplashScreenOptions GetSplashScreenOptions() => new()
+    {
+        Tagline = "Loading your workspace...",
+        // Deliberately visible for a bit even though this sample's own startup is near-instant -
+        // see "SplashScreen" in the root README.md for why (avoids a flash on fast machines).
+        MinimumDisplayDuration = TimeSpan.FromSeconds(2),
+        RelatedLinks =
+        {
+            new SplashScreenLink("Barbatos.Wpf.Core Sample", "The app that's about to open.", "https://example.com"),
+            new SplashScreenLink("Another product by this publisher", "RelatedLinks entries work with or without a Url."),
+        },
+    };
+
+    /// <inheritdoc />
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Waits out any remaining SplashScreenOptions.MinimumDisplayDuration, then closes the
+        // splash screen shown for GetSplashScreenOptions() above.
+        await CloseSplashScreenAsync();
 
         // Double-clicking the tray icon re-opens the main window.
         if (Services.GetService<ITrayIconService>() is ITrayIconService trayIcon)

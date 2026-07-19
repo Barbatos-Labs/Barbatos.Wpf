@@ -4,6 +4,7 @@
 // All Rights Reserved.
 
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 using Barbatos.Wpf.LifecycleEvents;
@@ -23,11 +24,68 @@ public abstract class WpfApplication : Application, IWpfPlatformApplication
 {
     private readonly Dictionary<Window, IServiceScope> _windowScopes = new();
     private WpfApp? _appHost;
+    private Window? _splashScreen;
+    private Stopwatch? _splashStopwatch;
+    private ShutdownMode _shutdownModeBeforeSplash;
 
     /// <summary>
     /// Creates the <see cref="WpfApp"/> host for this application.
     /// </summary>
     protected abstract WpfApp CreateWpfApp();
+
+    /// <summary>
+    /// Override to configure the built-in <see cref="SplashWindow"/> (app name, logo, sponsor
+    /// logos, related links, minimum display duration, ...). Returns <see langword="null"/> (the
+    /// default) for no splash screen. For full control over the splash screen's UI instead of
+    /// the built-in layout, override <see cref="CreateSplashScreen"/> instead.
+    /// </summary>
+    protected virtual SplashScreenOptions? GetSplashScreenOptions() => null;
+
+    /// <summary>
+    /// Override to provide a fully custom splash screen window instead of the built-in
+    /// <see cref="SplashWindow"/>. Implement <see cref="ISplashScreen"/> on it to control
+    /// <see cref="ISplashScreen.MinimumDisplayDuration"/>; without it, the minimum display
+    /// duration is treated as zero. The default implementation creates a
+    /// <see cref="SplashWindow"/> from <see cref="GetSplashScreenOptions"/>, or returns
+    /// <see langword="null"/> (no splash screen) when that itself returns <see langword="null"/>.
+    /// </summary>
+    protected virtual Window? CreateSplashScreen()
+    {
+        var options = GetSplashScreenOptions();
+        return options is null ? null : new SplashWindow(options);
+    }
+
+    /// <summary>
+    /// Waits out any remaining <see cref="ISplashScreen.MinimumDisplayDuration"/> and then
+    /// closes the splash screen shown for <see cref="CreateSplashScreen"/> (if any). Call this
+    /// from your own <c>OnStartup</c> override, after <c>base.OnStartup(e)</c> and before
+    /// showing your main window, when you use a splash screen; it is a no-op otherwise.
+    /// </summary>
+    /// <remarks>
+    /// The clock starts as soon as the splash screen is shown, before <see cref="CreateWpfApp"/>
+    /// runs, so slow startup work is only ever waited out - never artificially delayed further -
+    /// by the minimum display duration.
+    /// </remarks>
+    protected async Task CloseSplashScreenAsync()
+    {
+        if (_splashScreen is not { } splash)
+            return;
+
+        var minimumDuration = (splash as ISplashScreen)?.MinimumDisplayDuration ?? TimeSpan.Zero;
+        var remaining = minimumDuration - _splashStopwatch!.Elapsed;
+        if (remaining > TimeSpan.Zero)
+            await Task.Delay(remaining);
+
+        splash.Close();
+        _splashScreen = null;
+        _splashStopwatch = null;
+
+        // Restores whatever ShutdownMode was in effect before the splash screen was shown (see
+        // OnStartup) - now that the splash is closed, it is up to the caller to show a main
+        // window next, and ordinary ShutdownMode.OnLastWindowClose semantics should apply again
+        // once it does.
+        ShutdownMode = _shutdownModeBeforeSplash;
+    }
 
     /// <summary>
     /// Gets the current <see cref="WpfApplication"/> instance.
@@ -53,6 +111,26 @@ public abstract class WpfApplication : Application, IWpfPlatformApplication
     /// <inheritdoc />
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Shown before CreateWpfApp() (and before anything else) so it actually covers slow
+        // startup work - e.g. a slow IWpfInitializeService. Note that purely synchronous work
+        // still blocks the UI thread as usual, so the splash screen (and its progress
+        // indicator) will not animate during that specific window; move slow work to an async
+        // continuation awaited before CloseSplashScreenAsync() if that matters for your app.
+        _splashScreen = CreateSplashScreen();
+        if (_splashScreen is not null)
+        {
+            // The default ShutdownMode (OnLastWindowClose) would otherwise shut the whole
+            // application down the moment the splash screen - briefly the only open window -
+            // is closed in CloseSplashScreenAsync(), before a main window ever gets shown.
+            // Forcing OnExplicitShutdown for the splash's lifetime avoids that; restored once
+            // CloseSplashScreenAsync() actually closes it.
+            _shutdownModeBeforeSplash = ShutdownMode;
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+            _splashStopwatch = Stopwatch.StartNew();
+            _splashScreen.Show();
+        }
+
         _appHost = CreateWpfApp();
         IWpfPlatformApplication.Current = this;
 
@@ -69,6 +147,15 @@ public abstract class WpfApplication : Application, IWpfPlatformApplication
     /// <inheritdoc />
     protected override void OnExit(ExitEventArgs e)
     {
+        // Safety net: closes a splash screen that is still open if the app exits (or throws)
+        // before its own OnStartup override reaches CloseSplashScreenAsync().
+        if (_splashScreen is { } splash)
+        {
+            splash.Close();
+            _splashScreen = null;
+            _splashStopwatch = null;
+        }
+
         _appHost?.Services.InvokeLifecycleEvents<WpfLifecycle.OnExit>(del => del(this, e));
 
         base.OnExit(e);

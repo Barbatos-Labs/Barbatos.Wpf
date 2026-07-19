@@ -37,11 +37,15 @@ extension methods that wire up Essentials and every optional desktop feature.
 | [`WpfApp`](#wpfapp-class) | A built application: configured services and configuration. |
 | [`WpfAppBuilder`](#wpfappbuilder-class) | Builds a `WpfApp`; implements `IHostApplicationBuilder`. |
 | [`WpfHostEnvironment`](#wpfhostenvironment-class) | The WPF `IHostEnvironment` implementation. |
-| `WpfApplication` | A `System.Windows.Application` subclass that owns the built `WpfApp` and forwards lifecycle events. |
+| `WpfApplication` | A `System.Windows.Application` subclass that owns the built `WpfApp` and forwards lifecycle events. See [splash screen support](#wpfapplication-splash-screen-support) below. |
 | `EssentialsExtensions` | `UseEssentials()` / `ConfigureEssentials(...)` — registers every Essentials service and app-action activation detection. |
 | `PeriodicServiceOptions` | Options for `ConfigurePeriodicServices` (`Enabled`, `Intervals`). |
 | `PeriodicServiceStatus` | Live status of a registered periodic service (`Name`, `Interval`, `LastRunTime`, `RunCount`). |
 | `PeriodicServiceExecutedEventArgs` | Raised by `IPeriodicServiceScheduler.ServiceExecuted` after each run. |
+| [`SplashScreenOptions`](#wpfapplication-splash-screen-support) | Configures the built-in `SplashWindow` (app name, logo, tagline, sponsor logos, related links, minimum display duration). |
+| `SplashScreenLogo` | A single sponsor/developer logo entry in `SplashScreenOptions.SponsorLogos`. |
+| `SplashScreenLink` | A single related-item entry in `SplashScreenOptions.RelatedLinks`, e.g. another product from the same publisher. |
+| [`SplashWindow`](#wpfapplication-splash-screen-support) | The built-in splash screen window, populated from `SplashScreenOptions`. |
 
 ### Interfaces
 
@@ -53,6 +57,7 @@ extension methods that wire up Essentials and every optional desktop feature.
 | `IEssentialsBuilder` | Configures app actions and version tracking from `ConfigureEssentials`. |
 | [`IWpfPeriodicService`](#iwpfperiodicservice-interface) | A service executed on a recurring schedule. |
 | [`IPeriodicServiceScheduler`](#iperiodicservicescheduler-interface) | Runtime control over registered periodic services. |
+| [`ISplashScreen`](#wpfapplication-splash-screen-support) | Implemented by a splash screen window to report `MinimumDisplayDuration`. |
 
 ### Extension Methods
 
@@ -173,6 +178,45 @@ public interface IPeriodicServiceScheduler
 #### Events
 - **`IsEnabledChanged`**
 - **`ServiceExecuted`** (`PeriodicServiceExecutedEventArgs`) — raised after every run, including failed ones.
+
+---
+
+### `WpfApplication` splash screen support
+
+Has no .NET MAUI counterpart to port: MAUI's splash screen is a build-time-only asset
+pipeline with no cross-platform C# runtime logic, and does not apply at all to unpackaged
+Windows apps. See [SplashScreen](README.md#splashscreen) in the README for the full behavior
+description.
+
+- **`WpfApplication.GetSplashScreenOptions()`** (`protected virtual SplashScreenOptions?`) —
+  override to configure the built-in `SplashWindow`. Returns `null` (the default) for no splash
+  screen.
+- **`WpfApplication.CreateSplashScreen()`** (`protected virtual Window?`) — override instead of
+  `GetSplashScreenOptions()` for full control over the splash screen's UI. Default
+  implementation creates a `SplashWindow` from `GetSplashScreenOptions()`.
+- **`WpfApplication.CloseSplashScreenAsync()`** (`protected Task`) — call from your own
+  `OnStartup` override, after `base.OnStartup(e)` and before showing the main window. Waits out
+  any remaining `MinimumDisplayDuration`, then closes the splash screen; a no-op if none was
+  shown. `WpfApplication.OnStartup` shows the splash screen (if configured) before
+  `CreateWpfApp()` runs, and temporarily forces `ShutdownMode.OnExplicitShutdown` for its
+  lifetime so the app does not exit the moment the splash screen - briefly the only open window
+  - is closed; restored once `CloseSplashScreenAsync()` actually closes it.
+
+#### `SplashScreenOptions`
+
+- **`AppName`** (`string?`) — defaults to `AppInfo.Name`.
+- **`LogoSource`** (`string?`) — any URI a `BitmapImage` accepts; hidden when not set.
+- **`Tagline`** (`string?`) — hidden when not set.
+- **`Background`** (`Brush?`)
+- **`ShowProgressIndicator`** (`bool`) — defaults to `true`.
+- **`SponsorLogos`** (`IList<SplashScreenLogo>`) — empty by default; hidden as a row when empty.
+- **`RelatedLinks`** (`IList<SplashScreenLink>`) — empty by default; hidden when empty.
+- **`MinimumDisplayDuration`** (`TimeSpan`) — defaults to 1.5 seconds.
+
+#### `ISplashScreen`
+
+- **`MinimumDisplayDuration`** (`TimeSpan`) — implemented by `SplashWindow`; implement it on
+  your own window too if you override `CreateSplashScreen()` with fully custom UI.
 
 ---
 

@@ -37,6 +37,10 @@ injection, configuration, logging, and lifecycle events built in.**
   * [Owner assignment](#owner-assignment)
   * [Closing other dialogs, without losing in-progress work](#closing-other-dialogs-without-losing-in-progress-work)
   * [Preventing a double-click from opening a dialog twice](#preventing-a-double-click-from-opening-a-dialog-twice)
+* **[SplashScreen](#splashscreen)**
+  * [Full customization](#full-customization)
+  * [Showing it conditionally](#showing-it-conditionally)
+  * [Avoiding flicker: minimum display duration](#avoiding-flicker-minimum-display-duration)
 * **[Periodic services](#periodic-services)**
 * **[Ecosystem](#ecosystem)**
   * [Repository layout](#repository-layout)
@@ -663,6 +667,127 @@ you can tell the two apart if you need to. Pass a more specific `key` (e.g. incl
 id) when you deliberately want several instances of the same window type open at once, one per
 key — an "edit customer" dialog, for example, where different customers should be editable
 simultaneously but the same customer twice should just refocus the existing window.
+
+---
+
+## SplashScreen
+
+There is no .NET MAUI runtime code to port here: MAUI's splash screen is entirely a build-time
+asset pipeline (`Microsoft.Maui.Resizetizer`, driven by the `<MauiSplashScreen>` MSBuild item)
+that generates a native Android theme / iOS storyboard / Windows AppxManifest entry per
+platform, with zero cross-platform C# logic — and on Windows it only applies to **packaged**
+(MSIX) apps; the AppxManifest it relies on is stripped entirely for unpackaged apps, which is
+the deployment model this library targets. So instead of porting, `WpfApplication` gets a
+splash screen hook of its own, following the same shape MAUI uses elsewhere (a lifecycle hook
+you override, plus a plain settings object) rather than the DI-based `Configure...()` pattern
+the other Features use — a splash screen has to show before the dependency injection container
+even exists.
+
+```csharp
+public partial class App : WpfApplication
+{
+    protected override SplashScreenOptions GetSplashScreenOptions() => new()
+    {
+        AppName = "My App",                                   // defaults to AppInfo.Name
+        LogoSource = "pack://application:,,,/Assets/logo.png",
+        Tagline = "Loading your workspace...",
+        SponsorLogos =
+        {
+            new SplashScreenLogo("pack://application:,,,/Assets/sponsor1.png", "Sponsor Inc.", "https://sponsor.example.com"),
+        },
+        RelatedLinks =
+        {
+            new SplashScreenLink("My Other App", "Also by this publisher", "https://example.com/other-app"),
+        },
+        MinimumDisplayDuration = TimeSpan.FromSeconds(1.5),   // default
+    };
+
+    protected override async void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        await CloseSplashScreenAsync(); // waits out MinimumDisplayDuration, then closes the splash
+
+        MainWindow = Services.GetRequiredService<MainWindow>();
+        MainWindow.Show();
+    }
+}
+```
+
+`GetSplashScreenOptions()` returning a non-null value is what turns the splash screen on — the
+built-in `SplashWindow` is shown immediately in `OnStartup`, *before* `CreateWpfApp()` runs, so
+it actually covers slow startup work (a slow `IWpfInitializeService`, for example). Sponsor
+logos and related links are each individually clickable (opens their `LinkUrl`/`Url` via
+`Launcher`) when one is provided, and hidden entirely when their list is empty.
+
+> [!IMPORTANT]
+> Purely *synchronous* startup work still blocks the UI thread as usual, so the splash screen
+> (and its progress indicator) will not animate while it runs — same as any WPF window. Move
+> slow work to an async continuation, awaited before `CloseSplashScreenAsync()`, if you need the
+> splash to stay responsive/animated while it happens.
+
+### Full customization
+
+For full control over the UI instead of the built-in layout, override `CreateSplashScreen()`
+and return any `Window` you like — implement `ISplashScreen` on it too if you still want
+`MinimumDisplayDuration` support:
+
+```csharp
+protected override Window CreateSplashScreen() => new MyOwnSplashWindow();
+```
+
+The default implementation of `CreateSplashScreen()` is what creates the built-in
+`SplashWindow` from `GetSplashScreenOptions()`; overriding `GetSplashScreenOptions()` is enough
+for most apps; overriding `CreateSplashScreen()` bypasses it entirely.
+
+### Showing it conditionally
+
+`GetSplashScreenOptions()`/`CreateSplashScreen()` are just plain methods called once per launch
+in `OnStartup` — returning `null` from either one means no splash screen for that launch, so any
+condition you can express in code works, with no extra API needed:
+
+```csharp
+protected override SplashScreenOptions? GetSplashScreenOptions()
+{
+    // Only on this device's very first-ever launch.
+    if (!VersionTracking.IsFirstLaunchEver)
+        return null;
+
+    return new SplashScreenOptions { Tagline = "Welcome!", MinimumDisplayDuration = TimeSpan.FromSeconds(3) };
+}
+```
+
+A few other common conditions, same pattern:
+
+```csharp
+// Once per app update, not every launch.
+if (!VersionTracking.IsFirstLaunchForCurrentVersion) return null;
+
+// Opt out via a command-line flag (e.g. unattended/automation runs). GetSplashScreenOptions()
+// takes no parameters, so use Environment.GetCommandLineArgs() rather than OnStartup's own
+// StartupEventArgs.Args.
+if (Environment.GetCommandLineArgs().Contains("--no-splash")) return null;
+
+// Opt out via a user-facing setting.
+if (!Preferences.Get("ShowSplashScreen", true)) return null;
+```
+
+> [!IMPORTANT]
+> Both methods run *before* `CreateWpfApp()` — the dependency injection container does not
+> exist yet at this point, so only the static Essentials facades (`VersionTracking`, `AppInfo`,
+> `PublisherInfo`, `Preferences`, ...) are usable inside them, not `Services.GetRequiredService<...>()`.
+> `VersionTracking`/`Preferences` work standalone for exactly this reason - they only depend on
+> each other and on `AppInfo`, never on the host.
+
+### Avoiding flicker: minimum display duration
+
+`SplashScreenOptions.MinimumDisplayDuration` (default: 1.5 seconds) keeps the splash screen
+visible for at least that long from the moment it is shown, regardless of how quickly the rest
+of startup finishes — this is what avoids a jarring flash on a fast machine, at the deliberate
+cost of the splash screen acting like an "ad slot" for at least that long. The clock starts
+before `CreateWpfApp()` runs, so a *slow* startup is only ever waited out, never delayed
+further: `CloseSplashScreenAsync()` computes the remaining time and only awaits if there still
+is any.
 
 ---
 
