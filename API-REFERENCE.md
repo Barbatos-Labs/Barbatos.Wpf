@@ -21,6 +21,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.Startup`](#barbatoswpfstartup-namespace)** | The run-on-startup optional feature. |
 | **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The push notifications optional feature. |
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
+| **[`Barbatos.Wpf.Dialogs`](#barbatoswpfdialogs-namespace)** | The dialog service: owner assignment, duplicate-open prevention, and graceful bulk-close for child windows. |
 
 ---
 
@@ -55,13 +56,14 @@ extension methods that wire up Essentials and every optional desktop feature.
 
 ### Extension Methods
 
+- **`ConfigureDialogs(this WpfAppBuilder, Action<DialogOptions>? = null)`** — registers `IDialogService` (`Barbatos.Wpf.Dialogs`).
 - **`ConfigureSingleInstance(this WpfAppBuilder, Action<SingleInstanceOptions>? = null)`** — registers `ISingleInstanceService` (`Barbatos.Wpf.SingleInstance`); enabled by default the moment this is called.
 - **`ConfigureRunOnStartup(this WpfAppBuilder, Action<RunOnStartupOptions>? = null)`** — registers `IRunOnStartupService` (`Barbatos.Wpf.Startup`).
 - **`ConfigureTrayIcon(this WpfAppBuilder, Action<TrayIconOptions>? = null)`** — registers `ITrayIconService` (`Barbatos.Wpf.Tray`).
 - **`ConfigureKeepAwake(this WpfAppBuilder, Action<KeepAwakeOptions>? = null)`** — registers `IKeepAwakeService` (`Barbatos.Wpf.Power`).
 - **`ConfigureNotifications(this WpfAppBuilder, Action<NotificationOptions>? = null)`** — registers `INotificationService` (`Barbatos.Wpf.Notifications`).
 - **`ConfigurePeriodicServices(this WpfAppBuilder)`** / **`ConfigurePeriodicServices<TService>(this WpfAppBuilder)`** — registers `IPeriodicServiceScheduler` and (for the generic overload) `TService` as an `IWpfPeriodicService`.
-- **`UseEssentials(this WpfAppBuilder)`** — registers `IAppInfo`, `IPublisherInfo`, `IDeviceInfo`, `IFileSystem`, `IPreferences`, `ISecureStorage`, `IVersionTracking`, `IConnectivity`, `IDeviceDisplay`, `IEmail`, `IContacts`, `IGeolocation`, `IAppActions`, `ILauncher`; called by default when the builder is created with defaults.
+- **`UseEssentials(this WpfAppBuilder)`** — registers `IAppInfo`, `IPublisherInfo`, `IDeviceIdentity`, `IDeviceInfo`, `IFileSystem`, `IPreferences`, `ISecureStorage`, `IVersionTracking`, `IConnectivity`, `IDeviceDisplay`, `IEmail`, `IContacts`, `IGeolocation`, `IAppActions`, `ILauncher`; called by default when the builder is created with defaults.
 - **`ConfigureEssentials(this WpfAppBuilder, Action<IEssentialsBuilder>? = null)`** — configures app actions (`AddAppAction`, `OnAppAction`) and `UseVersionTracking()`.
 
 Each `Configure...` feature method binds its options section (file values override code
@@ -238,6 +240,7 @@ Essentials exception types. WPF counterpart of .NET MAUI's `Microsoft.Maui.Appli
 |------|-------------|
 | [`AppInfo`](#appinfo--ipublisherinfo) / `IAppInfo` | App identity: `AppGuid`, `Name`, `Version`, `VersionString`, `BuildString`, `RequestedTheme`, `PackagingModel`, `RequestedLayoutDirection`, `InstallDate`, `InstallLocation`, `ShowSettingsUI()`. |
 | [`PublisherInfo`](#appinfo--ipublisherinfo) / `IPublisherInfo` | Publisher identity: `Name`, `Website`, `SupportUrl`, `SupportEmail`, `Copyright`. |
+| [`DeviceIdentity`](#deviceidentity--ideviceidentity) / `IDeviceIdentity` | License-enforcement identifiers: `GetInstanceIdAsync()`, `GetHardwareFingerprintAsync()`. |
 | `AppTheme` | `Unspecified`, `Light`, `Dark`. |
 | `AppPackagingModel` | `Packaged`, `Unpackaged`. |
 | `LayoutDirection` | `LeftToRight`, `RightToLeft`. |
@@ -271,6 +274,23 @@ in the README.
 
 `FileSystem.AppDataDirectory`/`CacheDirectory` are derived from
 `PublisherInfo.Name`/`AppInfo.AppGuid` — see [`Barbatos.Wpf.Storage`](#barbatoswpfstorage-namespace).
+
+### `DeviceIdentity` / `IDeviceIdentity`
+
+License-enforcement identifiers. Has no .NET MAUI counterpart — see
+[License enforcement: DeviceIdentity](README.md#license-enforcement-deviceidentity) in the
+README for the full rationale and privacy/compliance notes (not legal advice).
+
+- **`GetInstanceIdAsync()`** → `Task<string>` — a random GUID generated on first use and
+  persisted via `ISecureStorage`. Identifies this app installation, not the physical machine;
+  resets on reinstall or if local app data is cleared.
+- **`GetHardwareFingerprintAsync()`** → `Task<string>` — a 64-character uppercase hex SHA-256
+  hash of a few motherboard/BIOS/CPU identifiers (read via WMI: `Win32_BaseBoard.SerialNumber`,
+  `Win32_BIOS.SerialNumber`, `Win32_Processor.ProcessorId`), salted with `AppInfo.AppGuid` so
+  the result is scoped to this app rather than directly comparable across unrelated apps on
+  the same machine. The raw hardware serials are never stored or returned — only the hash.
+  Falls back to hashing `Environment.MachineName` alone when no WMI identifier is readable
+  (e.g. a locked-down environment). Cached for the lifetime of the process.
 
 ### `VersionTracking` / `IVersionTracking`
 
@@ -494,3 +514,41 @@ Implemented with a named `Mutex` (identity — session-local, not `Global\`) and
 `EventWaitHandle` (the wake signal), both keyed by `AppInfo.AppGuid`. See
 [Optional desktop features](README.md#optional-desktop-features) in the README for the full
 behavior description.
+
+---
+
+## `Barbatos.Wpf.Dialogs` Namespace
+
+Centralizes showing and tracking child windows ("dialogs"). Has no .NET MAUI counterpart —
+MAUI's page-based navigation model has no equivalent of WPF's multi-window/owner model. See
+[Dialogs](README.md#dialogs) in the README for the full behavior description.
+
+### `IDialogService`
+
+- **`ActiveWindow`** (`Window?`) — the most recently activated window this service has seen
+  (every dialog shown through it, plus `Application.MainWindow`, tracked opportunistically the
+  first time it's observed), falling back to `Application.MainWindow` directly, falling back to
+  `null` when the app has no windows yet. Used as the default owner when none is passed.
+- **`ShowDialog<TWindow>(Window? owner = null, string? key = null, bool closeOthers = false)`**
+  / **`ShowDialog(Window dialog, ...)`** → `bool?` — shows `TWindow` (resolved from the DI
+  container) or an already-constructed window modally, blocking until closed. Returns the
+  `DialogResult`; or `null` both in the normal WPF sense and when a dialog with the same `key`
+  was already open, in which case that instance was activated instead.
+- **`Show<TWindow>(Window? owner = null, string? key = null, bool closeOthers = false)`** /
+  **`Show(Window dialog, ...)`** → `bool` — shows `TWindow`/`dialog` non-modally. `key` defaults
+  to the window type's full name; if a dialog with that key is already tracked as open, that
+  window is activated instead and this returns `false` — this is what makes a rapid
+  double-click on a button that calls `Show` safe. Returns `true` if a new window was shown.
+- **`IsOpen(string key)`** → `bool`, **`GetOpenDialog(string key)`** → `Window?`
+- **`CloseAll()`** → `bool` — gracefully closes every tracked dialog; each still gets a chance
+  to veto via its own `Closing` event, so this can return `false` (one or more vetoed) without
+  having closed everything.
+- **`Close(string key)`** → `bool` — gracefully closes the dialog tracked under `key`, if any.
+
+### `DialogOptions`
+
+- **`CascadeCloseOwnedDialogs`** (`bool`) — defaults to `true`. Plain WPF already closes a
+  window's owned dialogs when it closes, but unconditionally, ignoring each owned dialog's own
+  `Closing` veto. When enabled, this service closes a window's owned dialogs itself first,
+  ahead of WPF's own cascade, so each one gets a real, respected veto — and if any refuse, the
+  window's own close is cancelled too.

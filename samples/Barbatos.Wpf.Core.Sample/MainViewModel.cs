@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Barbatos.Wpf.ApplicationModel.Communication;
 using Barbatos.Wpf.Devices;
+using Barbatos.Wpf.Dialogs;
 using Barbatos.Wpf.Networking;
 using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
@@ -34,12 +35,14 @@ public class MainViewModel : INotifyPropertyChanged
     readonly IPreferences _preferences;
     readonly ISecureStorage _secureStorage;
     readonly IEmail _email;
+    readonly IDialogService _dialogService;
     readonly SettingsStore _settingsStore;
 
     string _heartbeatIntervalSeconds;
     string _secureStorageInput = string.Empty;
     string _secureStorageResult = string.Empty;
     string _displayInfoDescription;
+    string _deviceIdentityDescription = "(not loaded - click \"Show device identity\")";
 
     public MainViewModel(
         IGreetingService greetingService,
@@ -53,6 +56,7 @@ public class MainViewModel : INotifyPropertyChanged
         IPreferences preferences,
         ISecureStorage secureStorage,
         IEmail email,
+        IDialogService dialogService,
         SettingsStore settingsStore)
     {
         Greeting = greetingService.GetGreeting();
@@ -75,6 +79,7 @@ public class MainViewModel : INotifyPropertyChanged
         _preferences = preferences;
         _secureStorage = secureStorage;
         _email = email;
+        _dialogService = dialogService;
         _settingsStore = settingsStore;
 
         _notifications.Activated += (sender, args) =>
@@ -122,6 +127,19 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     public string ConnectivityDescription { get; private set; }
+
+    public string DeviceIdentityDescription
+    {
+        get => _deviceIdentityDescription;
+        private set { _deviceIdentityDescription = value; OnPropertyChanged(); }
+    }
+
+    // Loaded on demand, not at startup - see GreetingService.GetDeviceIdentityDescriptionAsync().
+    public async void LoadDeviceIdentity()
+    {
+        LogLifecycleEvent("DeviceIdentity.GetInstanceIdAsync() / GetHardwareFingerprintAsync()");
+        DeviceIdentityDescription = await _greetingService.GetDeviceIdentityDescriptionAsync();
+    }
 
     /// <summary>
     /// Re-queries <see cref="Barbatos.Wpf.Devices.IDeviceDisplay.MainDisplayInfo"/>. Called
@@ -246,6 +264,28 @@ public class MainViewModel : INotifyPropertyChanged
     {
         LogLifecycleEvent("Email.ComposeAsync(...)");
         await _email.ComposeAsync("Hello from Barbatos.Wpf.Core", "Sent via Simple MAPI.", []);
+    }
+
+    public void ShowAbout()
+    {
+        // No owner argument: resolves to IDialogService.ActiveWindow, which is this window.
+        // Double-clicking this button is safe - the second call activates the already-open
+        // About instead of showing a duplicate.
+        var shown = _dialogService.Show<AboutWindow>();
+        LogLifecycleEvent(shown ? "DialogService.Show<AboutWindow>() - opened" : "DialogService.Show<AboutWindow>() - already open, activated instead");
+    }
+
+    public void ShowDialogAbout()
+    {
+        LogLifecycleEvent("DialogService.ShowDialog<AboutWindow>() - opening modally");
+        _dialogService.ShowDialog<AboutWindow>();
+        LogLifecycleEvent("DialogService.ShowDialog<AboutWindow>() - closed");
+    }
+
+    public void CloseAllDialogs()
+    {
+        var allClosed = _dialogService.CloseAll();
+        LogLifecycleEvent(allClosed ? "DialogService.CloseAll() - all dialogs closed" : "DialogService.CloseAll() - one or more dialogs vetoed closing");
     }
 
     void PersistSettings() =>

@@ -59,6 +59,8 @@ public static class WpfProgram
         // exits immediately instead of opening a second window.
         builder.ConfigureSingleInstance();
 
+        builder.ConfigureDialogs();
+
         // The optional features from the settings screen. Each one binds its own
         // configuration section and is toggled at runtime by MainViewModel.
         builder.ConfigureRunOnStartup();
@@ -79,6 +81,8 @@ public static class WpfProgram
         builder.Services.AddSingleton<IGreetingService, GreetingService>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainWindow>();
+        builder.Services.AddTransient<AboutWindow>();
+        builder.Services.AddTransient<DetailsWindow>();
 
         return builder.Build();
     }

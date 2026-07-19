@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:Barbatos.Wpf.Core.Sample"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=local:MainViewModel}"
-        Title="Barbatos.Wpf.Core Sample" Height="820" Width="860">
+        Title="Barbatos.Wpf.Core Sample" Height="720" Width="860">
     <Window.Resources>
         <Style x:Key="SettingTitle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -20,6 +20,7 @@
             <Setter Property="Margin" Value="0,8" />
         </Style>
     </Window.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -28,7 +29,8 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0"
@@ -212,19 +214,53 @@
                     <Button Grid.Column="1" Padding="10,2" Content="Compose email" Click="ComposeEmailButton_Click" />
                 </Grid>
 
+                <Separator Margin="0,8,0,4" />
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Device identity (licensing)" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="{Binding DeviceIdentityDescription}" Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Padding="10,2" Content="Show device identity" Click="ShowDeviceIdentityButton_Click" />
+                </Grid>
+
                 <TextBlock Margin="0,8,0,0"
                            Text="App action: right-click this app's taskbar icon and choose &quot;Open&quot; (registered via ConfigureEssentials)."
                            Style="{StaticResource SettingDescription}" />
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="5"
+        <Border Grid.Row="5"
+                Margin="0,12,0,0"
+                Padding="12"
+                BorderBrush="#DDDDDD"
+                BorderThickness="1"
+                CornerRadius="6">
+            <StackPanel>
+                <TextBlock Text="Dialogs (IDialogService)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
+                <TextBlock Style="{StaticResource SettingDescription}"
+                           Text="Show opens About non-modally, owned by this window; double-clicking it activates the existing instance instead of opening a duplicate. ShowDialog opens it modally. About has its own button that opens Details, owned by About (not this window) - closing About cascades to close Details too, unless Details vetoes via its own Closing." />
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Padding="10,2" Margin="0,0,8,0" Content="Show About" Click="ShowAboutButton_Click" />
+                    <Button Padding="10,2" Margin="0,0,8,0" Content="ShowDialog About" Click="ShowDialogAboutButton_Click" />
+                    <Button Padding="10,2" Content="Close all dialogs" Click="CloseAllDialogsButton_Click" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="6"
                    Margin="0,16,0,4"
                    Text="Logs:"
                    FontWeight="SemiBold" />
 
-        <ListBox Grid.Row="6"
+        <ListBox Grid.Row="7"
+                 Height="220"
                  ItemsSource="{Binding LifecycleEvents}"
                  FontFamily="Consolas" />
     </Grid>
+    </ScrollViewer>
 </Window>

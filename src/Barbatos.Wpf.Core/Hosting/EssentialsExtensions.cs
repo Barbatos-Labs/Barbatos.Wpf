@@ -57,6 +57,7 @@ public static class EssentialsExtensions
     {
         builder.Services.TryAddSingleton<IAppInfo>(sp => AppInfo.Current);
         builder.Services.TryAddSingleton<IPublisherInfo>(sp => PublisherInfo.Current);
+        builder.Services.TryAddSingleton<IDeviceIdentity>(sp => DeviceIdentity.Default);
         builder.Services.TryAddSingleton<IDeviceInfo>(sp => DeviceInfo.Current);
         builder.Services.TryAddSingleton<IFileSystem>(sp => FileSystem.Current);
         builder.Services.TryAddSingleton<IPreferences>(sp => Preferences.Default);

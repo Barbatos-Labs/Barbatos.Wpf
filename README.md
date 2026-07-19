@@ -31,7 +31,12 @@ injection, configuration, logging, and lifecycle events built in.**
   * [Reading back InstallDate and InstallLocation](#reading-back-installdate-and-installlocation)
   * [App actions and version tracking](#app-actions-and-version-tracking)
   * [Contacts and Geolocation](#contacts-and-geolocation)
+  * [License enforcement: DeviceIdentity](#license-enforcement-deviceidentity)
 * **[Optional desktop features](#optional-desktop-features)**
+* **[Dialogs](#dialogs)**
+  * [Owner assignment](#owner-assignment)
+  * [Closing other dialogs, without losing in-progress work](#closing-other-dialogs-without-losing-in-progress-work)
+  * [Preventing a double-click from opening a dialog twice](#preventing-a-double-click-from-opening-a-dialog-twice)
 * **[Periodic services](#periodic-services)**
 * **[Ecosystem](#ecosystem)**
   * [Repository layout](#repository-layout)
@@ -219,6 +224,7 @@ the container by `UseEssentials()`, part of the builder defaults:
 | --- | --- | --- | --- |
 | App info | `AppInfo` | `IAppInfo` | Assembly metadata/attributes; theme from the `AppsUseLightTheme` registry value; packaging via `GetCurrentPackageFullName`; `InstallDate`/`InstallLocation` from the installer's `Uninstall` registry entry, if any |
 | Publisher info | `PublisherInfo` | `IPublisherInfo` | Assembly metadata, falling back to `AssemblyCompanyAttribute` |
+| Device identity | `DeviceIdentity` | `IDeviceIdentity` | See [License enforcement: DeviceIdentity](#license-enforcement-deviceidentity) below — no MAUI counterpart |
 | Device info | `DeviceInfo` | `IDeviceInfo` | BIOS registry (`Model`/`Manufacturer`); MAUI's own Chromium-style tablet-mode heuristic for `Idiom` |
 | File system | `FileSystem` | `IFileSystem` | `%LocalAppData%\{Publisher}\{AppGuid}\{Data,Cache}`, same layout as MAUI's unpackaged path |
 | Preferences | `Preferences` | `IPreferences` | Same unpackaged JSON-file strategy MAUI itself uses for non-MSIX apps |
@@ -454,6 +460,58 @@ independent of DI (same as in .NET MAUI) and will keep using the built-in
 `FeatureNotSupportedException`-throwing implementation regardless — prefer the injected
 `IContacts`/`IGeolocation` interface if you register a replacement.
 
+### License enforcement: DeviceIdentity
+
+.NET MAUI's `DeviceInfo` deliberately exposes no device identifier and no network address —
+Apple and Google both prohibit collecting raw hardware IDs (IMEI, serial numbers) for
+ordinary commercial apps, so MAUI's cross-platform surface never offers one in the first
+place. `DeviceIdentity` exists for the desktop-specific case this rules out: enforcing a
+per-machine license/activation limit. It has no .NET MAUI counterpart.
+
+> [!IMPORTANT]
+> This section explains what the API does and why it's shaped this way — it is **not legal
+> advice**. Both members below are still personal data under most privacy laws (GDPR, EU/EEA;
+> Vietnam's Decree 13/2023/NĐ-CP; CCPA, California; ...) once your license server associates
+> them with a customer record (an email, a purchase). Using this API still requires a privacy
+> policy disclosure and a lawful basis for processing — have your specific case reviewed by
+> counsel, especially if you sell internationally.
+
+```csharp
+string installId = await DeviceIdentity.GetInstanceIdAsync();
+string fingerprint = await DeviceIdentity.GetHardwareFingerprintAsync();
+```
+
+| Member | What it is | Survives reinstall? |
+| --- | --- | --- |
+| `GetInstanceIdAsync()` | A random GUID generated on first use, persisted via `SecureStorage`. Identifies "this install", not the physical machine. | No |
+| `GetHardwareFingerprintAsync()` | A SHA-256 hash of a few motherboard/BIOS/CPU identifiers (read via WMI), salted with `AppInfo.AppGuid`. | Yes |
+
+Two design choices keep this narrower than the raw hardware-ID approach a lot of licensing
+code reaches for by default:
+
+- **The hardware serials themselves are never stored or transmitted** — only a one-way
+  SHA-256 hash of them. Your license server can tell "this is the same machine as last time"
+  without ever holding a reversible hardware identifier.
+- **The hash is salted with `AppInfo.AppGuid`**, so it's scoped to *this app* — the same
+  machine produces a different fingerprint for a different app, the same way Apple's
+  `IdentifierForVendor` is scoped to a developer rather than being a single ID usable to
+  correlate a device across unrelated apps.
+
+Use `GetInstanceIdAsync()` alone if you don't need to survive a reinstall (the least invasive
+option). Use `GetHardwareFingerprintAsync()` (or both, keyed together) if a user should not be
+able to reset a per-machine activation count by simply reinstalling — this is the same
+technique commercial license managers (FlexNet, Reprise, ...) use.
+
+**Network address:** for the same purpose (e.g. flagging one license activating from an
+unusual number of locations), resist the urge to call a third-party IP-lookup service (like
+`api.ipify.org`) from the client — that shares "this app, this machine, right now" with an
+extra party you don't control, on top of whatever your own license server already sees. Your
+license-check API already receives the caller's public IP as part of the HTTP request itself
+(e.g. `HttpContext.Connection.RemoteIpAddress` in ASP.NET Core) — no client-side code needed.
+Treat it as a soft signal, not a hard block: NAT/CGNAT means multiple legitimate users can
+share one public IP, and VPNs/mobile networks/dynamic IPs mean the same legitimate user's IP
+changes over time.
+
 ---
 
 ## Optional desktop features
@@ -535,6 +593,76 @@ Notes:
 > exposes as "app actions" on Windows. A global keyboard hotkey is a materially different
 > capability (no MAUI equivalent); if you need one, `RegisterHotKey`/`UnregisterHotKey`
 > P/Invoke is straightforward to reintroduce as your own `IWpfInitializeService`.
+
+---
+
+## Dialogs
+
+`IDialogService` (registered by `ConfigureDialogs()`) centralizes showing and tracking child
+windows ("dialogs") so owner assignment, duplicate-open prevention, and graceful bulk-close
+behave consistently no matter where in the app a dialog is opened from. It has no .NET MAUI
+counterpart — MAUI's page-based navigation model has no equivalent of WPF's multi-window/owner
+model — and closes three well-known WPF footguns:
+
+```csharp
+builder.ConfigureDialogs();
+
+builder.Services.AddTransient<AboutWindow>();
+```
+
+```csharp
+// In a button's click handler, resolved via constructor injection of IDialogService:
+_dialogService.Show<AboutWindow>();          // non-modal, double-click-safe
+_dialogService.ShowDialog<AboutWindow>();     // modal, blocks until closed
+_dialogService.Show(dialog, owner: someWindow, key: "customer-42", closeOthers: true);
+```
+
+### Owner assignment
+
+Not setting `Window.Owner` explicitly lets Windows decide Z-order/activation on its own, which
+is what causes dialogs to end up "under" an unrelated foreground application, or two
+concurrently-open dialogs fighting over which one visually owns the other. `Show`/`ShowDialog`
+always resolve and set `Owner` exactly once, before a fresh window is ever shown:
+
+- Pass `owner:` explicitly when you know it (e.g. always owned by `MainWindow`, or by the
+  window a dialog was opened from).
+- Otherwise it defaults to `IDialogService.ActiveWindow` — the most recently *activated*
+  window this service has seen (every dialog shown through it, plus `Application.MainWindow`,
+  tracked opportunistically the first time it's observed) — never the operating system's
+  notion of the active window, which is what lets an unrelated external application end up as
+  a dialog's owner. This is also what makes "a dialog opened from another dialog" work
+  correctly without any extra code: since the dialog you opened *from* is the currently active
+  window, a new dialog shown from inside it is owned by it, not by `MainWindow`.
+
+### Closing other dialogs, without losing in-progress work
+
+`Show`/`ShowDialog`'s `closeOthers: true` closes every other dialog currently tracked by this
+service before showing the new one; `CloseAll()`/`Close(key)` do the same on demand (e.g. from
+a "Close all windows" menu command). All of these are *graceful*: each dialog still gets a
+chance to veto via its own `Closing` event (`e.Cancel = true`), so in-progress/unsaved work is
+never silently discarded — `CloseAll()`/`Close(key)` return `false` if anything vetoed, and
+`closeOthers`/`CloseAll()` leave a vetoing dialog open rather than forcing it shut.
+
+This graceful behavior also applies to `DialogOptions.CascadeCloseOwnedDialogs` (default:
+`true`). Plain WPF already closes a window's owned dialogs when *it* closes — but
+unconditionally, **ignoring each owned dialog's own `Closing` veto** (verified: an owned
+window's `e.Cancel = true` does not stop it from being force-closed once its owner closes).
+That is exactly the data-loss risk this option prevents: with it enabled, closing a window
+first closes the dialogs it owns itself, giving each one (recursively, however many owned
+dialogs deep) a real, respected veto — and if any of them refuse, the owner's own close is
+cancelled too, so the whole chain stays open together instead of tearing down partway through.
+
+### Preventing a double-click from opening a dialog twice
+
+Calling `Window.Show()` (not `ShowDialog()`) from a button's click handler is what opens a
+second instance on a rapid double-click, since `Show()` doesn't block — this is the most common
+way this bug happens in practice. `Show`/`ShowDialog` key each dialog by `key` (defaults to the
+window type's full name) and, if a dialog with that key is already tracked as open, activate
+the existing instance instead of showing a duplicate — `Show` returns `false` in that case so
+you can tell the two apart if you need to. Pass a more specific `key` (e.g. including an entity
+id) when you deliberately want several instances of the same window type open at once, one per
+key — an "edit customer" dialog, for example, where different customers should be editable
+simultaneously but the same customer twice should just refocus the existing window.
 
 ---
 

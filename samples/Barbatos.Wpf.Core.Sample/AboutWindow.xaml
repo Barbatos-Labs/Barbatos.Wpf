@@ -1,0 +1,17 @@
+<Window x:Class="Barbatos.Wpf.Core.Sample.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About" Height="220" Width="380"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <StackPanel Margin="16">
+        <TextBlock Text="Barbatos.Wpf.Core Sample" FontWeight="SemiBold" FontSize="16" />
+        <TextBlock Margin="0,8,0,0"
+                   TextWrapping="Wrap"
+                   Text="Shown through IDialogService: Owner was resolved automatically (no owner argument was passed), and a second Show()/ShowDialog() call for this window type activates this instance instead of opening a duplicate." />
+        <TextBlock x:Name="OwnerText" Margin="0,8,0,0" Foreground="Gray" FontSize="11" />
+        <Button Content="Open details (owned by this window, not MainWindow)"
+                Margin="0,16,0,0"
+                HorizontalAlignment="Left"
+                Click="OpenDetailsButton_Click" />
+    </StackPanel>
+</Window>

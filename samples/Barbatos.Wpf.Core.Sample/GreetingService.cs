@@ -28,6 +28,8 @@ public interface IGreetingService
     string GetConnectivityDescription();
 
     string GetDisplayInfoDescription();
+
+    Task<string> GetDeviceIdentityDescriptionAsync();
 }
 
 /// <summary>
@@ -47,6 +49,7 @@ public class GreetingService : IGreetingService
     private readonly IVersionTracking _versionTracking;
     private readonly IConnectivity _connectivity;
     private readonly IDeviceDisplay _deviceDisplay;
+    private readonly IDeviceIdentity _deviceIdentity;
 
     public GreetingService(
         IConfiguration configuration,
@@ -56,7 +59,8 @@ public class GreetingService : IGreetingService
         IDeviceInfo deviceInfo,
         IVersionTracking versionTracking,
         IConnectivity connectivity,
-        IDeviceDisplay deviceDisplay)
+        IDeviceDisplay deviceDisplay,
+        IDeviceIdentity deviceIdentity)
     {
         _configuration = configuration;
         _environment = environment;
@@ -66,6 +70,7 @@ public class GreetingService : IGreetingService
         _versionTracking = versionTracking;
         _connectivity = connectivity;
         _deviceDisplay = deviceDisplay;
+        _deviceIdentity = deviceIdentity;
     }
 
     public string GetGreeting() =>
@@ -113,5 +118,16 @@ public class GreetingService : IGreetingService
         // so this only returns a real value once the main window has been shown.
         var info = _deviceDisplay.MainDisplayInfo;
         return $"{info.Width}x{info.Height} @ {info.Density:0.0}x density, {info.Orientation}, {info.RefreshRate} Hz";
+    }
+
+    // Loaded on demand (not at startup) since GetHardwareFingerprintAsync() does real WMI
+    // I/O the first time it runs - see "License enforcement: DeviceIdentity" in the root
+    // README.md for what these are for and the privacy/compliance considerations.
+    public async Task<string> GetDeviceIdentityDescriptionAsync()
+    {
+        var instanceId = await _deviceIdentity.GetInstanceIdAsync();
+        var fingerprint = await _deviceIdentity.GetHardwareFingerprintAsync();
+
+        return $"InstanceId (resets on reinstall): {instanceId} | HardwareFingerprint (survives reinstall, salted with AppGuid): {fingerprint}";
     }
 }

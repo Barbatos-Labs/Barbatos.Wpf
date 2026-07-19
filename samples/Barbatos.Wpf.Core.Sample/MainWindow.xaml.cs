@@ -32,4 +32,16 @@ public partial class MainWindow : Window
 
     void ComposeEmailButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).ComposeTestEmail();
+
+    void ShowAboutButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).ShowAbout();
+
+    void ShowDialogAboutButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).ShowDialogAbout();
+
+    void CloseAllDialogsButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).CloseAllDialogs();
+
+    void ShowDeviceIdentityButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).LoadDeviceIdentity();
 }

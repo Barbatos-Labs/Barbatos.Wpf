@@ -65,11 +65,19 @@ public class DispatchingTests
     }
 
     [Fact]
-    public async Task IsDispatchRequiredIsTrueOnAnotherThread()
+    public void IsDispatchRequiredIsTrueOnAnotherThread()
     {
         var dispatcher = Dispatcher.GetForCurrentThread()!;
 
-        var required = await Task.Run(() => dispatcher.IsDispatchRequired);
+        // A dedicated Thread, not Task.Run: the .NET ThreadPool does not guarantee a queued
+        // work item lands on a different physical thread than the caller - under low
+        // contention it can reuse the exact same thread, which would make CheckAccess() (and
+        // therefore IsDispatchRequired) reflect the wrong thread's identity and make this
+        // assertion flaky. A freshly started Thread is always a different physical thread.
+        var required = false;
+        var thread = new Thread(() => required = dispatcher.IsDispatchRequired);
+        thread.Start();
+        thread.Join();
 
         Assert.True(required);
     }

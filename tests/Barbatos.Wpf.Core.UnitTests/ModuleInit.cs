@@ -30,6 +30,7 @@ static class ModuleInit
     {
         _ = AppInfo.Current;
         _ = PublisherInfo.Current;
+        _ = DeviceIdentity.Default;
         _ = DeviceInfo.Current;
         _ = FileSystem.Current;
         _ = Preferences.Default;
