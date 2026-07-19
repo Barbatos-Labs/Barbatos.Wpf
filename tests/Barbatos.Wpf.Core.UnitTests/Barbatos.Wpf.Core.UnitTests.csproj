@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.Core\Barbatos.Wpf.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <!-- The test namespace used to be nested inside Barbatos.Wpf.Hosting (as
+         Barbatos.Wpf.Hosting.UnitTests), so hosting types resolved implicitly via
+         enclosing-namespace lookup. Now that the project is Barbatos.Wpf.Core, that
+         nesting is gone, so this restores the same ambient visibility explicitly. -->
+    <Using Include="Barbatos.Wpf.Hosting" />
+  </ItemGroup>
+
+</Project>

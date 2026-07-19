@@ -1,25 +1,86 @@
-# Barbatos.Wpf.Hosting
+# Barbatos.Wpf.Core
 
-A MAUI-style application host for WPF. It ports the hosting concept of .NET MAUI
-(`MauiApp` / `MauiAppBuilder`) to WPF, giving you dependency injection, configuration,
-logging, lifecycle events and dispatching with the exact same programming model.
+![Barbatos.Wpf.Core logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/nuget.png?raw=true)
 
-| .NET MAUI | Barbatos.Wpf.Hosting |
-| --- | --- |
-| `MauiApp` | `WpfApp` |
-| `MauiAppBuilder` | `WpfAppBuilder` |
-| `MauiApp.CreateBuilder()` | `WpfApp.CreateBuilder()` |
-| `MauiHostEnvironment` | `WpfHostEnvironment` |
-| `IMauiInitializeService` / `IMauiInitializeScopedService` | `IWpfInitializeService` / `IWpfInitializeScopedService` |
-| `ConfigureLifecycleEvents(...).AddWindows(...)` | `ConfigureLifecycleEvents(...).AddWpf(...)` |
-| `WindowsLifecycle` delegates | `WpfLifecycle` delegates |
-| `IDispatcher` / `DispatcherProvider` / `ConfigureDispatching` | `IDispatcher` / `DispatcherProvider` / `ConfigureDispatching` |
-| `MauiWinUIApplication` | `WpfApplication` |
-| `IPlatformApplication` | `IWpfPlatformApplication` |
+### *A MAUI-style application host and Essentials for WPF*
 
-## Getting started
+**Bring .NET MAUI's `MauiApp`/`MauiAppBuilder` hosting model and Essentials APIs
+(`AppInfo`, `Preferences`, `SecureStorage`, `Connectivity`, ...) to WPF, with dependency
+injection, configuration, logging, and lifecycle events built in.**
 
-### 1. Derive your `App` from `WpfApplication`
+[![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.Core.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Core)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.Core.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Core)
+[![GitHub stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
+[![License](https://img.shields.io/github/license/Barbatos-Labs/Barbatos.Wpf)](https://github.com/Barbatos-Labs/Barbatos.Wpf/tree/main/LICENSE.md)
+
+---
+
+## 📖 Documentation Menu
+
+* **[Getting Started](#getting-started)**
+  * [Introduction](#introduction)
+  * [Quick Start](#quick-start)
+* **[Hosting](#hosting)**
+  * [App composition](#app-composition-the-mauiprogram-pattern)
+  * [Lifecycle events](#lifecycle-events)
+  * [Dispatching](#dispatching)
+  * [Configuring the hosting environment](#configuring-the-hosting-environment)
+* **[Essentials](#essentials)**
+  * [Configuring AppInfo and PublisherInfo](#configuring-appinfo-and-publisherinfo)
+  * [Publishing with an installer](#publishing-with-an-installer)
+  * [Reading back InstallDate and InstallLocation](#reading-back-installdate-and-installlocation)
+  * [App actions and version tracking](#app-actions-and-version-tracking)
+  * [Contacts and Geolocation](#contacts-and-geolocation)
+* **[Optional desktop features](#optional-desktop-features)**
+* **[Periodic services](#periodic-services)**
+* **[Ecosystem](#ecosystem)**
+  * [Repository layout](#repository-layout)
+* **[API Reference](#api-reference)**
+* **[Community](#community)**
+
+---
+
+## Getting Started
+
+### Introduction
+
+#### What is Barbatos.Wpf.Core?
+
+Barbatos.Wpf.Core is a WPF library that ports .NET MAUI's Hosting and Essentials building
+blocks to plain desktop WPF, with the same programming model and, wherever a Windows
+equivalent exists, the same code shape MAUI itself uses internally.
+
+Traditional WPF apps wire up `Application_Startup`, a hand-rolled DI container, and ad hoc
+static helpers for things like app info, preferences, or connectivity. **Barbatos.Wpf.Core**
+gives you `WpfApp`/`WpfAppBuilder` (mirroring `MauiApp`/`MauiAppBuilder`) — a real
+`IHostApplicationBuilder` with dependency injection, configuration, logging, and lifecycle
+events — plus a dozen ported Essentials modules (`AppInfo`, `Preferences`, `SecureStorage`,
+`Connectivity`, `Launcher`, ...) registered in the same container.
+
+> **Prerequisites**
+>
+> The rest of the documentation assumes basic familiarity with C#, .NET Dependency
+> Injection, `Microsoft.Extensions.Hosting`, and WPF.
+
+### Quick Start
+
+Add the package via NuGet:
+
+```powershell
+dotnet add package Barbatos.Wpf.Core
+```
+
+Unlike .NET MAUI Essentials, this library ships as a single package — Hosting and every
+Essentials module described below are part of `Barbatos.Wpf.Core`, there is nothing else to
+install.
+
+---
+
+## Hosting
+
+### App composition (the `MauiProgram` pattern)
+
+#### 1. Derive your `App` from `WpfApplication`
 
 `App.xaml`:
 
@@ -27,7 +88,7 @@ logging, lifecycle events and dispatching with the exact same programming model.
 <hosting:WpfApplication x:Class="MyApp.App"
                         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:hosting="clr-namespace:Barbatos.Wpf.Hosting;assembly=Barbatos.Wpf.Hosting" />
+                        xmlns:hosting="clr-namespace:Barbatos.Wpf.Hosting;assembly=Barbatos.Wpf.Core" />
 ```
 
 `App.xaml.cs`:
@@ -47,7 +108,7 @@ public partial class App : WpfApplication
 }
 ```
 
-### 2. Compose the host (the `MauiProgram` pattern)
+#### 2. Compose the host
 
 ```csharp
 public static class WpfProgram
@@ -56,10 +117,7 @@ public static class WpfProgram
     {
         var builder = WpfApp.CreateBuilder();
 
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Sample:Greeting"] = "Hello from Barbatos.Wpf.Hosting!",
-        });
+        builder.Configuration.AddJsonFile("appsettings.json", optional: true);
 
         builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
             .OnStartup((app, args) => { /* ... */ })
@@ -75,27 +133,394 @@ public static class WpfProgram
 }
 ```
 
-## Features
+`WpfAppBuilder` implements `IHostApplicationBuilder`, so `builder.Services` is a standard
+`IServiceCollection`, `builder.Configuration` is a `ConfigurationManager` registered as
+`IConfiguration`, and `builder.Logging` registers real logging services (or a no-op
+`ILogger<T>`/`ILoggerFactory` pair if you never touch it, so consumers never receive
+`null`).
 
-- **Dependency injection** — `builder.Services` is a standard `IServiceCollection`;
-  the builder implements `IHostApplicationBuilder`, so generic host extensions work too.
-- **Configuration** — `builder.Configuration` is a `ConfigurationManager`; the built
-  configuration is registered as `IConfiguration` and disposed together with the app.
-- **Logging** — `builder.Logging` registers the real logging services; if you never touch
-  logging, no-op `ILogger<T>`/`ILoggerFactory` implementations are registered so consumers
-  never receive `null`.
-- **Lifecycle events** — application events (`OnStartup`, `OnActivated`, `OnDeactivated`,
-  `OnSessionEnding`, `OnDispatcherUnhandledException`, `OnExit`) and window events
-  (`OnWindowCreated`, `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`,
-  `OnWindowStateChanged`, `OnWindowClosing`, `OnWindowClosed`) are surfaced through the
-  same `ILifecycleEventService` design as .NET MAUI, and every window gets its own
-  service scope (with `IWpfInitializeScopedService` support).
-- **Dispatching** — `IDispatcher`, `IDispatcherTimer` and `IDispatcherProvider` backed by
-  the WPF `Dispatcher`, registered app-wide (singleton) and per-window (scoped), plus the
-  `DispatchAsync` / `DispatchIfRequiredAsync` helpers.
-- **Initialization services** — `IWpfInitializeService` runs once during `Build()`;
-  `IWpfInitializeScopedService` runs once per window scope.
-- **Periodic services** — `IWpfPeriodicService` runs on a recurring schedule (see below).
+### Lifecycle events
+
+Application events (`OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`,
+`OnDispatcherUnhandledException`, `OnExit`) and window events (`OnWindowCreated`,
+`OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`,
+`OnWindowClosing`, `OnWindowClosed`) are surfaced through the same `ILifecycleEventService`
+design as .NET MAUI, and every window gets its own service scope (with
+`IWpfInitializeScopedService` support).
+
+```csharp
+builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
+    .OnStartup((app, args) => logger.LogInformation("Started with args: {Args}", args.Args))
+    .OnWindowClosing((window, args) => { /* prompt to save, or cancel via args.Cancel */ })));
+```
+
+`IWpfInitializeService` runs once during `Build()`; `IWpfInitializeScopedService` runs once
+per window scope — both are the WPF counterparts of `IMauiInitializeService`/
+`IMauiInitializeScopedService`.
+
+### Dispatching
+
+`IDispatcher`, `IDispatcherTimer`, and `IDispatcherProvider`, backed by the WPF `Dispatcher`,
+registered app-wide (singleton) and per-window (scoped), plus the `DispatchAsync` /
+`DispatchIfRequiredAsync` extension helpers.
+
+### Configuring the hosting environment
+
+`WpfHostEnvironment` (the WPF counterpart of `MauiHostEnvironment`/ASP.NET Core's
+`HostingEnvironment`) resolves `EnvironmentName` the same way
+`Microsoft.Extensions.Hosting.HostBuilder` does: `WpfAppBuilder` adds an environment
+variables configuration source with the `DOTNET_` prefix as the very first (lowest-priority)
+entry in `builder.Configuration`, then reads `HostDefaults.EnvironmentKey` from it once,
+before any of your own configuration sources run. That means:
+
+* Setting the `DOTNET_ENVIRONMENT` environment variable (e.g. `DOTNET_ENVIRONMENT=Staging`)
+  before launching the app sets `builder.Environment.EnvironmentName`, with no code required.
+* Any configuration source you add that also sets the `environment` key overrides it —
+  including sources added *before* you first read `builder.Environment`:
+
+  ```csharp
+  var builder = WpfApp.CreateBuilder();
+  builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+  {
+      [HostDefaults.EnvironmentKey] = "Staging",
+  });
+
+  // builder.Environment.EnvironmentName == "Staging" from here on.
+  ```
+* Unlike the WPF counterpart's previous behavior, `EnvironmentName` is a normal settable
+  property — `builder.Environment.EnvironmentName = "Staging";` works directly, and the value
+  is fixed once `Build()` has read it (it does not keep re-reading the environment variable).
+* `WpfHostEnvironment` also exposes `HostEnvironmentEnvExtensions` from
+  `Microsoft.Extensions.Hosting` for free — `builder.Environment.IsDevelopment()`,
+  `.IsProduction()`, `.IsEnvironment("Staging")`, etc.
+
+A common pattern is loading an environment-specific settings file:
+
+```csharp
+var builder = WpfApp.CreateBuilder();
+
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true);
+```
+
+---
+
+## Essentials
+
+Every .NET MAUI Essentials module that has a sensible Windows/WPF equivalent has been
+ported with the same interface + static facade design (e.g. `AppInfo.Current`,
+`Preferences.Default`) and, where the module needs OS integration, the same Windows
+implementation strategy MAUI itself uses — swapped from WinRT/UWP APIs (unavailable to a
+plain unpackaged WPF app) to the nearest Win32/.NET equivalent. All of it is registered in
+the container by `UseEssentials()`, part of the builder defaults:
+
+| Module | Static facade | Interface | Windows implementation |
+| --- | --- | --- | --- |
+| App info | `AppInfo` | `IAppInfo` | Assembly metadata/attributes; theme from the `AppsUseLightTheme` registry value; packaging via `GetCurrentPackageFullName`; `InstallDate`/`InstallLocation` from the installer's `Uninstall` registry entry, if any |
+| Publisher info | `PublisherInfo` | `IPublisherInfo` | Assembly metadata, falling back to `AssemblyCompanyAttribute` |
+| Device info | `DeviceInfo` | `IDeviceInfo` | BIOS registry (`Model`/`Manufacturer`); MAUI's own Chromium-style tablet-mode heuristic for `Idiom` |
+| File system | `FileSystem` | `IFileSystem` | `%LocalAppData%\{Publisher}\{AppGuid}\{Data,Cache}`, same layout as MAUI's unpackaged path |
+| Preferences | `Preferences` | `IPreferences` | Same unpackaged JSON-file strategy MAUI itself uses for non-MSIX apps |
+| Secure storage | `SecureStorage` | `ISecureStorage` | DPAPI (`ProtectedData`, current-user scope) instead of the WinRT `DataProtectionProvider` |
+| Version tracking | `VersionTracking` | `IVersionTracking` | Pure C#, ported near-verbatim (built on `Preferences` + `AppInfo`, no platform code) |
+| Connectivity | `Connectivity` | `IConnectivity` | `System.Net.NetworkInformation` instead of the WinRT `NetworkInformation` API |
+| Device display | `DeviceDisplay` | `IDeviceDisplay` | The same Win32 monitor-info P/Invoke block MAUI uses, against the active WPF window; `KeepScreenOn` via `SetThreadExecutionState`; change notifications via `SystemEvents.DisplaySettingsChanged` |
+| Email | `Email` | `IEmail` | Simple MAPI (`MAPISendMail`) — ported near-verbatim, this was already pure Win32 in MAUI |
+| Launcher | `Launcher` | `ILauncher` | `Process.Start(UseShellExecute: true)` instead of the WinRT `Windows.System.Launcher`; `CanOpenAsync` checks `HKEY_CLASSES_ROOT` for a registered scheme handler |
+| Contacts | `Contacts` | `IContacts` | Throws `FeatureNotSupportedException` — see note below |
+| Geolocation | `Geolocation` | `IGeolocation` | Throws `FeatureNotSupportedException` — see note below; `Location`'s distance math is fully functional |
+| App actions | `AppActions` | `IAppActions` | The taskbar Jump List (`System.Windows.Shell.JumpList`) instead of the WinRT `Windows.UI.StartScreen.JumpList` |
+
+```csharp
+var name = AppInfo.Name;
+var publisher = PublisherInfo.Name;
+var isOnline = Connectivity.NetworkAccess == NetworkAccess.Internet;
+
+Preferences.Set("launch_count", Preferences.Get("launch_count", 0) + 1);
+await SecureStorage.SetAsync("api_token", token);
+
+await Email.ComposeAsync("Subject", "Body", "someone@example.com");
+await Launcher.OpenAsync("https://example.com");
+```
+
+### Configuring AppInfo and PublisherInfo
+
+`AppInfo` and `PublisherInfo` never require any setup — their fallback chains always resolve
+to *something* — but you should configure them explicitly for any app you plan to ship,
+because `FileSystem.AppDataDirectory` and `FileSystem.CacheDirectory` are derived from
+`PublisherInfo.Name` and `AppInfo.AppGuid` (`%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppGuid}\...`).
+
+This library targets .NET 8+ SDK-style projects only, so configuration is a plain
+`<PropertyGroup>` in the csproj — the same well-known properties Visual Studio's *Project ▸
+Properties ▸ Package* page already exposes, with no `AssemblyInfo.cs` file or ClickOnce
+settings involved:
+
+```xml
+<PropertyGroup>
+  <OutputType>WinExe</OutputType>
+  <TargetFramework>net8.0-windows</TargetFramework>
+  <UseWPF>true</UseWPF>
+
+  <!-- AppInfo.Name / PublisherInfo.Name / AppInfo.Version / PublisherInfo.Copyright -->
+  <Product>My App</Product>
+  <Company>Contoso</Company>
+  <Version>1.2.3</Version>
+  <Copyright>Copyright © 2026 Contoso</Copyright>
+</PropertyGroup>
+```
+
+The SDK turns each of these into the matching assembly attribute at build time (`<Product>`
+→ `AssemblyProductAttribute`, `<Company>` → `AssemblyCompanyAttribute`, `<Version>` →
+`AssemblyVersionAttribute`, `<Copyright>` → `AssemblyCopyrightAttribute`), which is exactly
+what the fallback chains below read — so setting these four properties is normally all you
+need:
+
+| Property | Standard fallback | Standard csproj property |
+| --- | --- | --- |
+| `AppInfo.Name` | `AssemblyProductAttribute`, then `AssemblyTitleAttribute` (`<Title>`), then the assembly name | `<Product>` |
+| `AppInfo.Version`/`VersionString` | The assembly's own `Version` | `<Version>` (or `<AssemblyVersion>` for finer control) |
+| `PublisherInfo.Name` | `AssemblyCompanyAttribute` | `<Company>` |
+| `PublisherInfo.Copyright` | `AssemblyCopyrightAttribute` | `<Copyright>` |
+
+`AppInfo.AppGuid` and `PublisherInfo.Website`/`SupportUrl`/`SupportEmail` have no standard
+MSBuild-property equivalent — MAUI's own `ApplicationId` is a MAUI-SDK-only concept, and
+there is no built-in "website"/"support URL"/"support email" assembly attribute at all. For
+those (or to override any of the properties above with a value that differs from
+`<Product>`/`<Company>`/`<Copyright>`), set the `Barbatos.Wpf.ApplicationModel.*` assembly
+metadata directly — it is always checked *before* the standard fallback:
+
+```xml
+<ItemGroup>
+  <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}" />
+  <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.Website" Value="https://contoso.example" />
+  <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportUrl" Value="https://contoso.example/support" />
+  <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportEmail" Value="support@contoso.example" />
+</ItemGroup>
+```
+
+| Property | Metadata key (explicit override) |
+| --- | --- |
+| `AppInfo.AppGuid` | `Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid` |
+| `AppInfo.Name` | `Barbatos.Wpf.ApplicationModel.AppInfo.Name` |
+| `AppInfo.Version`/`VersionString` | `Barbatos.Wpf.ApplicationModel.AppInfo.Version` |
+| `PublisherInfo.Name` | `Barbatos.Wpf.ApplicationModel.PublisherInfo.Name` |
+| `PublisherInfo.Website` | `Barbatos.Wpf.ApplicationModel.PublisherInfo.Website` *(no standard fallback — `null` when unset)* |
+| `PublisherInfo.SupportUrl` | `Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportUrl` *(no standard fallback — `null` when unset)* |
+| `PublisherInfo.SupportEmail` | `Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportEmail` *(no standard fallback — `null` when unset)* |
+| `PublisherInfo.Copyright` | `Barbatos.Wpf.ApplicationModel.PublisherInfo.Copyright` |
+
+Reading the values back — for example on an About screen — goes through the facades instead
+of raw reflection:
+
+```csharp
+var appName = AppInfo.Name;
+var version = AppInfo.VersionString;
+var publisher = PublisherInfo.Name;
+var copyright = PublisherInfo.Copyright;
+```
+
+> **Important:** `AppInfo.AppGuid` (renamed from .NET MAUI's `PackageName`, since on this
+> platform it is not a store package identifier — it is simply the stable identifier used to
+> derive the app's storage folder) should stay constant across releases. Changing it after
+> shipping moves `Preferences`, `SecureStorage`, and `FileSystem.AppDataDirectory` to a new
+> folder, effectively discarding every existing user's stored data. If you ship an installer,
+> set it to a real GUID matching the installer's own application identifier — see
+> [Publishing with an installer](#publishing-with-an-installer) below.
+>
+> **Multi-project solutions:** `<Product>`/`<Company>`/`<Copyright>` are easy to accidentally
+> set in a shared `Directory.Build.props` — every app in the solution would then report the
+> same `AppInfo.Name`/`PublisherInfo.Name`/`PublisherInfo.Copyright`. Set them per-project
+> (or use the `Barbatos.Wpf.ApplicationModel.AppInfo.Name`/`PublisherInfo.Name` metadata
+> override per-project) if that's not what you want.
+
+### Publishing with an installer
+
+`AppInfo`/`PublisherInfo` map cleanly onto the fields a Windows installer needs, because both
+are ultimately backed by the same standard assembly attributes an installer's version-reading
+tooling already understands. For [Inno Setup](https://jrsoftware.org/isinfo.php) 6.4
+specifically (the same mapping applies to WiX/MSI, which uses the identical Windows
+`Uninstall` registry convention):
+
+| `[Setup]` directive | Registry value under `...\Uninstall\{AppId}_is1` | Barbatos.Wpf.Core source |
+| --- | --- | --- |
+| `AppId` | *(the key name itself)* | `AppInfo.AppGuid` — **use the same GUID for both**, see the note above |
+| `AppName` | `DisplayName` | `AppInfo.Name` (`<Product>`) |
+| `AppVersion` | `DisplayVersion` | `AppInfo.VersionString` (`<Version>`) |
+| `AppPublisher` | `Publisher` | `PublisherInfo.Name` (`<Company>`) |
+| `AppPublisherURL` | `URLInfoAbout` | `PublisherInfo.Website` |
+| `AppSupportURL` | `HelpLink` | `PublisherInfo.SupportUrl` |
+| `AppUpdatesURL` | `URLUpdateInfo` | *(no dedicated property — reuse `PublisherInfo.Website`, or a custom metadata key of your own)* |
+
+```pascal
+; setup.iss
+#define AppGUID "C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D"   ; matches AppInfo.AppGuid, without braces
+#define Publisher "Contoso"                              ; matches PublisherInfo.Name
+#define AppName "My App"                                 ; matches AppInfo.Name
+
+[Setup]
+AppId={{{#AppGUID}}
+AppName={#AppName}
+AppPublisher={#Publisher}
+```
+
+> **`AssemblyVersion` vs. the file's native version resource:** Inno Setup's
+> `GetVersionNumbers()` (used above to auto-extract `AppVersion` from the built `.exe`) reads
+> the Win32 `FileVersion` resource embedded in the PE file, not .NET's `AssemblyVersion` —
+> these are two different concepts that usually carry the same value only because the SDK
+> defaults `<FileVersion>` from `<Version>`. If you ever set `<AssemblyVersion>` to something
+> fixed (a common practice to avoid binding-redirect churn) while letting `<Version>`/
+> `<FileVersion>` increment per build, `AppInfo.VersionString` (which reads `AssemblyVersion`,
+> matching .NET MAUI's own behavior) and what your installer reports from the `.exe` file will
+> diverge — set `Barbatos.Wpf.ApplicationModel.AppInfo.Version` explicitly if you need them to
+> stay in lockstep.
+
+### Reading back InstallDate and InstallLocation
+
+`AppInfo.InstallDate` and `AppInfo.InstallLocation` read the *installed copy's* own uninstall
+registry entry (the one from the table above) back — the same entry `AppInfo.AppGuid` is
+recommended to match:
+
+```csharp
+var when = AppInfo.InstallDate;         // DateTime? — null if not found
+var where = AppInfo.InstallLocation;    // string? — null if not found
+```
+
+Both try every plausible location an installer might have used: `HKEY_LOCAL_MACHINE` (a
+machine-wide install) and `HKEY_CURRENT_USER` (a per-user install, e.g. Inno Setup's
+`PrivilegesRequired=lowest`), each in both the 64-bit and 32-bit registry view (the 32-bit
+view transparently redirects to `WOW6432Node`), trying both the bare-GUID subkey name (the
+MSI/WiX convention) and the `_is1`-suffixed one (the Inno Setup convention). They resolve to
+`null` — never throw — whenever:
+
+- `AppInfo.AppGuid` isn't a valid GUID (the common case for an app that never overrode it —
+  see the note above), or
+- the app hasn't actually been installed through a matching installer yet (running from the
+  IDE/`dotnet run`, or a different `AppId` than what `AppInfo.AppGuid` reports).
+
+Other fields the installer's uninstall entry carries — `EstimatedSize`, `DisplayIcon`,
+`NoModify`/`NoRepair`, the `Inno Setup: *` bookkeeping keys — describe the *installed copy*
+rather than something an app typically needs to read back about itself, so they stay outside
+`AppInfo`'s scope, the same way .NET MAUI's `IAppInfo` doesn't expose them either.
+
+### App actions and version tracking
+
+`AppActions` (taskbar Jump List shortcuts) and `VersionTracking.Track()` are wired up
+through `ConfigureEssentials`, mirroring .NET MAUI's `IEssentialsBuilder`:
+
+```csharp
+builder.ConfigureEssentials(essentials => essentials
+    .AddAppAction("open", "Open", "Show the main window")
+    .OnAppAction(action =>
+    {
+        if (action.Id == "open")
+            App.ShowMainWindow();
+    })
+    .UseVersionTracking());
+```
+
+Clicking a Jump List entry launches a new process with an encoded command-line argument;
+`UseEssentials()` checks for it on the `WpfLifecycle.OnStartup` event and raises
+`AppActions.OnAppAction` — the same activation flow .NET MAUI uses (relaunch arguments), just
+adapted to WPF's native Jump List API instead of `Windows.UI.StartScreen.JumpList`. Because
+`System.Windows.Shell.JumpList` has no way to read back what the OS is currently showing
+(unlike WinRT's `JumpList.LoadCurrentAsync()`), `AppActions.GetAsync()` returns the actions
+last set by `SetAsync()` in this process rather than querying the OS.
+
+### Contacts and Geolocation
+
+.NET MAUI's real Windows implementations of `Contacts` and `Geolocation` are built on WinRT
+contracts (`Windows.ApplicationModel.Contacts.ContactPicker`,
+`Windows.Devices.Geolocation.Geolocator`) that require a TargetFramework with WinRT
+projections (`net8.0-windows10.0.19041.0`-style) and, for some APIs, MSIX packaging —
+neither of which this plain `net8.0-windows`/`net9.0-windows`/`net10.0-windows` WPF library
+uses. Rather than pull in that machinery, both modules ship with their full MAUI-shaped type
+surface (`IContacts`/`Contact`/`ContactEmail`/`ContactPhone`,
+`IGeolocation`/`Location`/`GeolocationRequest`/...) so code compiles unchanged, but every
+member of the Windows implementation throws `FeatureNotSupportedException` — the exact
+exception (and message style) .NET MAUI itself throws for feature/platform combinations it
+doesn't support. If you need a real implementation (for example Geolocation via the classic
+Win32 Location API, or Contacts via Microsoft Graph), register your own after the builder is
+created — a later `AddSingleton` call takes precedence over the `TryAddSingleton` that
+`UseEssentials()` performs, so code that resolves `IContacts`/`IGeolocation` through
+constructor injection will get your implementation:
+
+```csharp
+builder.Services.AddSingleton<IContacts, MyGraphContacts>();
+```
+
+The static `Contacts.PickContactAsync()`/`Geolocation.GetLocationAsync()` facades are
+independent of DI (same as in .NET MAUI) and will keep using the built-in
+`FeatureNotSupportedException`-throwing implementation regardless — prefer the injected
+`IContacts`/`IGeolocation` interface if you register a replacement.
+
+---
+
+## Optional desktop features
+
+Opt-in features cover the typical "settings screen" of a desktop app. Each one is only
+registered when its `Configure...` method is called, binds its own configuration section
+(file values override code values), and exposes a service for runtime (UI) toggling:
+
+| Feature | Builder method | Options section | Runtime service |
+| --- | --- | --- | --- |
+| Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` |
+| System tray icon (`NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` |
+| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` |
+| Push notifications (toast, `NotifyIcon.ShowBalloonTip`) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` |
+| Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` |
+
+```csharp
+builder.ConfigureRunOnStartup();
+builder.ConfigureKeepAwake();
+builder.ConfigureTrayIcon(options =>
+{
+    options.MenuItems.Add(new TrayMenuItem("Open", App.ShowMainWindow));
+    options.MenuItems.Add(new TrayMenuItem("Exit", App.ExitApplication));
+});
+builder.ConfigureNotifications();
+```
+
+And from a configuration file:
+
+```json
+{
+  "Barbatos": {
+    "RunOnStartup": { "Enabled": true },
+    "TrayIcon": { "Enabled": true, "ToolTip": "My app" },
+    "KeepAwake": { "Enabled": true, "KeepDisplayOn": false },
+    "Notifications": { "Enabled": true }
+  }
+}
+```
+
+Notes:
+
+- `KeepAwake` prevents idle sleep while still letting the display turn off
+  (set `KeepDisplayOn` to also keep the display on); the sleep block is released when
+  the host is disposed.
+- The tray icon supports a context menu, tooltip, and click/double-click events; the
+  sample uses it together with the `OnWindowClosing` lifecycle event to implement
+  minimize-to-tray.
+- `RunOnStartup` state is persisted by the OS registry; the other toggles can be
+  persisted by writing their configuration sections back to a user settings file that is
+  loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
+- Notifications are pushed via `NotifyIcon.ShowBalloonTip`, which Windows 10/11 renders as
+  a modern toast notification (it also appears in the notification center), attributed to
+  the notification's identity icon — the same mechanism used by the system tray feature.
+  `INotificationService.Show(title, message, severity)` is a no-op while `IsEnabled` is
+  `false`, so a single settings toggle can silence every call site; `Activated` fires when
+  the user clicks the notification.
+
+> **Note:** an earlier version of this library had a `ConfigureGlobalHotkeys` feature
+> (system-wide keyboard shortcuts via `RegisterHotKey`, for a "Quick Entry" hotkey). It has
+> been removed in favor of `IAppActions` (taskbar Jump List shortcuts — see
+> [Essentials](#essentials) above), which is what .NET MAUI's own Essentials actually
+> exposes as "app actions" on Windows. A global keyboard hotkey is a materially different
+> capability (no MAUI equivalent); if you need one, `RegisterHotKey`/`UnregisterHotKey`
+> P/Invoke is straightforward to reintroduce as your own `IWpfInitializeService`.
+
+---
 
 ## Periodic services
 
@@ -137,72 +562,54 @@ Failed executions are logged and do not stop the schedule; a tick is skipped whi
 previous run is still in progress; the cancellation token passed to `ExecuteAsync` is
 cancelled when the host is disposed.
 
-## Optional desktop features
+---
 
-Four opt-in features cover the typical "settings screen" of a desktop app. Each one is
-only registered when its `Configure...` method is called, binds its own configuration
-section (file values override code values), and exposes a service for runtime (UI) toggling:
+## Ecosystem
 
-| Feature | Builder method | Options section | Runtime service |
-| --- | --- | --- | --- |
-| Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` |
-| Global hotkeys / quick entry (`RegisterHotKey`) | `ConfigureGlobalHotkeys(...)` | `Barbatos:GlobalHotkeys` | `IGlobalHotkeyService` |
-| System tray icon (`NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` |
-| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` |
-| Push notifications (toast, `NotifyIcon.ShowBalloonTip`) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` |
+Unlike modular libraries split across many NuGet packages, Barbatos.Wpf.Core ships as a
+**single package** — Hosting, all Essentials modules, and every optional desktop feature are
+included; there is nothing else to install.
 
-```csharp
-builder.ConfigureRunOnStartup();
-builder.ConfigureKeepAwake();
-builder.ConfigureTrayIcon(options =>
-{
-    options.MenuItems.Add(new TrayMenuItem("Open", App.ShowMainWindow));
-    options.MenuItems.Add(new TrayMenuItem("Exit", App.ExitApplication));
-});
-builder.ConfigureGlobalHotkeys(hotkeys => hotkeys
-    .Add("QuickEntry", "Control+Alt+Space", App.ShowMainWindow));
-builder.ConfigureNotifications();
-```
+### Repository layout
 
-And from a configuration file:
+- `src/Barbatos.Wpf.Core` — the library.
+- `samples/Barbatos.Wpf.Core.Sample` — a complete sample application showing DI,
+  configuration, host environment, Essentials usage, and the live lifecycle event log.
+- `tests/Barbatos.Wpf.Core.UnitTests` — the unit test suite, ported from the
+  .NET MAUI hosting and Essentials tests.
 
-```json
-{
-  "Barbatos": {
-    "RunOnStartup": { "Enabled": true },
-    "TrayIcon": { "Enabled": true, "ToolTip": "My app" },
-    "KeepAwake": { "Enabled": true, "KeepDisplayOn": false },
-    "GlobalHotkeys": { "Gestures": { "QuickEntry": "Control+Shift+K" } },
-    "Notifications": { "Enabled": true }
-  }
-}
-```
+---
 
-Notes:
+## API Reference
 
-- `KeepAwake` prevents idle sleep while still letting the display turn off
-  (set `KeepDisplayOn` to also keep the display on); the sleep block is released when
-  the host is disposed.
-- Hotkey gestures are parsed by `HotkeyGesture` (`"Control+Alt+Space"`, `"Ctrl+Shift+K"`,
-  `"Win+F12"`, ...). A failed OS registration (combination taken by another app) is
-  logged as a warning.
-- The tray icon supports a context menu, tooltip, and click/double-click events; the
-  sample uses it together with the `OnWindowClosing` lifecycle event to implement
-  minimize-to-tray.
-- `RunOnStartup` state is persisted by the OS registry; the other toggles can be
-  persisted by writing their configuration sections back to a user settings file that is
-  loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
-- Notifications are pushed via `NotifyIcon.ShowBalloonTip`, which Windows 10/11 renders as
-  a modern toast notification (it also appears in the notification center), attributed to
-  the notification's identity icon — the same mechanism used by the system tray feature.
-  `INotificationService.Show(title, message, severity)` is a no-op while `IsEnabled` is
-  `false`, so a single settings toggle can silence every call site; `Activated` fires when
-  the user clicks the notification.
+The library contains a rich set of primitives spanning Hosting (`Barbatos.Wpf.Hosting`,
+`Barbatos.Wpf.LifecycleEvents`, `Barbatos.Wpf.Dispatching`) and Essentials
+(`Barbatos.Wpf.ApplicationModel`, `Barbatos.Wpf.Devices`, `Barbatos.Wpf.Storage`,
+`Barbatos.Wpf.Networking`, ...).
 
-## Repository layout
+Due to the extensive nature of the library's interfaces, classes, and properties, the full
+API Reference has been moved to a dedicated document modeled after Microsoft's official
+.NET documentation format.
 
-- `src/Barbatos.Wpf.Hosting` — the library.
-- `samples/Barbatos.Wpf.Hosting.Sample` — a complete sample application showing DI,
-  configuration, host environment and the live lifecycle event log.
-- `tests/Barbatos.Wpf.Hosting.UnitTests` — the unit test suite, ported from the
-  .NET MAUI hosting tests.
+👉 **[Read the Full API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/API-REFERENCE.md)** 👈
+
+In the full reference, you will find comprehensive documentation for every namespace,
+interface, static facade, and options class described above.
+
+---
+
+## Community
+
+### Maintainers
+
+- Pham The Hung ([@StHung](https://github.com/StHung))
+
+### Support
+
+For support, please open a [GitHub issue](https://github.com/Barbatos-Labs/Barbatos.Wpf/issues/new). We welcome bug reports, feature requests, and questions.
+
+### License
+
+This project is licensed under the terms of the **MIT** open source license. Please refer to the [LICENSE](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/LICENSE.md) file for the full terms.
+
+You can use it in private and commercial projects. Keep in mind that you must include a copy of the license in your project.

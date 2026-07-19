@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+
+    <!-- AppInfo.Name / PublisherInfo.Name / AppInfo.Version / PublisherInfo.Copyright:
+         the standard SDK properties, overriding the ones inherited from Directory.Build.props
+         (which would otherwise make every project in this repo report the same values). See
+         "Configuring AppInfo and PublisherInfo" in the root README.md. -->
+    <Product>Barbatos.Wpf.Core Sample</Product>
+    <Company>Barbatos Labs</Company>
+    <Version>1.0.0</Version>
+    <Copyright>Copyright (c) 2026 Barbatos Labs</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AppInfo.AppGuid, PublisherInfo.Website, PublisherInfo.SupportUrl and
+         PublisherInfo.SupportEmail have no standard MSBuild-property equivalent, so they are
+         set through the explicit Barbatos.Wpf.ApplicationModel.* assembly metadata override
+         instead. AppGuid is a real GUID here (not a reverse-DNS string) so it can double as
+         an Inno Setup/MSI-style installer's own AppId - see "Publishing with an installer"
+         in the root README.md. -->
+    <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}" />
+    <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.Website" Value="https://github.com/Barbatos-Labs/Barbatos.Wpf" />
+    <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportUrl" Value="https://github.com/Barbatos-Labs/Barbatos.Wpf/issues" />
+    <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportEmail" Value="support@barbatos-labs.example" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The sample namespace used to be nested inside Barbatos.Wpf.Hosting (as
+         Barbatos.Wpf.Hosting.Sample), so hosting types resolved implicitly via
+         enclosing-namespace lookup. Now that the project is Barbatos.Wpf.Core.Sample,
+         that nesting is gone, so this restores the same ambient visibility explicitly. -->
+    <Using Include="Barbatos.Wpf.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.Core\Barbatos.Wpf.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
