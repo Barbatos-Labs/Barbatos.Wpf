@@ -31,6 +31,7 @@ injection, configuration, logging, and lifecycle events built in.**
   * [Reading back InstallDate and InstallLocation](#reading-back-installdate-and-installlocation)
   * [App actions and version tracking](#app-actions-and-version-tracking)
   * [Contacts and Geolocation](#contacts-and-geolocation)
+  * [Permissions](#permissions)
   * [License enforcement: DeviceIdentity](#license-enforcement-deviceidentity)
 * **[Optional desktop features](#optional-desktop-features)**
 * **[Dialogs](#dialogs)**
@@ -241,6 +242,7 @@ the container by `UseEssentials()`, part of the builder defaults:
 | Contacts | `Contacts` | `IContacts` | Throws `FeatureNotSupportedException` — see note below |
 | Geolocation | `Geolocation` | `IGeolocation` | Throws `FeatureNotSupportedException` — see note below; `Location`'s distance math is fully functional |
 | App actions | `AppActions` | `IAppActions` | The taskbar Jump List (`System.Windows.Shell.JumpList`) instead of the WinRT `Windows.UI.StartScreen.JumpList` |
+| Permissions | `Permissions.CheckStatusAsync<T>()` / `RequestAsync<T>()` | *(none — generic static API, no DI, same as MAUI)* | Most permissions report `Granted` (no manifest/capability concept for an unpackaged app); `ContactsRead`/`ContactsWrite`/`LocationWhenInUse`/`LocationAlways`/`Microphone`/`Sensors` throw `FeatureNotSupportedException` — see [Permissions](#permissions) below |
 
 ```csharp
 var name = AppInfo.Name;
@@ -463,6 +465,43 @@ The static `Contacts.PickContactAsync()`/`Geolocation.GetLocationAsync()` facade
 independent of DI (same as in .NET MAUI) and will keep using the built-in
 `FeatureNotSupportedException`-throwing implementation regardless — prefer the injected
 `IContacts`/`IGeolocation` interface if you register a replacement.
+
+### Permissions
+
+`Permissions` is the WPF counterpart of .NET MAUI's `Permissions` API, ported with the exact
+same generic, DI-free static surface — there is no `IPermissions` interface to register,
+because MAUI's own `Permissions` isn't service-injectable either:
+
+```csharp
+var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
+
+if (status != PermissionStatus.Granted)
+    status = await Permissions.RequestAsync<Permissions.Camera>();
+```
+
+Every permission type MAUI ships (`Battery`, `Bluetooth`, `CalendarRead`/`CalendarWrite`,
+`Camera`, `ContactsRead`/`ContactsWrite`, `Flashlight`, `LaunchApp`,
+`LocationWhenInUse`/`LocationAlways`, `Maps`, `Media`, `Microphone`, `NearbyWifiDevices`,
+`NetworkState`, `Phone`, `Photos`/`PhotosAddOnly`, `PostNotifications`, `Reminders`,
+`Sensors`, `Sms`, `Speech`, `StorageRead`/`StorageWrite`, `Vibrate`) is present as a nested
+type of `Permissions`, exactly as in MAUI. Two behaviors on WPF:
+
+- **Most permissions report `PermissionStatus.Granted`.** An unpackaged desktop WPF app has
+  no `AppxManifest.xml` capability declarations to check, and .NET MAUI's own Windows
+  implementation already just returns `Granted` for these same permissions (it never
+  actually gates `Camera`, `CalendarRead`, `Phone`, `StorageRead`, etc. on Windows either) —
+  `EnsureDeclared()` is a no-op for the same reason.
+- **`ContactsRead`, `ContactsWrite`, `LocationWhenInUse`, `LocationAlways`, `Microphone`, and
+  `Sensors` throw `FeatureNotSupportedException`.** MAUI backs these six with real WinRT
+  device-access contracts (`ContactManager`, `Geolocator`, `DeviceAccessInformation`,
+  `MediaCapture`) that need WinRT projections and, for some APIs, MSIX packaging — the same
+  machinery this library already opts out of for [`Contacts` and `Geolocation`](#contacts-and-geolocation).
+  Rather than silently report `Granted` for a permission MAUI itself actually checks, these
+  six are honest about not performing a real check.
+
+If you need a real permission check (for example reading the Windows privacy consent
+registry, or a custom capability broker), subclass `Permissions.BasePlatformPermission` and
+pass your subclass as `TPermission` — the same extensibility model .NET MAUI itself offers.
 
 ### License enforcement: DeviceIdentity
 

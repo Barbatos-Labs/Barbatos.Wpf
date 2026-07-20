@@ -10,7 +10,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.Hosting`](#barbatoswpfhosting-namespace)** | The application host: `WpfApp`/`WpfAppBuilder`, initialization services, Essentials wiring, and the optional desktop features (single instance, run on startup, tray icon, keep awake, notifications, periodic services). |
 | **[`Barbatos.Wpf.LifecycleEvents`](#barbatoswpflifecycleevents-namespace)** | The lifecycle event system and its WPF-specific (`WpfLifecycle`) application/window delegates. |
 | **[`Barbatos.Wpf.Dispatching`](#barbatoswpfdispatching-namespace)** | Dispatcher abstractions (`IDispatcher`, `IDispatcherTimer`, `IDispatcherProvider`) backed by the WPF `Dispatcher`. |
-| **[`Barbatos.Wpf.ApplicationModel`](#barbatoswpfapplicationmodel-namespace)** | App info, publisher info, version tracking, app actions, the launcher, and the shared Essentials exception types. |
+| **[`Barbatos.Wpf.ApplicationModel`](#barbatoswpfapplicationmodel-namespace)** | App info, publisher info, version tracking, app actions, the launcher, permissions, and the shared Essentials exception types. |
 | **[`Barbatos.Wpf.ApplicationModel.Communication`](#barbatoswpfapplicationmodelcommunication-namespace)** | Email composition and contacts. |
 | **[`Barbatos.Wpf.Devices`](#barbatoswpfdevices-namespace)** | Device info and device display. |
 | **[`Barbatos.Wpf.Devices.Sensors`](#barbatoswpfdevicessensors-namespace)** | Geolocation. |
@@ -294,8 +294,12 @@ Essentials exception types. WPF counterpart of .NET MAUI's `Microsoft.Maui.Appli
 | `AppActionEventArgs` | `AppAction` — raised by `AppActions.OnAppAction`. |
 | [`Launcher`](#launcher--ilauncher) / `ILauncher` | Opens URIs and files via the system shell. |
 | `OpenFileRequest` | `Title`, `FullPath` — used with `Launcher.OpenAsync(OpenFileRequest)`. |
+| [`Permissions`](#permissions) | Static generic API: `CheckStatusAsync<TPermission>()`, `RequestAsync<TPermission>()`, `ShouldShowRationale<TPermission>()`. No DI interface, same as .NET MAUI. |
+| `PermissionStatus` | `Unknown`, `Denied`, `Disabled`, `Granted`, `Restricted`, `Limited`. |
+| `Permissions.BasePermission` | Abstract base for every permission type; `Permissions.BasePlatformPermission` is the WPF platform base (`CheckStatusAsync`, `RequestAsync`, `EnsureDeclared`, `ShouldShowRationale`). |
+| `Permissions.Battery` / `Bluetooth` / `CalendarRead` / `CalendarWrite` / `Camera` / `ContactsRead` / `ContactsWrite` / `Flashlight` / `LaunchApp` / `LocationWhenInUse` / `LocationAlways` / `Maps` / `Media` / `Microphone` / `NearbyWifiDevices` / `NetworkState` / `Phone` / `Photos` / `PhotosAddOnly` / `PostNotifications` / `Reminders` / `Sensors` / `Sms` / `Speech` / `StorageRead` / `StorageWrite` / `Vibrate` | Nested marker permission types, matching .NET MAUI's set 1:1 — see [Permissions](#permissions). |
 | `PermissionException` | Thrown for APIs requiring a permission (`UnauthorizedAccessException` subclass). |
-| `FeatureNotSupportedException` | Thrown by a feature unsupported on this platform (`NotSupportedException` subclass) — used by `Contacts` and `Geolocation`. |
+| `FeatureNotSupportedException` | Thrown by a feature unsupported on this platform (`NotSupportedException` subclass) — used by `Contacts`, `Geolocation`, and six of the `Permissions` types. |
 | `FeatureNotEnabledException` | Thrown by a feature that exists but is not currently enabled (`InvalidOperationException` subclass). |
 
 ### `AppInfo` / `PublisherInfo`
@@ -372,6 +376,29 @@ Windows implementation backed by `Process.Start(UseShellExecute: true)` instead 
 await Launcher.OpenAsync("https://example.com");
 await Launcher.OpenAsync(new OpenFileRequest("Open report", @"C:\Reports\q1.pdf"));
 ```
+
+### `Permissions`
+
+The WPF counterpart of .NET MAUI's `Permissions` API — a static, generic, DI-free surface,
+ported as-is (there is no `IPermissions` service to register). See
+[Permissions](README.md#permissions) in the README for the full design rationale.
+
+- **`CheckStatusAsync<TPermission>()`**, **`RequestAsync<TPermission>()`** → `Task<PermissionStatus>`
+- **`ShouldShowRationale<TPermission>()`** → `bool` — always `false` on WPF (Android-only in MAUI)
+- `TPermission` is any nested `Permissions.*` type (`Permissions.Camera`, `Permissions.Microphone`, ...), each `: Permissions.BasePlatformPermission, new()`
+
+```csharp
+var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
+if (status != PermissionStatus.Granted)
+    status = await Permissions.RequestAsync<Permissions.Camera>();
+```
+
+Most permission types report `PermissionStatus.Granted` unconditionally (no manifest/capability
+concept for an unpackaged app — matching .NET MAUI's own Windows behavior for those same
+types). `ContactsRead`, `ContactsWrite`, `LocationWhenInUse`, `LocationAlways`, `Microphone`,
+and `Sensors` throw `FeatureNotSupportedException` instead, since MAUI backs those six with
+real WinRT device-access contracts this library opts out of (same reasoning as
+[`Contacts`/`Geolocation`](#barbatoswpfapplicationmodelcommunication-namespace)).
 
 ---
 
