@@ -45,7 +45,7 @@ public class NotificationFeatureTests
 
         service.Show("Title", "Message", NotificationSeverity.Warning);
 
-        var shown = Assert.Single(platform.Shown);
+        var shown = Assert.Single(platform.Shown).Content;
         Assert.Equal("Title", shown.Title);
         Assert.Equal("Message", shown.Message);
         Assert.Equal(NotificationSeverity.Warning, shown.Severity);
@@ -58,7 +58,52 @@ public class NotificationFeatureTests
 
         service.Show("Title", "Message");
 
-        Assert.Equal(NotificationSeverity.Info, Assert.Single(platform.Shown).Severity);
+        Assert.Equal(NotificationSeverity.Info, Assert.Single(platform.Shown).Content.Severity);
+    }
+
+    [Fact]
+    public void ShowForwardsRichContentToThePlatformWhenEnabled()
+    {
+        var (service, platform) = BuildService();
+
+        var content = new NotificationContent
+        {
+            Title = "Title",
+            Message = "Message",
+            ImagePath = "picture.png",
+            Arguments = "page=details",
+        };
+        content.Buttons.Add(new NotificationButton("Open", "action=open"));
+        content.Buttons.Add(new NotificationButton("Browse", new Uri("https://example.com")));
+
+        service.Show(content);
+
+        var shown = Assert.Single(platform.Shown).Content;
+        Assert.Same(content, shown);
+        Assert.Equal("picture.png", shown.ImagePath);
+        Assert.Equal("page=details", shown.Arguments);
+        Assert.Equal(2, shown.Buttons.Count);
+        Assert.Equal("action=open", shown.Buttons[0].Arguments);
+        Assert.Equal(new Uri("https://example.com"), shown.Buttons[1].LaunchUri);
+    }
+
+    [Fact]
+    public void ShowRichContentIsANoOpWhenDisabled()
+    {
+        var (service, platform) = BuildService();
+
+        service.SetEnabled(false);
+        service.Show(new NotificationContent { Title = "Title", Message = "Message" });
+
+        Assert.Empty(platform.Shown);
+    }
+
+    [Fact]
+    public void ShowRichContentThrowsForNullContent()
+    {
+        var (service, _) = BuildService();
+
+        Assert.Throws<ArgumentNullException>(() => service.Show(null!));
     }
 
     [Fact]
@@ -144,6 +189,20 @@ public class NotificationFeatureTests
         Assert.NotNull(received);
         Assert.Equal("Title", received.Title);
         Assert.Equal("Message", received.Message);
+        Assert.Null(received.Arguments);
+    }
+
+    [Fact]
+    public void ActivatedEventsForwardNavigationArguments()
+    {
+        var (service, platform) = BuildService();
+
+        NotificationActivatedEventArgs? received = null;
+        service.Activated += (sender, args) => received = args;
+
+        platform.RaiseActivated("Title", "Message", "page=details");
+
+        Assert.Equal("page=details", received?.Arguments);
     }
 
     static (INotificationService Service, FakeNotificationPlatform Platform) BuildService(Action<NotificationOptions>? configure = null)

@@ -147,11 +147,17 @@
                         <TextBlock Text="Allow this app to push desktop notifications"
                                    Style="{StaticResource SettingDescription}" />
                     </StackPanel>
-                    <Button Grid.Column="1"
-                            Margin="0,0,12,0"
-                            Padding="10,2"
-                            Content="Send test notification"
-                            Click="SendTestNotificationButton_Click" />
+                    <StackPanel Grid.Column="1"
+                                Margin="0,0,12,0"
+                                Orientation="Horizontal">
+                        <Button Padding="10,2"
+                                Content="Send test notification"
+                                Click="SendTestNotificationButton_Click" />
+                        <Button Margin="6,0,0,0"
+                                Padding="10,2"
+                                Content="Send rich notification"
+                                Click="SendRichTestNotificationButton_Click" />
+                    </StackPanel>
                     <CheckBox Grid.Column="2"
                               VerticalAlignment="Center"
                               IsChecked="{Binding NotificationsEnabled}" />

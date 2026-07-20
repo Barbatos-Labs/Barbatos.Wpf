@@ -42,10 +42,17 @@ internal sealed class NotificationService : INotificationService
         _ = title ?? throw new ArgumentNullException(nameof(title));
         _ = message ?? throw new ArgumentNullException(nameof(message));
 
+        Show(new NotificationContent { Title = title, Message = message, Severity = severity });
+    }
+
+    public void Show(NotificationContent content)
+    {
+        _ = content ?? throw new ArgumentNullException(nameof(content));
+
         if (!IsEnabled)
             return;
 
-        _platform.Show(_options, title, message, severity);
+        _platform.Show(_options, content);
     }
 
     /// <summary>

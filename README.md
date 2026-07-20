@@ -530,7 +530,7 @@ registered when its `Configure...` method is called, binds its own configuration
 | Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` | No |
 | System tray icon (`NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` | No |
 | Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` | No |
-| Push notifications (toast, `NotifyIcon.ShowBalloonTip`) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` | Yes |
+| Push notifications (adaptive toast, images/buttons/navigation) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` | Yes |
 | Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
 
 "Enabled by default" means what happens the moment you call the `Configure...` method with no
@@ -583,12 +583,25 @@ Notes:
 - `RunOnStartup` state is persisted by the OS registry; the other toggles can be
   persisted by writing their configuration sections back to a user settings file that is
   loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
-- Notifications are pushed via `NotifyIcon.ShowBalloonTip`, which Windows 10/11 renders as
-  a modern toast notification (it also appears in the notification center), attributed to
-  the notification's identity icon — the same mechanism used by the system tray feature.
-  `INotificationService.Show(title, message, severity)` is a no-op while `IsEnabled` is
-  `false`, so a single settings toggle can silence every call site; `Activated` fires when
-  the user clicks the notification.
+- Notifications are pushed as full adaptive Windows toast notifications (via the Windows
+  Community Toolkit's `ToastContentBuilder`/`ToastNotificationManagerCompat`), which also
+  appear in the notification center — no Start menu shortcut or manual COM registration
+  required, even for a plain, non-packaged WPF app. `INotificationService.Show(title,
+  message, severity)` is a no-op while `IsEnabled` is `false`, so a single settings toggle
+  can silence every call site.
+  - For richer content, use `Show(NotificationContent)`: `ImagePath` renders an inline
+    "hero" image, and `Buttons` adds up to five action buttons — each one either raises
+    `Activated` with an opaque `Arguments` payload (`NotificationButton(text, arguments)`)
+    for the app to navigate on, or opens a URL/protocol directly
+    (`NotificationButton(text, launchUri)`), without waking the app at all.
+  - `NotificationContent.Arguments` is the same navigation payload, but for clicking the
+    notification body itself (as opposed to a button); read it back from
+    `NotificationActivatedEventArgs.Arguments` in the `Activated` handler to route the user
+    to the relevant place in the app.
+  - Per-project branding: `NotificationOptions.IconPath` sets a persistent circular app
+    logo overlay shown on every notification (defaults to the executable's icon); per-call
+    visuals (image, buttons, navigation) are set per `NotificationContent`/`Show` call, so
+    each feature of the app can shape its own notifications independently.
 
 > **Note:** an earlier version of this library had a `ConfigureGlobalHotkeys` feature
 > (system-wide keyboard shortcuts via `RegisterHotKey`, for a "Quick Entry" hotkey). It has

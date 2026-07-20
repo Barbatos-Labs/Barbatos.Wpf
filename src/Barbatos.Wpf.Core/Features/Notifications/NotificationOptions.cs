@@ -25,8 +25,10 @@ public class NotificationOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// The path of an <c>.ico</c> file used as the notification's identity icon. Defaults
-    /// to the icon associated with the application executable.
+    /// The path of an image file used as the notification's app logo (shown as a small circular
+    /// overlay on every notification). Defaults to the icon associated with the application
+    /// executable when unset. For a per-notification image instead, use
+    /// <see cref="NotificationContent.ImagePath"/>.
     /// </summary>
     public string? IconPath { get; set; }
 

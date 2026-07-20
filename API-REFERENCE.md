@@ -517,16 +517,47 @@ Registers/unregisters the app in the current user's `Run` registry key.
 ### `INotificationService`
 
 - **`IsEnabled`** (`bool`), **`SetEnabled(bool)`** — `Show(...)` is a no-op while disabled.
-- **`Show(string title, string message, NotificationSeverity severity = NotificationSeverity.Info)`**
-- **`Activated`** (`event EventHandler<NotificationActivatedEventArgs>`) — raised when the user clicks the notification.
+- **`Show(string title, string message, NotificationSeverity severity = NotificationSeverity.Info)`** — plain text notification.
+- **`Show(NotificationContent content)`** — rich notification: image, buttons, and a navigation payload.
+- **`Activated`** (`event EventHandler<NotificationActivatedEventArgs>`) — raised when the user clicks the notification body or a button (unless that button used `LaunchUri`, which opens directly without raising this event).
 - **`IsEnabledChanged`** event
 
-Backed by `NotifyIcon.ShowBalloonTip`, which Windows 10/11 renders as a modern toast
-notification (also appearing in the notification center).
+Backed by `ToastContentBuilder`/`ToastNotificationManagerCompat` (Windows Community Toolkit),
+rendering full adaptive Windows toast notifications (also appearing in the notification
+center) for both packaged and non-packaged (plain Win32/WPF) apps, with no Start menu
+shortcut or manual COM/AUMID registration required.
+
+### `NotificationContent`
+
+- **`Title`** (`string`, required), **`Message`** (`string`, required)
+- **`Severity`** (`NotificationSeverity`) — defaults to `Info`; `Error` marks the toast as
+  `Urgent` (bypasses Focus Assist).
+- **`ImagePath`** (`string?`) — a per-notification inline "hero" image.
+- **`Arguments`** (`string?`) — opaque navigation payload returned via
+  `NotificationActivatedEventArgs.Arguments` when the notification body is clicked.
+- **`Buttons`** (`IList<NotificationButton>`) — up to five action buttons.
+
+### `NotificationButton`
+
+- **`NotificationButton(string text, string? arguments = null)`** — clicking raises
+  `INotificationService.Activated` with `arguments`.
+- **`NotificationButton(string text, Uri launchUri)`** — clicking opens `launchUri` directly
+  (e.g. a website or custom protocol) without raising `Activated` or waking the app.
+- **`Text`**, **`Arguments`**, **`LaunchUri`** (read-only properties mirroring the constructor used).
+
+### `NotificationActivatedEventArgs`
+
+- **`Title`**, **`Message`** — of the most recently shown notification.
+- **`Arguments`** (`string?`) — the payload from `NotificationContent.Arguments` (body click)
+  or `NotificationButton.Arguments` (button click), or `null` if none was set.
 
 ### `NotificationOptions`
 
 - **`Enabled`** (`bool`)
+- **`IconPath`** (`string?`) — a persistent circular app logo overlay shown on every
+  notification; defaults to the executable's icon.
+- **`Timeout`** (`TimeSpan`) — a hint (`Long` toast duration above ~7 seconds, `Short`
+  otherwise); Windows may still manage actual visibility itself.
 
 ---
 

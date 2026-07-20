@@ -83,7 +83,9 @@ public class MainViewModel : INotifyPropertyChanged
         _settingsStore = settingsStore;
 
         _notifications.Activated += (sender, args) =>
-            LogLifecycleEvent($"Notification activated ({args.Title})");
+            LogLifecycleEvent(args.Arguments is null
+                ? $"Notification activated ({args.Title})"
+                : $"Notification activated ({args.Title}), navigate: {args.Arguments}");
 
         // ConfigureSingleInstance()'s default behavior already brings this window to the
         // foreground; this just logs it too, the same way every other feature does.
@@ -232,6 +234,27 @@ public class MainViewModel : INotifyPropertyChanged
     {
         LogLifecycleEvent("Notification requested (Test notification)");
         _notifications.Show("Barbatos.Wpf.Core Sample", "This is a test notification pushed from the sample app.");
+    }
+
+    /// <summary>
+    /// Demonstrates the rich notification content: a button that raises
+    /// <see cref="INotificationService.Activated"/> with a navigation payload, and a button
+    /// that opens a URL directly.
+    /// </summary>
+    public void SendRichTestNotification()
+    {
+        LogLifecycleEvent("Notification requested (rich test notification)");
+
+        var content = new NotificationContent
+        {
+            Title = "Barbatos.Wpf.Core Sample",
+            Message = "This notification has action buttons and a navigation payload.",
+            Arguments = "page=settings",
+        };
+        content.Buttons.Add(new NotificationButton("Open settings", "page=settings"));
+        content.Buttons.Add(new NotificationButton("View on GitHub", new Uri("https://github.com/Barbatos-Labs/Barbatos.Wpf")));
+
+        _notifications.Show(content);
     }
 
     public string SecureStorageInput

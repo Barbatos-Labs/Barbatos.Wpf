@@ -24,6 +24,9 @@ public partial class MainWindow : Window
     void SendTestNotificationButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).SendTestNotification();
 
+    void SendRichTestNotificationButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).SendRichTestNotification();
+
     void SaveSecureValueButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).SaveSecureValue();
 

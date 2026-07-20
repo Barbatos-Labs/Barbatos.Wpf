@@ -24,7 +24,7 @@ public static partial class AppHostBuilderExtensions
             options.Configure(configure);
         options.Bind(builder.Configuration.GetSection(NotificationOptions.SectionName));
 
-        builder.Services.TryAddSingleton<INotificationPlatform, Win32NotificationPlatform>();
+        builder.Services.TryAddSingleton<INotificationPlatform, ToastNotificationPlatform>();
         builder.Services.TryAddSingleton<INotificationService, NotificationService>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IWpfInitializeService, NotificationInitializer>());
 

@@ -59,13 +59,13 @@ public sealed class FakeTrayIconPlatform : ITrayIconPlatform
 
 public sealed class FakeNotificationPlatform : INotificationPlatform
 {
-    public List<(NotificationOptions Options, string Title, string Message, NotificationSeverity Severity)> Shown { get; } = new();
+    public List<(NotificationOptions Options, NotificationContent Content)> Shown { get; } = new();
 
     public event EventHandler<NotificationActivatedEventArgs>? Activated;
 
-    public void Show(NotificationOptions options, string title, string message, NotificationSeverity severity) =>
-        Shown.Add((options, title, message, severity));
+    public void Show(NotificationOptions options, NotificationContent content) =>
+        Shown.Add((options, content));
 
-    public void RaiseActivated(string title, string message) =>
-        Activated?.Invoke(this, new NotificationActivatedEventArgs(title, message));
+    public void RaiseActivated(string title, string message, string? arguments = null) =>
+        Activated?.Invoke(this, new NotificationActivatedEventArgs(title, message, arguments));
 }
