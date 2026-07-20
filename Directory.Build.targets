@@ -40,11 +40,11 @@
       PackagePath="\LICENSE.md"
       Visible="False"
     />
+    <!-- Each package ships its own README.md, sitting beside its own .csproj. -->
     <None
-      Include="$(RepositoryDirectory)README.md"
+      Include="$(MSBuildProjectDirectory)\README.md"
       Pack="true"
       PackagePath="\README.md"
-      Visible="False"
     />
   </ItemGroup>
 

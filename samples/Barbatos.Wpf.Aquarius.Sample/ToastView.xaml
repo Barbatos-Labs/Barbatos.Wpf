@@ -1,0 +1,22 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.ToastView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             HorizontalAlignment="Right"
+             VerticalAlignment="Top">
+    <Border Background="#323232"
+            CornerRadius="6"
+            Padding="12,8"
+            Margin="8">
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Foreground="White"
+                       TextWrapping="Wrap"
+                       MaxWidth="260"
+                       VerticalAlignment="Center"
+                       Text="Teleported! Declared deep inside a clipped box below, rendered pinned here." />
+            <Button Content="&#x2715;"
+                    Margin="8,0,0,0"
+                    Padding="6,2"
+                    Command="{Binding ToggleToastCommand}" />
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows10.0.17763.0;net10.0-windows10.0.17763.0</TargetFrameworks>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.Aquarius\Barbatos.Wpf.Aquarius.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Barbatos.Wpf.Reactivity" />
+    <Using Include="Barbatos.Wpf.Composition" />
+    <Using Include="Barbatos.Wpf.Xaml" />
+    <Using Include="Barbatos.Wpf.Teleportation" />
+    <Using Include="Barbatos.Wpf.Animation" />
+  </ItemGroup>
+
+</Project>

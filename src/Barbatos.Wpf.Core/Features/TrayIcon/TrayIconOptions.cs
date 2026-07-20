@@ -40,7 +40,7 @@ public class TrayIconOptions
 }
 
 /// <summary>
-/// A context menu item of the tray icon.
+/// A context menu item of the tray icon, or a separator line (see <see cref="Separator"/>).
 /// </summary>
 public sealed class TrayMenuItem
 {
@@ -50,7 +50,45 @@ public sealed class TrayMenuItem
         Action = action ?? throw new ArgumentNullException(nameof(action));
     }
 
+    TrayMenuItem()
+    {
+        Header = string.Empty;
+        Action = static () => { };
+        IsSeparator = true;
+    }
+
     public string Header { get; }
 
     public Action Action { get; }
+
+    /// <summary>
+    /// The path of an <c>.ico</c> file shown next to the item's text. Optional; when unset, or
+    /// the file cannot be loaded, the item is just shown without an icon.
+    /// </summary>
+    public string? IconPath { get; set; }
+
+    /// <summary>
+    /// Whether the item can be clicked. Disabled items are still shown, grayed out, and never
+    /// invoke <see cref="Action"/> - e.g. to represent a currently-unavailable command instead
+    /// of hiding it outright. Defaults to <see langword="true"/>.
+    /// </summary>
+    public bool IsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Whether this is the menu's default item, rendered in bold (matching the convention used
+    /// by e.g. the Windows Bluetooth tray icon's "Show Bluetooth Devices"). Purely a rendering
+    /// hint - it does not change how the item is activated.
+    /// </summary>
+    public bool IsDefault { get; set; }
+
+    /// <summary>
+    /// Whether this instance is a non-clickable separator line created via
+    /// <see cref="Separator"/>, as opposed to a regular item.
+    /// </summary>
+    public bool IsSeparator { get; }
+
+    /// <summary>
+    /// Creates a non-clickable separator line between menu items.
+    /// </summary>
+    public static TrayMenuItem Separator => new();
 }

@@ -1,0 +1,17 @@
+<Window x:Class="Barbatos.Wpf.Aquarius.Sample.DockableToolDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:aq="http://schemas.barbatos.dev/aquarius"
+        Title="Floating tool panel"
+        Width="260"
+        Height="180"
+        WindowStartupLocation="CenterOwner">
+    <!--
+        This host is the *only* Aquarius-specific thing this dialog needs to know about -
+        it has no idea what ends up inside it. Everything else (the actual panel content,
+        the ViewModel, the Undock/Redock commands) lives in MainWindow/MainViewModel;
+        this dialog is deliberately "dumb".
+    -->
+    <Grid Margin="8"
+          aq:TeleportHost.RegisterHost="FloatingDock" />
+</Window>

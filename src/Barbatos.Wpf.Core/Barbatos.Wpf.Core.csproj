@@ -5,8 +5,6 @@
     <TargetFrameworks>net10.0-windows10.0.17763.0;net9.0-windows10.0.17763.0;net8.0-windows10.0.17763.0</TargetFrameworks>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <UseWPF>true</UseWPF>
-    <!-- WinForms is required for the tray icon feature (System.Windows.Forms.NotifyIcon). -->
-    <UseWindowsForms>true</UseWindowsForms>
     <CommonTags>$(CommonTags)</CommonTags>
     <Description>Barbatos.Wpf.Core - MAUI-style Hosting and Essentials for WPF</Description>
     <RootNamespace>Barbatos.Wpf</RootNamespace>
@@ -25,14 +23,8 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
-    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
+      <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
     <PackageReference Include="System.Management" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Avoid 'Application'/'MessageBox'/... ambiguities between WPF and WinForms:
-         WinForms is only used internally (tray icon) with explicit usings. -->
-    <Using Remove="System.Windows.Forms" />
   </ItemGroup>
 
 </Project>

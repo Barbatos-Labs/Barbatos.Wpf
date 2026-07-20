@@ -65,9 +65,16 @@ public static class WpfProgram
         // configuration section and is toggled at runtime by MainViewModel.
         builder.ConfigureRunOnStartup();
         builder.ConfigureKeepAwake();
+        // A deliberately varied menu - default (bold) item, grouped separators, and a
+        // disabled item - to show off everything TrayMenuItem supports, the same shapes
+        // Windows' own tray icons (e.g. Bluetooth) use.
         builder.ConfigureTrayIcon(options =>
         {
-            options.MenuItems.Add(new TrayMenuItem("Open", App.ShowMainWindow));
+            options.MenuItems.Add(new TrayMenuItem("Open", App.ShowMainWindow) { IsDefault = true });
+            options.MenuItems.Add(TrayMenuItem.Separator);
+            options.MenuItems.Add(new TrayMenuItem("About", App.ShowAboutWindow));
+            options.MenuItems.Add(new TrayMenuItem("Check for Updates", () => { }) { IsEnabled = false });
+            options.MenuItems.Add(TrayMenuItem.Separator);
             options.MenuItems.Add(new TrayMenuItem("Exit", App.ExitApplication));
         });
         builder.ConfigurePeriodicServices<HeartbeatService>();

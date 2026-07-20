@@ -24,7 +24,7 @@ public static partial class AppHostBuilderExtensions
             options.Configure(configure);
         options.Bind(builder.Configuration.GetSection(TrayIconOptions.SectionName));
 
-        builder.Services.TryAddSingleton<ITrayIconPlatform, WinFormsTrayIconPlatform>();
+        builder.Services.TryAddSingleton<ITrayIconPlatform, Win32TrayIconPlatform>();
         builder.Services.TryAddSingleton<ITrayIconService, TrayIconService>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IWpfInitializeService, TrayIconInitializer>());
 

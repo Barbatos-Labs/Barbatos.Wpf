@@ -5,6 +5,7 @@
 
 using System.Windows;
 using Barbatos.Wpf.ApplicationModel;
+using Barbatos.Wpf.Dialogs;
 using Barbatos.Wpf.Hosting;
 using Barbatos.Wpf.Tray;
 using Microsoft.Extensions.DependencyInjection;
@@ -88,4 +89,10 @@ public partial class App : WpfApplication
         IsExiting = true;
         Current?.Shutdown();
     }
+
+    /// <summary>
+    /// Opens (or activates) the About dialog. Used by the tray icon's context menu.
+    /// </summary>
+    internal static void ShowAboutWindow() =>
+        Current?.Services.GetService<IDialogService>()?.Show<AboutWindow>();
 }

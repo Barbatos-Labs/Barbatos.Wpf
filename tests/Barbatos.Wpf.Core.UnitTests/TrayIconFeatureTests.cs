@@ -107,6 +107,26 @@ public class TrayIconFeatureTests
     }
 
     [Fact]
+    public void MenuItemDefaultsToEnabledAndNotDefaultOrSeparator()
+    {
+        var item = new TrayMenuItem("Open", () => { });
+
+        Assert.True(item.IsEnabled);
+        Assert.False(item.IsDefault);
+        Assert.False(item.IsSeparator);
+    }
+
+    [Fact]
+    public void SeparatorIsMarkedAsSuchAndDoesNothingWhenInvoked()
+    {
+        var separator = TrayMenuItem.Separator;
+
+        Assert.True(separator.IsSeparator);
+        Assert.Equal(string.Empty, separator.Header);
+        separator.Action();
+    }
+
+    [Fact]
     public void SetToolTipIsForwardedToThePlatform()
     {
         var platform = new FakeTrayIconPlatform();
