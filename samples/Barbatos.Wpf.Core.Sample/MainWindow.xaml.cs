@@ -19,6 +19,10 @@ public partial class MainWindow : Window
         DataContext = viewModel;
 
         Loaded += (sender, e) => viewModel.RefreshDisplayInfo();
+
+        // The user may switch to Settings to toggle notifications and back - re-check
+        // availability each time the window regains focus, not just once at startup.
+        Activated += (sender, e) => viewModel.RefreshNotificationsAvailability();
     }
 
     void SendTestNotificationButton_Click(object sender, RoutedEventArgs e) =>
@@ -26,6 +30,12 @@ public partial class MainWindow : Window
 
     void SendRichTestNotificationButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).SendRichTestNotification();
+
+    void SendImageTestNotificationButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).SendImageTestNotification();
+
+    void OpenNotificationSettingsButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).OpenNotificationSettings();
 
     void SaveSecureValueButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).SaveSecureValue();

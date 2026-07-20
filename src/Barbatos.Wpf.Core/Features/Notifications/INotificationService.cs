@@ -45,6 +45,23 @@ public interface INotificationService
     /// service.
     /// </summary>
     event EventHandler<NotificationActivatedEventArgs>? Activated;
+
+    /// <summary>
+    /// Gets whether the OS currently allows this app to display notifications, checked live
+    /// against Windows on every access (not cached). Windows silently drops toasts it isn't
+    /// allowed to show instead of raising an error, so <see cref="Show(NotificationContent)"/>
+    /// alone cannot tell you a notification was blocked - check this first (e.g. when the
+    /// window is activated) to show an in-app fallback and, via <see cref="OpenSystemSettings"/>,
+    /// a way for the user to fix it.
+    /// </summary>
+    NotificationAvailability Availability { get; }
+
+    /// <summary>
+    /// Opens the Windows Settings page for notifications (the same page shown in
+    /// Settings > System > Notifications), so the user can re-enable them after
+    /// <see cref="Availability"/> reported they're off.
+    /// </summary>
+    void OpenSystemSettings();
 }
 
 /// <summary>
@@ -56,6 +73,35 @@ public enum NotificationSeverity
     Info,
     Warning,
     Error,
+}
+
+/// <summary>
+/// Whether the OS currently allows this app to display notifications, and if not, why.
+/// Mirrors <c>Windows.UI.Notifications.NotificationSetting</c>. See
+/// <see cref="INotificationService.Availability"/>.
+/// </summary>
+public enum NotificationAvailability
+{
+    /// <summary>Notifications are allowed and will be displayed.</summary>
+    Enabled,
+
+    /// <summary>
+    /// The user turned off notifications for this specific app
+    /// (Settings > System > Notifications > this app).
+    /// </summary>
+    DisabledForApplication,
+
+    /// <summary>
+    /// The user turned off notifications system-wide - the main "Notifications" toggle in
+    /// Settings > System > Notifications.
+    /// </summary>
+    DisabledForUser,
+
+    /// <summary>An administrator disabled notifications via Group Policy.</summary>
+    DisabledByGroupPolicy,
+
+    /// <summary>Disabled by the app's manifest. Packaged apps only; does not apply to Barbatos.Wpf.</summary>
+    DisabledByManifest,
 }
 
 /// <summary>

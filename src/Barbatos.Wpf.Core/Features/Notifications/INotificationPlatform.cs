@@ -3,7 +3,10 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Diagnostics;
+using System.IO;
 using Microsoft.Toolkit.Uwp.Notifications;
+using Windows.UI.Notifications;
 
 namespace Barbatos.Wpf.Notifications;
 
@@ -19,6 +22,18 @@ public interface INotificationPlatform
     /// platform.
     /// </summary>
     event EventHandler<NotificationActivatedEventArgs>? Activated;
+
+    /// <summary>
+    /// Gets whether the OS currently allows this app to display notifications. See
+    /// <see cref="INotificationService.Availability"/>.
+    /// </summary>
+    NotificationAvailability GetAvailability();
+
+    /// <summary>
+    /// Opens the OS settings page for notifications. See
+    /// <see cref="INotificationService.OpenSystemSettings"/>.
+    /// </summary>
+    void OpenSystemSettings();
 }
 
 /// <summary>
@@ -48,7 +63,7 @@ internal sealed class ToastNotificationPlatform : INotificationPlatform, IDispos
         var builder = new ToastContentBuilder()
             .AddText(content.Title)
             .AddText(content.Message)
-            .SetToastScenario(content.Severity == NotificationSeverity.Error ? ToastScenario.Urgent : ToastScenario.Default)
+            .SetToastScenario(content.Severity == NotificationSeverity.Error ? ToastScenario.Alarm : ToastScenario.Default)
             .SetToastDuration(options.Timeout > TimeSpan.FromSeconds(7) ? ToastDuration.Long : ToastDuration.Short);
 
         if (!string.IsNullOrWhiteSpace(options.IconPath))
@@ -80,6 +95,19 @@ internal sealed class ToastNotificationPlatform : INotificationPlatform, IDispos
 
         builder.Show();
     }
+
+    public NotificationAvailability GetAvailability() => ToastNotificationManagerCompat.CreateToastNotifier().Setting switch
+    {
+        NotificationSetting.Enabled => NotificationAvailability.Enabled,
+        NotificationSetting.DisabledForApplication => NotificationAvailability.DisabledForApplication,
+        NotificationSetting.DisabledForUser => NotificationAvailability.DisabledForUser,
+        NotificationSetting.DisabledByGroupPolicy => NotificationAvailability.DisabledByGroupPolicy,
+        NotificationSetting.DisabledByManifest => NotificationAvailability.DisabledByManifest,
+        _ => NotificationAvailability.Enabled,
+    };
+
+    public void OpenSystemSettings() =>
+        Process.Start(new ProcessStartInfo("ms-settings:notifications") { UseShellExecute = true });
 
     void OnActivated(ToastNotificationActivatedEventArgsCompat e)
     {

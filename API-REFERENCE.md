@@ -521,17 +521,30 @@ Registers/unregisters the app in the current user's `Run` registry key.
 - **`Show(NotificationContent content)`** — rich notification: image, buttons, and a navigation payload.
 - **`Activated`** (`event EventHandler<NotificationActivatedEventArgs>`) — raised when the user clicks the notification body or a button (unless that button used `LaunchUri`, which opens directly without raising this event).
 - **`IsEnabledChanged`** event
+- **`Availability`** (`NotificationAvailability`) — whether the OS currently allows this app to display notifications, read live from Windows on every access (not cached). `Show(...)` does not check this itself: Windows silently drops a toast it isn't allowed to show instead of raising an error, so this is the only way to detect it and offer an in-app fallback.
+- **`OpenSystemSettings()`** — opens the Windows Settings page for notifications (`ms-settings:notifications`), so the user can act on what `Availability` reported.
 
 Backed by `ToastContentBuilder`/`ToastNotificationManagerCompat` (Windows Community Toolkit),
 rendering full adaptive Windows toast notifications (also appearing in the notification
 center) for both packaged and non-packaged (plain Win32/WPF) apps, with no Start menu
 shortcut or manual COM/AUMID registration required.
 
+### `NotificationAvailability`
+
+Mirrors `Windows.UI.Notifications.NotificationSetting`; returned by `INotificationService.Availability`.
+
+- **`Enabled`** — notifications are allowed and will be displayed.
+- **`DisabledForApplication`** — the user turned off notifications for this app specifically.
+- **`DisabledForUser`** — the user turned off notifications system-wide (the main toggle in Settings > System > Notifications).
+- **`DisabledByGroupPolicy`** — disabled by an administrator via Group Policy.
+- **`DisabledByManifest`** — disabled by the app's manifest (packaged apps only; does not apply to Barbatos.Wpf).
+
 ### `NotificationContent`
 
 - **`Title`** (`string`, required), **`Message`** (`string`, required)
-- **`Severity`** (`NotificationSeverity`) — defaults to `Info`; `Error` marks the toast as
-  `Urgent` (bypasses Focus Assist).
+- **`Severity`** (`NotificationSeverity`) — defaults to `Info`; `Error` marks the toast with
+  the `Alarm` scenario (stays on screen until dismissed and bypasses Focus Assist), instead
+  of the default scenario used for every other severity.
 - **`ImagePath`** (`string?`) — a per-notification inline "hero" image.
 - **`Arguments`** (`string?`) — opaque navigation payload returned via
   `NotificationActivatedEventArgs.Arguments` when the notification body is clicked.

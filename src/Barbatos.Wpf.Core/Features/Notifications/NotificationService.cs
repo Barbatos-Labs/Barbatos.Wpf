@@ -55,6 +55,10 @@ internal sealed class NotificationService : INotificationService
         _platform.Show(_options, content);
     }
 
+    public NotificationAvailability Availability => _platform.GetAvailability();
+
+    public void OpenSystemSettings() => _platform.OpenSystemSettings();
+
     /// <summary>
     /// Applies the configured options during application construction.
     /// </summary>

@@ -19,6 +19,15 @@
         <Style x:Key="SettingRow" TargetType="Grid">
             <Setter Property="Margin" Value="0,8" />
         </Style>
+        <Style x:Key="NotificationsStatusDescription" TargetType="TextBlock" BasedOn="{StaticResource SettingDescription}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding NotificationsUnavailable}" Value="True">
+                    <Setter Property="Foreground" Value="#B45309" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     </Window.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid Margin="16">
@@ -144,8 +153,8 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <TextBlock Text="Notifications" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="Allow this app to push desktop notifications"
-                                   Style="{StaticResource SettingDescription}" />
+                        <TextBlock Text="{Binding NotificationsStatusDescription}"
+                                   Style="{StaticResource NotificationsStatusDescription}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1"
                                 Margin="0,0,12,0"
@@ -157,6 +166,15 @@
                                 Padding="10,2"
                                 Content="Send rich notification"
                                 Click="SendRichTestNotificationButton_Click" />
+                        <Button Margin="6,0,0,0"
+                                Padding="10,2"
+                                Content="Send image notification"
+                                Click="SendImageTestNotificationButton_Click" />
+                        <Button Margin="6,0,0,0"
+                                Padding="10,2"
+                                Content="Open notification settings"
+                                Visibility="{Binding NotificationsUnavailable, Converter={StaticResource BoolToVisibility}}"
+                                Click="OpenNotificationSettingsButton_Click" />
                     </StackPanel>
                     <CheckBox Grid.Column="2"
                               VerticalAlignment="Center"

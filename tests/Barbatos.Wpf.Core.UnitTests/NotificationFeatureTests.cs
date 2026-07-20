@@ -205,6 +205,28 @@ public class NotificationFeatureTests
         Assert.Equal("page=details", received?.Arguments);
     }
 
+    [Fact]
+    public void AvailabilityReflectsThePlatform()
+    {
+        var (service, platform) = BuildService();
+
+        Assert.Equal(NotificationAvailability.Enabled, service.Availability);
+
+        platform.Availability = NotificationAvailability.DisabledForUser;
+
+        Assert.Equal(NotificationAvailability.DisabledForUser, service.Availability);
+    }
+
+    [Fact]
+    public void OpenSystemSettingsForwardsToThePlatform()
+    {
+        var (service, platform) = BuildService();
+
+        service.OpenSystemSettings();
+
+        Assert.Equal(1, platform.OpenSystemSettingsCallCount);
+    }
+
     static (INotificationService Service, FakeNotificationPlatform Platform) BuildService(Action<NotificationOptions>? configure = null)
     {
         var platform = new FakeNotificationPlatform();

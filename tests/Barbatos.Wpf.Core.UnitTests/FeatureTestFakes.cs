@@ -61,10 +61,18 @@ public sealed class FakeNotificationPlatform : INotificationPlatform
 {
     public List<(NotificationOptions Options, NotificationContent Content)> Shown { get; } = new();
 
+    public NotificationAvailability Availability { get; set; } = NotificationAvailability.Enabled;
+
+    public int OpenSystemSettingsCallCount { get; private set; }
+
     public event EventHandler<NotificationActivatedEventArgs>? Activated;
 
     public void Show(NotificationOptions options, NotificationContent content) =>
         Shown.Add((options, content));
+
+    public NotificationAvailability GetAvailability() => Availability;
+
+    public void OpenSystemSettings() => OpenSystemSettingsCallCount++;
 
     public void RaiseActivated(string title, string message, string? arguments = null) =>
         Activated?.Invoke(this, new NotificationActivatedEventArgs(title, message, arguments));

@@ -602,6 +602,14 @@ Notes:
     logo overlay shown on every notification (defaults to the executable's icon); per-call
     visuals (image, buttons, navigation) are set per `NotificationContent`/`Show` call, so
     each feature of the app can shape its own notifications independently.
+  - Windows silently drops a toast it isn't allowed to show (e.g. the user turned
+    notifications off in Settings > System > Notifications) instead of raising an error, so
+    `Show(...)` alone can't tell you it was blocked. Check `INotificationService.Availability`
+    (a live `NotificationAvailability` read, not cached — call it whenever you need current
+    state, e.g. when the window is activated) to detect this and show your own in-app
+    fallback, and call `OpenSystemSettings()` to deep-link the user to the fix. The sample's
+    "Notifications" row demonstrates this: the description turns into a warning and an "Open
+    notification settings" button appears whenever `Availability != Enabled`.
 
 > **Note:** an earlier version of this library had a `ConfigureGlobalHotkeys` feature
 > (system-wide keyboard shortcuts via `RegisterHotKey`, for a "Quick Entry" hotkey). It has

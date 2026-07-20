@@ -5,6 +5,7 @@
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using Barbatos.Wpf.ApplicationModel.Communication;
 using Barbatos.Wpf.Devices;
@@ -232,7 +233,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     public void SendTestNotification()
     {
-        LogLifecycleEvent("Notification requested (Test notification)");
+        LogNotificationRequest("Test notification");
         _notifications.Show("Barbatos.Wpf.Core Sample", "This is a test notification pushed from the sample app.");
     }
 
@@ -243,7 +244,7 @@ public class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public void SendRichTestNotification()
     {
-        LogLifecycleEvent("Notification requested (rich test notification)");
+        LogNotificationRequest("rich test notification");
 
         var content = new NotificationContent
         {
@@ -255,6 +256,73 @@ public class MainViewModel : INotifyPropertyChanged
         content.Buttons.Add(new NotificationButton("View on GitHub", new Uri("https://github.com/Barbatos-Labs/Barbatos.Wpf")));
 
         _notifications.Show(content);
+    }
+
+    /// <summary>
+    /// Demonstrates <see cref="NotificationContent.ImagePath"/>: a "hero image" rendered inside
+    /// the notification body, shipped as a Content asset (see Assets/notification-hero.png)
+    /// and resolved relative to the app's install directory.
+    /// </summary>
+    public void SendImageTestNotification()
+    {
+        LogNotificationRequest("image test notification");
+
+        var content = new NotificationContent
+        {
+            Title = "Barbatos.Wpf.Core Sample",
+            Message = "This notification includes a hero image.",
+            ImagePath = Path.Combine(AppContext.BaseDirectory, "Assets", "notification-hero.png"),
+        };
+
+        _notifications.Show(content);
+    }
+
+    /// <summary>
+    /// Windows silently drops toasts it isn't allowed to show instead of raising an error, so
+    /// every "send" action logs <see cref="INotificationService.Availability"/> alongside the
+    /// request - otherwise a blocked notification looks identical to a successful one.
+    /// </summary>
+    void LogNotificationRequest(string label) =>
+        LogLifecycleEvent(_notifications.Availability == NotificationAvailability.Enabled
+            ? $"Notification requested ({label})"
+            : $"Notification requested ({label}) - Windows will not display it: {_notifications.Availability}");
+
+    /// <summary>
+    /// Whether the OS currently allows this app to display notifications. Bound by the
+    /// settings row to show an in-app warning (and an "Open notification settings" button)
+    /// instead of silently relying on a toast Windows won't display - see
+    /// <see cref="RefreshNotificationsAvailability"/> for when this is refreshed.
+    /// </summary>
+    public bool NotificationsAvailable => _notifications.Availability == NotificationAvailability.Enabled;
+
+    public bool NotificationsUnavailable => !NotificationsAvailable;
+
+    public string NotificationsStatusDescription => _notifications.Availability switch
+    {
+        NotificationAvailability.Enabled => "Allow this app to push desktop notifications",
+        NotificationAvailability.DisabledForApplication => "Notifications for this app are turned off in Windows Settings.",
+        NotificationAvailability.DisabledForUser => "Notifications are turned off in Windows Settings (System > Notifications).",
+        NotificationAvailability.DisabledByGroupPolicy => "Notifications are disabled by your organization's policy.",
+        NotificationAvailability.DisabledByManifest => "Notifications are disabled for this app.",
+        _ => "Allow this app to push desktop notifications",
+    };
+
+    public void OpenNotificationSettings()
+    {
+        LogLifecycleEvent("Notifications.OpenSystemSettings()");
+        _notifications.OpenSystemSettings();
+    }
+
+    /// <summary>
+    /// Re-checks <see cref="INotificationService.Availability"/> and refreshes the bindings
+    /// above. Called when the window is activated (see <see cref="MainWindow"/>), since the
+    /// user may have just come back from toggling notifications in Windows Settings.
+    /// </summary>
+    public void RefreshNotificationsAvailability()
+    {
+        OnPropertyChanged(nameof(NotificationsAvailable));
+        OnPropertyChanged(nameof(NotificationsUnavailable));
+        OnPropertyChanged(nameof(NotificationsStatusDescription));
     }
 
     public string SecureStorageInput
