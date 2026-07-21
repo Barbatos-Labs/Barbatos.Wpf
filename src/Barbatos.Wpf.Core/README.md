@@ -84,6 +84,21 @@ Unlike .NET MAUI Essentials, this library ships as a single package — Hosting 
 Essentials module described below are part of `Barbatos.Wpf.Core`, there is nothing else to
 install.
 
+> [!IMPORTANT]
+> **Your app's `<TargetFramework>` must include the Windows SDK version suffix** —
+> `net8.0-windows10.0.17763.0` / `net9.0-windows10.0.17763.0` / `net10.0-windows10.0.17763.0` —
+> not the bare `net8.0-windows` form. A Target Framework Moniker (TFM) like
+> `net10.0-windows10.0.17763.0` has three parts: `net10.0` (the .NET version), `-windows` (opts
+> into Windows-only APIs — Win32, WPF, the registry, ... — beyond the cross-platform BCL), and
+> `10.0.17763.0` (the Windows SDK version the `-windows` APIs are projected from). That last
+> part isn't cosmetic: dropping it silently falls back to the `windows7.0` baseline, which has
+> **no WinRT projections at all** — and this library's toast notification feature
+> (`Microsoft.Toolkit.Uwp.Notifications`, which needs `Windows.UI.Notifications`) fails to
+> compile without them. A mismatched TFM here surfaces as a NuGet restore error at build time
+> (`NU1201: Project Barbatos.Wpf.Core is not compatible with net10.0-windows7.0 ...`), not a
+> runtime issue — confirmed by trying it. `Barbatos.Wpf.Aquarius` has no such requirement (no
+> WinRT dependency) and works fine with the bare `net8.0-windows`/etc. form.
+
 ---
 
 ## Hosting
@@ -571,6 +586,7 @@ registered when its `Configure...` method is called, binds its own configuration
 | Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` | No |
 | Push notifications (adaptive toast, images/buttons/navigation) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` | Yes |
 | Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
+| Realtime push notification listener (SignalR) | `ConfigurePushNotifications()` | `Barbatos:PushNotifications` | `IPushNotificationService` | Yes |
 
 "Enabled by default" means what happens the moment you call the `Configure...` method with no
 further setup — every feature is still opt-in at the *builder* level (call the method, or the
@@ -649,6 +665,46 @@ Notes:
     fallback, and call `OpenSystemSettings()` to deep-link the user to the fix. The sample's
     "Notifications" row demonstrates this: the description turns into a warning and an "Open
     notification settings" button appears whenever `Availability != Enabled`.
+- `IPushNotificationService` is a **client** for a realtime push-notification server — it
+  listens for incoming notifications and displays each one through `INotificationService` above
+  (the primary path), falling back to a small in-app `IPushNotificationFallbackPresenter` window
+  whenever `Availability != Enabled`, `IsEnabled == false`, or showing the real toast throws. It
+  does not include a server.
+  - **Two layers, deliberately split**: `IPushNotificationService` itself knows nothing about
+    *how* notifications actually arrive — it only depends on `IPushNotificationTransport`, a
+    minimal contract (`StartAsync`/`StopAsync`/`NotificationReceived` raw JSON text, no hub URLs
+    or RPC method names). The bundled default, `SignalRPushNotificationTransport`, owns every
+    SignalR-specific detail (hub URL, method names, the handshake payload) itself, configured
+    through its own `SignalRPushNotificationOptions` — none of that leaks into the
+    transport-agnostic `PushNotificationOptions`/`IPushNotificationService` surface. That split
+    is what makes swapping in a different delivery mechanism possible without reshaping
+    anything else: implement `IPushNotificationTransport` yourself and register it *before*
+    calling `ConfigurePushNotifications` —
+    `services.AddSingleton<IPushNotificationTransport, MyTransport>()` (`TryAddSingleton` inside
+    `ConfigurePushNotifications` then skips the SignalR default), same swap-in pattern as
+    `IPushNotificationFallbackPresenter`/`INotificationPlatform` elsewhere in this library.
+    Worth being explicit about the limits of this: **Firebase Cloud Messaging and Windows
+    Notification Service don't map onto a client-managed persistent connection the way SignalR
+    does** — they're token-registration-plus-OS-push-channel systems, not something an app calls
+    `StartAsync` on and receives RPC-style callbacks from. Plugging one in still means writing a
+    real `IPushNotificationTransport` for that mechanism's actual delivery model (token
+    exchange, platform channel subscription, ...); this library only guarantees the *seam*
+    exists and stays free of SignalR assumptions, not a ready-made implementation for every
+    backend.
+  - The default payload type, `PushNotification`, implements `IPushNotification` (`Title`,
+    `Body`, `ImageUrl`, `Action`) — deserialize your own server's JSON shape into your own type
+    instead by implementing `IPushNotification` and registering it with
+    `ConfigurePushNotifications<TNotification>()`.
+  - `NotificationReceived` always reports `ReceivedAt` (the local wall-clock time the client
+    processed the notification) and `UsedFallback`, regardless of which display path fired —
+    so you always know when something arrived even if you never touch the UI event.
+  - A notification's `Action` (`Url`/`Setting`/`Route`/`None`) is dispatched automatically for
+    `Url`/`Setting` (opened via `Launcher`); `Route` raises `RouteRequested` instead, since only
+    your app knows its own screens/navigation.
+  - The default transport's own `HandshakeMethodName`/`NotificationMethodName` (defaulting to
+    `"RegisterDevice"`/`"ReceiveNotification"`) are configurable via `ConfigurePushNotifications`'s
+    `configureSignalR` parameter (or the `Barbatos:PushNotifications:SignalR` config section) to
+    match whatever hub method names your specific server actually uses.
 
 > **Note:** an earlier version of this library had a `ConfigureGlobalHotkeys` feature
 > (system-wide keyboard shortcuts via `RegisterHotKey`, for a "Quick Entry" hotkey). It has

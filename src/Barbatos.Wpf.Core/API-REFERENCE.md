@@ -20,6 +20,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.Power`](#barbatoswpfpower-namespace)** | The keep-awake optional feature. |
 | **[`Barbatos.Wpf.Startup`](#barbatoswpfstartup-namespace)** | The run-on-startup optional feature. |
 | **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The push notifications optional feature. |
+| **[`Barbatos.Wpf.PushNotifications`](#barbatoswpfpushnotifications-namespace)** | The realtime push-notification client optional feature (SignalR). |
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
 | **[`Barbatos.Wpf.Dialogs`](#barbatoswpfdialogs-namespace)** | The dialog service: owner assignment, duplicate-open prevention, and graceful bulk-close for child windows. |
 
@@ -67,6 +68,7 @@ extension methods that wire up Essentials and every optional desktop feature.
 - **`ConfigureTrayIcon(this WpfAppBuilder, Action<TrayIconOptions>? = null)`** — registers `ITrayIconService` (`Barbatos.Wpf.Tray`).
 - **`ConfigureKeepAwake(this WpfAppBuilder, Action<KeepAwakeOptions>? = null)`** — registers `IKeepAwakeService` (`Barbatos.Wpf.Power`).
 - **`ConfigureNotifications(this WpfAppBuilder, Action<NotificationOptions>? = null)`** — registers `INotificationService` (`Barbatos.Wpf.Notifications`).
+- **`ConfigurePushNotifications(this WpfAppBuilder, Action<PushNotificationOptions>? = null)`** / **`ConfigurePushNotifications<TNotification>(this WpfAppBuilder, Action<PushNotificationOptions>? = null)`** — registers `IPushNotificationService` (`Barbatos.Wpf.PushNotifications`); the generic overload uses `TNotification` as the payload shape instead of the default `PushNotification`.
 - **`ConfigurePeriodicServices(this WpfAppBuilder)`** / **`ConfigurePeriodicServices<TService>(this WpfAppBuilder)`** — registers `IPeriodicServiceScheduler` and (for the generic overload) `TService` as an `IWpfPeriodicService`.
 - **`UseEssentials(this WpfAppBuilder)`** — registers `IAppInfo`, `IPublisherInfo`, `IDeviceIdentity`, `IDeviceInfo`, `IFileSystem`, `IPreferences`, `ISecureStorage`, `IVersionTracking`, `IConnectivity`, `IDeviceDisplay`, `IEmail`, `IContacts`, `IGeolocation`, `IAppActions`, `ILauncher`; called by default when the builder is created with defaults.
 - **`ConfigureEssentials(this WpfAppBuilder, Action<IEssentialsBuilder>? = null)`** — configures app actions (`AddAppAction`, `OnAppAction`) and `UseVersionTracking()`.
@@ -610,6 +612,116 @@ Mirrors `Windows.UI.Notifications.NotificationSetting`; returned by `INotificati
   notification; defaults to the executable's icon.
 - **`Timeout`** (`TimeSpan`) — a hint (`Long` toast duration above ~7 seconds, `Short`
   otherwise); Windows may still manage actual visibility itself.
+
+---
+
+## `Barbatos.Wpf.PushNotifications` Namespace
+
+A **client** for a realtime push-notification server — listens for incoming notifications and
+displays each one through `Barbatos.Wpf.Notifications.INotificationService`, falling back to
+`IPushNotificationFallbackPresenter` when that's unavailable. Does not include a server. Split
+into two layers: `IPushNotificationService` (transport-agnostic orchestration) depends only on
+`IPushNotificationTransport` (a minimal delivery contract), never on anything SignalR-specific —
+see `IPushNotificationTransport` below for how to plug in a different delivery mechanism.
+
+### `IPushNotificationService`
+
+- **`IsConnected`** (`bool`)
+- **`ConnectionStateChanged`** (`event EventHandler<bool>`)
+- **`NotificationReceived`** (`event EventHandler<PushNotificationReceivedEventArgs>`) — raised
+  for every notification, whichever display path was used.
+- **`RouteRequested`** (`event EventHandler<PushNotificationRouteRequestedEventArgs>`) — raised
+  when the user activates a notification whose action is `PushNotificationActionType.Route`.
+- **`ConnectAsync(CancellationToken = default)`** → `Task` — starts the registered
+  `IPushNotificationTransport`. The default transport throws `InvalidOperationException` if
+  `SignalRPushNotificationOptions.ServerUrl`/`AppId` aren't set; a different transport may have
+  its own required configuration instead.
+- **`DisconnectAsync(CancellationToken = default)`** → `Task` — stops the transport.
+- **`SimulateNotificationAsync(IPushNotification, CancellationToken = default)`** → `Task` —
+  feeds a notification through the same display/fallback pipeline a real server push would,
+  without any network involved.
+
+### `IPushNotificationTransport`
+
+Abstraction over however push notifications actually reach this device. Deliberately has no
+concept of hub URLs, RPC method names, or handshakes — those are specific to one delivery
+mechanism and belong on that mechanism's own implementation/options.
+
+- **`IsConnected`** (`bool`)
+- **`ConnectionStateChanged`** (`event EventHandler<bool>`)
+- **`NotificationReceived`** (`event EventHandler<string>`) — raw JSON text; deserialized by
+  `IPushNotificationService` into whichever `IPushNotification` type the app registered.
+- **`StartAsync(CancellationToken = default)`** / **`StopAsync(CancellationToken = default)`** → `Task`
+
+Registered via `TryAddSingleton` — replace with your own implementation (registered before
+`ConfigurePushNotifications`, e.g. for Firebase Cloud Messaging, Windows Notification Service, or
+a raw WebSocket) in place of the built-in `SignalRPushNotificationTransport`. Note that FCM/WNS
+don't map onto a client-managed persistent connection the way SignalR does (they're
+token-registration-plus-OS-push-channel systems) — this interface guarantees the seam stays free
+of SignalR assumptions, not a ready-made implementation for every backend.
+
+### `IPushNotification`
+
+The minimum shape the service needs to display a notification.
+
+- **`Title`** (`string`), **`Body`** (`string`), **`ImageUrl`** (`string?`),
+  **`Action`** (`PushNotificationAction?`)
+
+### `PushNotification`
+
+The default payload — `NotificationId` (`long`), `AppId` (`string`), `EventKey` (`string?`),
+`Title`/`Body` (`string`), `ImageUrl` (`string?`), `ScheduledFor`/`ExpiresAt`
+(`DateTimeOffset?`), `Action` (`PushNotificationAction?`), `Metadata`
+(`IReadOnlyDictionary<string, string>?`) — implements `IPushNotification`. Implement
+`IPushNotification` on your own type instead (and register it via
+`ConfigurePushNotifications<TNotification>()`) if your server's JSON shape differs.
+
+### `PushNotificationAction` / `PushNotificationActionType`
+
+- **`PushNotificationAction.ActionType`** (`PushNotificationActionType`), **`ActionTarget`** (`string?`)
+- **`PushNotificationActionType`**: **`Url`** (opened via `Launcher`), **`Setting`** (also via
+  `Launcher` — `ActionTarget` expected to be an `ms-settings:` URI), **`Route`** (raises
+  `RouteRequested` instead — app-specific), **`None`** (no-op).
+
+### `IPushNotificationFallbackPresenter`
+
+- **`Notify(IPushNotification, DateTimeOffset receivedAt)`**
+- **`Activated`** (`event EventHandler<IPushNotification>`)
+
+Registered via `TryAddSingleton` — replace with your own implementation (registered before
+`ConfigurePushNotifications`) for something other than the built-in `FallbackNotificationWindow`
+(a small, borderless, non-activating window stacked at the screen's bottom-right corner).
+
+### `PushNotificationReceivedEventArgs`
+
+- **`Notification`** (`IPushNotification`), **`ReceivedAt`** (`DateTimeOffset`) — the local
+  wall-clock time the client processed the notification — **`UsedFallback`** (`bool`).
+
+### `PushNotificationRouteRequestedEventArgs`
+
+- **`Route`** (`string?`)
+
+### `PushNotificationOptions`
+
+Transport-agnostic — applies regardless of which `IPushNotificationTransport` is registered.
+
+- **`Enabled`** (`bool`) — whether the client starts its transport at startup.
+- **`FallbackTimeout`** (`TimeSpan`, default 5s) — how long the fallback window stays visible.
+
+### `SignalRPushNotificationTransport` / `SignalRPushNotificationOptions`
+
+The bundled default `IPushNotificationTransport`, and its own options (irrelevant if you
+register a different transport):
+
+- **`ServerUrl`** (`string?`, required), **`AppId`** (`string?`, required)
+- **`DeviceId`**/**`AppVersion`**/**`Platform`** (`string?`) — auto-populated from
+  `DeviceIdentity.GetInstanceIdAsync()`/`AppInfo.VersionString`/`DeviceInfo.Platform` when left
+  unset.
+- **`HandshakeMethodName`** (default `"RegisterDevice"`), **`NotificationMethodName`** (default
+  `"ReceiveNotification"`) — the hub method names; adjust to match your server.
+
+Configured via `ConfigurePushNotifications`'s `configureSignalR` parameter, or the
+`Barbatos:PushNotifications:SignalR` config section.
 
 ---
 

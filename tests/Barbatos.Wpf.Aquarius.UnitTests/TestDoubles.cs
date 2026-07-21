@@ -192,3 +192,29 @@ internal sealed class ExprTestOrder
 {
     public double Total { get; set; }
 }
+
+/// <summary>
+/// A real <c>ContentControl</c> subclass literally named "...View" so
+/// <see cref="Composition"/>'s default naming-convention resolver has something to
+/// match against - the resolver inspects the element's own <see cref="Type"/>, so a plain
+/// unnamed <c>ContentControl</c> can't stand in for this the way it can for every other test
+/// in this suite.
+/// </summary>
+internal sealed class CompositionProbeView : System.Windows.Controls.ContentControl
+{
+}
+
+/// <summary>Same-assembly convention target for <see cref="CompositionProbeView"/>.</summary>
+internal sealed class CompositionProbeViewModel
+{
+}
+
+/// <summary>A minimal <see cref="IServiceProvider"/> for proving <see cref="Composition.ServiceProvider"/> is consulted before the <see cref="Activator.CreateInstance(Type)"/> fallback.</summary>
+internal sealed class FakeServiceProvider : IServiceProvider
+{
+    private readonly Dictionary<Type, object> _registrations = [];
+
+    public void Register(Type serviceType, object instance) => _registrations[serviceType] = instance;
+
+    public object? GetService(Type serviceType) => _registrations.GetValueOrDefault(serviceType);
+}

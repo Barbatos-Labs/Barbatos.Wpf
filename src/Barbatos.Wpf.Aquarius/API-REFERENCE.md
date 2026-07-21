@@ -8,7 +8,7 @@ modeled after the official .NET API documentation.
 | Namespace | Description |
 |-----------|-------------|
 | **[`Barbatos.Wpf.Reactivity`](#barbatoswpfreactivity-namespace)** | `Ref<T>`, `Computed<T>`, `Watch`, `NextTick` - thin sugar over CommunityToolkit.Mvvm. |
-| **[`Barbatos.Wpf.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, plus `Provide`/`Inject`. |
+| **[`Barbatos.Wpf.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, `Composition` (ViewModel wiring), plus `Provide`/`Inject`. |
 | **[`Barbatos.Wpf.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
 | **[`Barbatos.Wpf.Animation`](#barbatoswpfanimation-namespace)** | `Transition`, `TransitionGroup`. |
 
@@ -104,6 +104,27 @@ an unhandled exception already reaches `IOnErrorCaptured` - no separate async er
 
 See [Lifecycle Hooks](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#lifecycle-hooks)
 in the README for exactly what triggers each one.
+
+### `Composition` Static Class
+
+- **`ViewModelProperty`** (`DependencyProperty`, `Type`) - `SetViewModel`/`GetViewModel`.
+  Explicit ViewModel type override; wins over `EnableProperty`'s convention if both are set.
+- **`EnableProperty`** (`DependencyProperty`, `bool`) - `SetEnable`/`GetEnable`. Turns on
+  convention-based resolution (see `Resolver`) for a `FrameworkElement` that doesn't need
+  the explicit override.
+- **`ServiceProvider`** (`static IServiceProvider?`) - consulted first when resolving an
+  instance; falls back to `Activator.CreateInstance(Type)` (requires a public parameterless
+  constructor) when `null` or when the type isn't registered.
+- **`Resolver`** (`static Func<Type, Type?>`) - the naming convention `EnableProperty` uses;
+  replace to customize. Default strips a trailing `"View"` and appends `"ViewModel"`,
+  checking the View's own assembly first, then every currently-loaded assembly. Cached per
+  View type.
+- **`ThrowOnUnresolved`** (`static bool`, default `false`) - throws `InvalidOperationException`
+  instead of silently no-op-ing when `Enable="True"` but `Resolver` returns `null`.
+
+Resolves and assigns `DataContext` once, at `FrameworkElement.Initialized` (not `Loaded`) -
+see [Composition](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#composition)
+in the README for why that timing matters alongside `Lifecycle`.
 
 ### `Provide` Static Class
 

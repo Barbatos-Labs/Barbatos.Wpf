@@ -1,0 +1,64 @@
+<Window x:Class="Barbatos.Wpf.PushNotifications.FallbackNotificationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        SizeToContent="Height"
+        Width="340"
+        Background="#FF2B2B2B">
+    <Border BorderBrush="#FF454545" BorderThickness="1" Padding="14,12" MouseLeftButtonUp="OnBodyClicked" Cursor="Hand">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Image x:Name="HeroImage"
+                   x:FieldModifier="public"
+                   Grid.Column="0"
+                   Width="40"
+                   Height="40"
+                   Margin="0,0,10,0"
+                   VerticalAlignment="Top"
+                   Stretch="UniformToFill"
+                   Visibility="Collapsed" />
+
+            <StackPanel Grid.Column="1">
+                <Grid>
+                    <TextBlock x:Name="TitleText"
+                               x:FieldModifier="public"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               Foreground="White"
+                               TextWrapping="Wrap"
+                               Margin="0,0,20,0" />
+
+                    <Button x:Name="CloseButton"
+                            x:FieldModifier="public"
+                            Content="&#x2715;"
+                            Click="OnCloseClicked"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Width="18"
+                            Height="18"
+                            Padding="0"
+                            FontSize="10"
+                            Foreground="#FFAAAAAA"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Arrow" />
+                </Grid>
+
+                <TextBlock x:Name="MessageText"
+                           Margin="0,4,0,0"
+                           FontSize="12"
+                           Foreground="#FFCCCCCC"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -37,6 +37,15 @@ public partial class MainWindow : Window
     void OpenNotificationSettingsButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).OpenNotificationSettings();
 
+    void ConnectPushNotificationsButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).ConnectPushNotifications();
+
+    void DisconnectPushNotificationsButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).DisconnectPushNotifications();
+
+    void SimulatePushNotificationButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).SimulatePushNotification();
+
     void SaveSecureValueButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).SaveSecureValue();
 

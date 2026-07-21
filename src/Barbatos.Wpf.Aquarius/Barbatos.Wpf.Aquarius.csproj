@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>Barbatos.Wpf.Aquarius</PackageId>
-    <TargetFrameworks>net10.0-windows10.0.17763.0;net9.0-windows10.0.17763.0;net8.0-windows10.0.17763.0</TargetFrameworks>
+    <TargetFrameworks>net10.0-windows;net9.0-windows;net8.0-windows</TargetFrameworks>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <UseWPF>true</UseWPF>
     <!-- Full override, not an append to the shared $(CommonTags) - that shared value bakes in
@@ -13,8 +13,10 @@
     <RootNamespace>Barbatos.Wpf</RootNamespace>
     <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply.
          IL2075 additionally covers Directives.Event's own use of reflection (Type.GetEvent) to wire
-         up an arbitrary named event, which is inherently dynamic by design (see its XML docs). -->
-    <NoWarn>$(NoWarn);IL2026;IL3050;IL2075</NoWarn>
+         up an arbitrary named event, which is inherently dynamic by design (see its XML docs).
+         IL2067 covers Composition's Activator.CreateInstance(Type)/Assembly.GetType(string)
+         calls, similarly inherently dynamic (see its XML docs). -->
+    <NoWarn>$(NoWarn);IL2026;IL3050;IL2075;IL2067</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

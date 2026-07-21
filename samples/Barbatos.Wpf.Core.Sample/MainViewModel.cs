@@ -13,6 +13,7 @@ using Barbatos.Wpf.Dialogs;
 using Barbatos.Wpf.Networking;
 using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
+using Barbatos.Wpf.PushNotifications;
 using Barbatos.Wpf.SingleInstance;
 using Barbatos.Wpf.Startup;
 using Barbatos.Wpf.Storage;
@@ -32,6 +33,7 @@ public class MainViewModel : INotifyPropertyChanged
     readonly ITrayIconService _trayIcon;
     readonly IPeriodicServiceScheduler _periodicServices;
     readonly INotificationService _notifications;
+    readonly IPushNotificationService _pushNotifications;
     readonly IGreetingService _greetingService;
     readonly IPreferences _preferences;
     readonly ISecureStorage _secureStorage;
@@ -44,6 +46,7 @@ public class MainViewModel : INotifyPropertyChanged
     string _secureStorageResult = string.Empty;
     string _displayInfoDescription;
     string _deviceIdentityDescription = "(not loaded - click \"Show device identity\")";
+    string _pushNotificationStatusDescription = "Not connected.";
 
     public MainViewModel(
         IGreetingService greetingService,
@@ -52,6 +55,7 @@ public class MainViewModel : INotifyPropertyChanged
         ITrayIconService trayIcon,
         IPeriodicServiceScheduler periodicServices,
         INotificationService notifications,
+        IPushNotificationService pushNotifications,
         ISingleInstanceService singleInstance,
         IConnectivity connectivity,
         IPreferences preferences,
@@ -77,6 +81,7 @@ public class MainViewModel : INotifyPropertyChanged
         _trayIcon = trayIcon;
         _periodicServices = periodicServices;
         _notifications = notifications;
+        _pushNotifications = pushNotifications;
         _preferences = preferences;
         _secureStorage = secureStorage;
         _email = email;
@@ -87,6 +92,15 @@ public class MainViewModel : INotifyPropertyChanged
             LogLifecycleEvent(args.Arguments is null
                 ? $"Notification activated ({args.Title})"
                 : $"Notification activated ({args.Title}), navigate: {args.Arguments}");
+
+        _pushNotifications.NotificationReceived += (sender, args) =>
+            LogLifecycleEvent($"Push notification received at {args.ReceivedAt:T} ({(args.UsedFallback ? "fallback window" : "real toast")}): {args.Notification.Title}");
+        _pushNotifications.RouteRequested += (sender, args) =>
+            LogLifecycleEvent($"Push notification route requested: {args.Route}");
+        _pushNotifications.ConnectionStateChanged += (sender, isConnected) =>
+        {
+            PushNotificationStatusDescription = isConnected ? "Connected." : "Not connected.";
+        };
 
         // ConfigureSingleInstance()'s default behavior already brings this window to the
         // foreground; this just logs it too, the same way every other feature does.
@@ -323,6 +337,55 @@ public class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(NotificationsAvailable));
         OnPropertyChanged(nameof(NotificationsUnavailable));
         OnPropertyChanged(nameof(NotificationsStatusDescription));
+    }
+
+    public string PushNotificationStatusDescription
+    {
+        get => _pushNotificationStatusDescription;
+        private set { _pushNotificationStatusDescription = value; OnPropertyChanged(); }
+    }
+
+    public async void ConnectPushNotifications()
+    {
+        LogLifecycleEvent("IPushNotificationService.ConnectAsync()");
+        try
+        {
+            await _pushNotifications.ConnectAsync();
+        }
+        catch (Exception ex)
+        {
+            // No real push server exists yet, so a missing ServerUrl/AppId or an unreachable
+            // host is expected here - logged instead of thrown so the sample keeps running.
+            LogLifecycleEvent($"IPushNotificationService.ConnectAsync() failed: {ex.Message}");
+        }
+    }
+
+    public async void DisconnectPushNotifications()
+    {
+        LogLifecycleEvent("IPushNotificationService.DisconnectAsync()");
+        await _pushNotifications.DisconnectAsync();
+    }
+
+    /// <summary>
+    /// Feeds a synthetic notification through the same display/fallback pipeline a real server
+    /// push would go through - the only way to see the feature work end-to-end before a real
+    /// push server exists. Uncheck "Notifications" above first to see the fallback window
+    /// instead of a real toast.
+    /// </summary>
+    public void SimulatePushNotification()
+    {
+        var notification = new PushNotification
+        {
+            NotificationId = Random.Shared.Next(1000, 9999),
+            AppId = "Barbatos.Wpf.Core.Sample",
+            EventKey = $"SAMPLE_{DateTimeOffset.Now:yyyyMMddHHmmss}",
+            Title = "Bản cập nhật mới đã sẵn sàng",
+            Body = "Đã có phiên bản mới tối ưu hiệu năng, vui lòng cập nhật ngay.",
+            Action = new PushNotificationAction { ActionType = PushNotificationActionType.Url, ActionTarget = "https://github.com/Barbatos-Labs/Barbatos.Wpf" },
+        };
+
+        LogLifecycleEvent("IPushNotificationService.SimulateNotificationAsync(...)");
+        _ = _pushNotifications.SimulateNotificationAsync(notification);
     }
 
     public string SecureStorageInput

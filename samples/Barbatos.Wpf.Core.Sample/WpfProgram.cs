@@ -79,6 +79,17 @@ public static class WpfProgram
         });
         builder.ConfigurePeriodicServices<HeartbeatService>();
         builder.ConfigureNotifications();
+        // Disabled by default - no real push server exists yet. ServerUrl/AppId are still set so
+        // the sample's "Connect" button has something to actually attempt (and fail gracefully
+        // against, proving the app keeps running); use "Simulate incoming notification" instead
+        // to see the display/fallback pipeline work without any network involved.
+        builder.ConfigurePushNotifications(
+            options => options.Enabled = false,
+            configureSignalR: options =>
+            {
+                options.ServerUrl = "https://localhost:5443/hubs/notifications";
+                options.AppId = "Barbatos.Wpf.Core.Sample";
+            });
         builder.ConfigureEssentials(essentials => essentials
             .AddAppAction("open", "Open", "Show the main window")
             .OnAppAction(action => LogLifecycleEvent($"App action activated ({action.Id})"))

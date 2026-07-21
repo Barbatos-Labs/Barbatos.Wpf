@@ -23,6 +23,7 @@ CommunityToolkit.Mvvm.**
   * [Quick Start](#quick-start)
 * **[Reactivity](#reactivity)**
 * **[Lifecycle Hooks](#lifecycle-hooks)**
+* **[Composition](#composition)**
 * **[Directives](#directives)**
   * [Directives.Model (v-model)](#directivesmodel-v-model)
   * [Directives.Show (v-show)](#directivesshow-v-show)
@@ -308,6 +309,63 @@ failure anywhere):
   compose with that) **or `IOnErrorCaptured`** (its `bool` return has to decide `Handled`
   synchronously, before the dispatcher's own exception handling moves on - there's no
   "await, then decide" version of that contract).
+
+---
+
+## Composition
+
+`Barbatos.Wpf.Composition.Composition` - resolves and assigns a View's `DataContext` from a
+Type, so a View never needs a code-behind constructor line like `DataContext = new
+XyzViewModel(...)`. The closest Aquarius counterpart to how a Vue single-file component's
+own `<script>`/`<script setup>` block is simply *there*, with no separate wiring step to
+remember.
+
+Two ways to opt in, both set on the View's own XAML root:
+
+```xml
+<!-- 1. Say the exact type - always wins, works for any naming/assembly layout -->
+<UserControl aq:Composition.ViewModel="{x:Type vm:SomeViewModel}" ... />
+
+<!-- 2. Just say "figure it out" - guesses "XyzView" -> "XyzViewModel" by name -->
+<UserControl aq:Composition.Enable="True" ... />
+```
+
+- **The naming convention** strips a trailing `"View"` from the View's own type name and
+  appends `"ViewModel"` - `ReactivityDemoView` to `ReactivityDemoViewModel`, matching this
+  library's own sample app throughout. It checks the View's own assembly first, then falls
+  back to scanning every currently-loaded assembly for a same-named type, so a ViewModel
+  living in a separate assembly from its View is found too (as long as that assembly is
+  already loaded by the time this runs - reference the type once anywhere, or use the
+  explicit `ViewModel` override, to guarantee it). Results are cached per View type, not
+  recomputed per instance. Replace `Composition.Resolver` (a `Func<Type, Type?>`) to use a
+  different convention app-wide - a different suffix, a `Views`/`ViewModels` namespace
+  swap, whatever this app's own layout calls for.
+- **Where the instance comes from**: `Composition.ServiceProvider` first if set - so
+  constructor-injected dependencies resolve the same way any other DI-registered service
+  would - falling back to `Activator.CreateInstance(Type)`, which requires a public
+  parameterless constructor:
+
+  ```csharp
+  // Once at startup - works with Barbatos.Wpf.Core's WpfAppBuilder.Services, or any other
+  // Microsoft.Extensions.DependencyInjection IServiceProvider:
+  Composition.ServiceProvider = host.Services;
+  ```
+
+  A ViewModel with required constructor arguments and no DI configured needs either a
+  registration, a parameterless constructor, or to skip this feature for that View and keep
+  setting `DataContext` by hand.
+- **Explicit wins over convention** when both `ViewModel` and `Enable` are set on the same
+  element.
+- **`Composition.ThrowOnUnresolved`** (default `false`) - when `Enable="True"` but the
+  naming convention can't find a match, the default is to silently leave `DataContext`
+  alone, so this feature can be adopted incrementally without an existing View that doesn't
+  yet follow the convention suddenly failing at runtime. Set this to `true` during app
+  startup to fail fast with a clear exception instead - the same opt-into-strict shape as
+  [`Expr.ThrowOnUnresolvedIdentifiers`](#expr---conditional-expressions).
+- **Resolves at `Initialized`, not `Loaded`** - specifically so [Lifecycle](#lifecycle-hooks)
+  hooks (which check at `Initialized` as a best effort, then guaranteed at `Loaded`) always
+  see the already-resolved `DataContext` in time, no matter which attached property XAML
+  happens to apply first.
 
 ---
 

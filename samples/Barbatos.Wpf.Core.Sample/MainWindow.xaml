@@ -40,6 +40,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0"
@@ -190,6 +191,25 @@
                 BorderThickness="1"
                 CornerRadius="6">
             <StackPanel>
+                <TextBlock Text="Push notifications (IPushNotificationService)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
+                <TextBlock Style="{StaticResource SettingDescription}"
+                           Text="A client for a realtime push-notification server (SignalR). Disabled by default here since no real server exists yet. Uncheck the 'Notifications' toggle above, then simulate, to see the in-app fallback window instead of a real toast." />
+                <TextBlock Text="{Binding PushNotificationStatusDescription}" Style="{StaticResource SettingDescription}" Margin="0,4,0,0" />
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Padding="10,2" Margin="0,0,8,0" Content="Connect" Click="ConnectPushNotificationsButton_Click" />
+                    <Button Padding="10,2" Margin="0,0,8,0" Content="Disconnect" Click="DisconnectPushNotificationsButton_Click" />
+                    <Button Padding="10,2" Content="Simulate incoming notification" Click="SimulatePushNotificationButton_Click" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="5"
+                Margin="0,12,0,0"
+                Padding="12"
+                BorderBrush="#DDDDDD"
+                BorderThickness="1"
+                CornerRadius="6">
+            <StackPanel>
                 <TextBlock Text="Essentials" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
 
                 <TextBlock Text="{Binding PublisherDescription}" Style="{StaticResource SettingDescription}" />
@@ -258,7 +278,7 @@
             </StackPanel>
         </Border>
 
-        <Border Grid.Row="5"
+        <Border Grid.Row="6"
                 Margin="0,12,0,0"
                 Padding="12"
                 BorderBrush="#DDDDDD"
@@ -276,12 +296,12 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="6"
+        <TextBlock Grid.Row="7"
                    Margin="0,16,0,4"
                    Text="Logs:"
                    FontWeight="SemiBold" />
 
-        <ListBox Grid.Row="7"
+        <ListBox Grid.Row="8"
                  Height="220"
                  ItemsSource="{Binding LifecycleEvents}"
                  FontFamily="Consolas" />
