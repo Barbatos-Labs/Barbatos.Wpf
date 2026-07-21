@@ -23,9 +23,11 @@ namespace Barbatos.Wpf.Xaml;
 /// move anything beyond a trivial check into a computed property anyway - so requiring a
 /// bound property/converter here isn't a step down from Vue's own best practice, it's the
 /// same one. These three exist purely to remove the ceremony of writing a whole
-/// <see cref="IValueConverter"/> class for the simplest, most common cases; for anything
-/// less trivial, a <see cref="Reactivity.Computed{T}"/> in the ViewModel is still the
-/// right answer, same as in Vue.
+/// <see cref="IValueConverter"/> class for the simplest, most common single-value cases;
+/// for a compound condition over several values (<c>a + b &gt;= c</c>,
+/// <c>a &gt;= 1 &amp;&amp; a &lt;= 2</c>), <see cref="Expr"/> covers the middle ground
+/// between these and a full <see cref="Reactivity.Computed{T}"/> - which remains the right
+/// answer once things get more involved than that, same as in Vue.
 /// </remarks>
 public static class Comparisons
 {

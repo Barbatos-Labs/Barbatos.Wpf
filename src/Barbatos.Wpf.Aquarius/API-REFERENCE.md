@@ -192,7 +192,36 @@ public class If : ContentControl
 
 - **`Child`** (`object?`) - the XAML content property.
 - **`Condition`** (`bool`, default `true`) - `true` shows `Child` via `Content`; `false`
-  sets `Content = null`, detaching it from the visual tree.
+  shows `Else` (or `null` if unset), detaching whichever isn't showing from the visual tree.
+- **`Else`** (`object?`, default `null`) - shown while `Condition` is `false`; nest another
+  `If` here for an else-if chain.
+
+### `Expr` Class
+
+```csharp
+[MarkupExtensionReturnType(typeof(object))]
+public class Expr : MarkupExtension
+```
+
+- **`Expr()`** / **`Expr(string expression)`** (positional, `{aq:Expr 'a > b'}`)
+- **`Expression`** (`string?`, `[ConstructorArgument("expression")]`)
+- **`ProvideValue(IServiceProvider)`** → `object` - parses `Expression` and returns a
+  `MultiBinding` (one child `Binding` per distinct identifier referenced) wired to an
+  internal evaluator converter.
+- **`static Evaluate(string expression, object? source)`** → `object?` - synchronous,
+  non-reactive evaluation against `source` via reflection (identifiers resolve as ordinary
+  C# property names, case-sensitive, dotted paths supported); throws
+  `InvalidOperationException` for a syntax error, a property that doesn't exist on the
+  current type, or a `#`-prefixed (element-referenced) identifier (no visual tree to
+  resolve it against here), but propagates an existing-but-null property as `null`
+  (ordinary null propagation, not an error).
+
+Grammar: `>` `>=` `<` `<=` `==` `!=` `&&` `||` `!` `+` `-` `*` `/` `? :` (ternary,
+right-associative) and parentheses, over number/string/`true`/`false` literals and
+identifiers, all arithmetic evaluated as `double`. An identifier prefixed with `#`
+(`#ElementName.Path`) resolves via `Binding.ElementName` in the reactive path instead of
+`DataContext`. See the [README](README.md#expr---conditional-expressions) for the full
+grammar table, enum-comparison rules, element-reference details, and XAML quoting notes.
 
 ### `Suspense` Class
 

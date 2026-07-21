@@ -343,6 +343,59 @@
                     </StackPanel>
                 </GroupBox>
 
+                <GroupBox Header="10. Expr - conditional expressions, and If / Else / Else-if"
+                          Margin="0,0,0,12">
+                    <StackPanel Margin="4">
+                        <TextBlock TextWrapping="Wrap"
+                                   Margin="0,0,0,8"
+                                   Text="Directives.Show driven by an Expr instead of a converter - visible only once Count (section 1) is above 5:" />
+                        <Border Background="#E5F7E5"
+                                Padding="8"
+                                Margin="0,0,0,12"
+                                aq:Directives.Show="{aq:Expr 'Count.Value > 5'}">
+                            <TextBlock Text="Count.Value &gt; 5" />
+                        </Border>
+
+                        <TextBlock TextWrapping="Wrap"
+                                   Margin="0,0,0,4"
+                                   Text="If / Else-if / Else, keyed off the same StatusIndex section 6 cycles - each branch is its own aq:If, nested in the previous one's Else:" />
+                        <Button HorizontalAlignment="Left"
+                                Margin="0,0,0,8"
+                                Content="Cycle status"
+                                Command="{Binding CycleStatusCommand}" />
+                        <aq:If Condition="{aq:Expr 'StatusIndex == 0'}">
+                            <TextBlock Text="Normal" Foreground="Green" />
+                            <aq:If.Else>
+                                <aq:If Condition="{aq:Expr 'StatusIndex == 1'}">
+                                    <TextBlock Text="Warning" Foreground="DarkOrange" />
+                                    <aq:If.Else>
+                                        <TextBlock Text="Error" Foreground="Red" />
+                                    </aq:If.Else>
+                                </aq:If>
+                            </aq:If.Else>
+                        </aq:If>
+
+                        <TextBlock TextWrapping="Wrap"
+                                   Margin="0,12,0,4"
+                                   Text="Ternary feeding a TextBlock.Text directly - Expr isn't limited to If/Show, it's a plain MultiBinding underneath:" />
+                        <TextBlock Text="{aq:Expr 'ShowPanel ? &quot;Panel is visible (section 3)&quot; : &quot;Panel is hidden (section 3)&quot;'}" />
+
+                        <TextBlock TextWrapping="Wrap"
+                                   Margin="0,8,0,4"
+                                   Text="Element-referenced identifier (#Name.Path) - binds to a named element instead of DataContext:" />
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="ExprDemoSlider"
+                                    Width="150"
+                                    Minimum="0"
+                                    Maximum="100" />
+                            <TextBlock Margin="12,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Text="Above 50"
+                                       aq:Directives.Show="{aq:Expr '#ExprDemoSlider.Value > 50'}" />
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
                 <GroupBox Header="Activity log (each new entry fades in via TransitionGroup.Enter)">
                     <ListBox Height="160"
                              ItemsSource="{Binding ActivityLog}"

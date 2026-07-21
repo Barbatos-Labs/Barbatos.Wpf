@@ -49,6 +49,161 @@ public class IfControlTests
     }
 
     [Fact]
+    public void ElseIsShownWhenConditionIsFalse()
+    {
+        StaThread.Run(() =>
+        {
+            var child = new Border();
+            var elseContent = new Border();
+
+            var ifControl = new If { Condition = false, Child = child, Else = elseContent };
+
+            Assert.Same(elseContent, ifControl.Content);
+        });
+    }
+
+    [Fact]
+    public void ChildStillWinsOverElseWhenConditionIsTrue()
+    {
+        StaThread.Run(() =>
+        {
+            var child = new Border();
+            var elseContent = new Border();
+
+            var ifControl = new If { Condition = true, Child = child, Else = elseContent };
+
+            Assert.Same(child, ifControl.Content);
+        });
+    }
+
+    [Fact]
+    public void ChangingElseWhileConditionIsFalseUpdatesContentImmediately()
+    {
+        StaThread.Run(() =>
+        {
+            var ifControl = new If { Condition = false, Child = new Border(), Else = new Border() };
+            var newElse = new Border();
+
+            ifControl.Else = newElse;
+
+            Assert.Same(newElse, ifControl.Content);
+        });
+    }
+
+    [Fact]
+    public void ChangingElseWhileConditionIsTrueDoesNotChangeVisibleContent()
+    {
+        StaThread.Run(() =>
+        {
+            var child = new Border();
+            var ifControl = new If { Condition = true, Child = child, Else = new Border() };
+
+            ifControl.Else = new Border();
+
+            Assert.Same(child, ifControl.Content);
+        });
+    }
+
+    [Fact]
+    public void NestedIfInElseActsAsAThreeBranchElseIfChain()
+    {
+        StaThread.Run(() =>
+        {
+            var contentA = new Border();
+            var contentB = new Border();
+            var contentFallback = new Border();
+
+            var innerIf = new If { Condition = false, Child = contentB, Else = contentFallback };
+            var outerIf = new If { Condition = false, Child = contentA, Else = innerIf };
+
+            void SetType(string type)
+            {
+                outerIf.Condition = type == "A";
+                innerIf.Condition = type == "B";
+            }
+
+            SetType("A");
+            Assert.Same(contentA, outerIf.Content);
+
+            SetType("B");
+            Assert.Same(innerIf, outerIf.Content);
+            Assert.Same(contentB, innerIf.Content);
+
+            SetType("C");
+            Assert.Same(innerIf, outerIf.Content);
+            Assert.Same(contentFallback, innerIf.Content);
+        });
+    }
+
+    [Fact]
+    public void SwitchingFromOneBranchToTheNextFiresUnmountThenMount()
+    {
+        StaThread.Run(() =>
+        {
+            var vmA = new FakeLifecycleViewModel();
+            var vmB = new FakeLifecycleViewModel();
+            var contentA = new ContentControl { DataContext = vmA };
+            Lifecycle.SetEnable(contentA, true);
+            var contentB = new ContentControl { DataContext = vmB };
+            Lifecycle.SetEnable(contentB, true);
+
+            var ifControl = new If { Condition = true, Child = contentA, Else = contentB };
+            var window = new Window { Content = ifControl, Width = 200, Height = 100 };
+            window.Show();
+            StaThread.PumpDispatcher();
+
+            Assert.Contains("OnMounted", vmA.Calls);
+            vmA.Calls.Clear();
+
+            ifControl.Condition = false;
+            StaThread.PumpDispatcher();
+
+            Assert.Contains("OnUnmounted", vmA.Calls);
+            Assert.Contains("OnMounted", vmB.Calls);
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
+    public void JumpingDirectlyFromTheFirstToTheLastBranchNeverMountsTheSkippedMiddleOne()
+    {
+        StaThread.Run(() =>
+        {
+            var vmA = new FakeLifecycleViewModel();
+            var vmB = new FakeLifecycleViewModel();
+            var vmC = new FakeLifecycleViewModel();
+            var contentA = new ContentControl { DataContext = vmA };
+            Lifecycle.SetEnable(contentA, true);
+            var contentB = new ContentControl { DataContext = vmB };
+            Lifecycle.SetEnable(contentB, true);
+            var contentC = new ContentControl { DataContext = vmC };
+            Lifecycle.SetEnable(contentC, true);
+
+            // innerIf.Condition starts (and stays) false - it always shows C, never B.
+            var innerIf = new If { Condition = false, Child = contentB, Else = contentC };
+            var outerIf = new If { Condition = true, Child = contentA, Else = innerIf };
+
+            var window = new Window { Content = outerIf, Width = 200, Height = 100 };
+            window.Show();
+            StaThread.PumpDispatcher();
+
+            Assert.Contains("OnMounted", vmA.Calls);
+
+            outerIf.Condition = false; // "A" -> "C" directly
+            StaThread.PumpDispatcher();
+
+            Assert.Contains("OnUnmounted", vmA.Calls);
+            Assert.Contains("OnMounted", vmC.Calls);
+            Assert.Empty(vmB.Calls); // B's DataContext was never mounted at all
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
     public void TogglingConditionMountsAndUnmountsTheChildsDataContext()
     {
         StaThread.Run(() =>

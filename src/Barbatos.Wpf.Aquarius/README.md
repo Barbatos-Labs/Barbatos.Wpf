@@ -26,7 +26,8 @@ CommunityToolkit.Mvvm.**
 * **[Directives](#directives)**
   * [Directives.Model (v-model)](#directivesmodel-v-model)
   * [Directives.Show (v-show)](#directivesshow-v-show)
-  * [If (v-if)](#if-v-if)
+  * [If (v-if / v-else / v-else-if)](#if-v-if--v-else--v-else-if)
+  * [Expr - conditional expressions](#expr---conditional-expressions)
   * [Directives.Event (v-on)](#directivesevent-v-on)
   * [Custom directives](#custom-directives)
   * [Directives.Class / Directives.Style (a lighter DataTrigger)](#directivesclass--directivesstyle-a-lighter-datatrigger)
@@ -269,7 +270,7 @@ doing nothing.
 `false` maps to `Visibility.Collapsed` (no layout space, state preserved) - matching the
 `display: none` semantics `v-show` relies on. The element stays mounted the whole time.
 
-### If (v-if)
+### If (v-if / v-else / v-else-if)
 
 ```xml
 <aq:If Condition="{Binding IsOpen}">
@@ -282,6 +283,105 @@ the visual tree rather than just hiding it - the same "destroy" Vue performs for
 The child is kept in `If.Child` (the XAML content property) so it reattaches unchanged
 once `Condition` is `true` again. See the [Lifecycle](#lifecycle-hooks) note above for
 what this means for a `Lifecycle.Enable`'d child.
+
+**`v-else`** is `If.Else` - a second content-bearing property, shown while `Condition` is
+`false` (defaults to `null`, so every `<aq:If>` that doesn't set it behaves exactly as
+before):
+
+```xml
+<aq:If Condition="{Binding IsLoggedIn}">
+    <TextBlock Text="Welcome back" />
+    <aq:If.Else>
+        <TextBlock Text="Please sign in" />
+    </aq:If.Else>
+</aq:If>
+```
+
+**`v-else-if`** has no separate control - nest another `<aq:If>` inside the outer one's
+`<aq:If.Else>`:
+
+```xml
+<aq:If Condition="{aq:Expr 'Type == &quot;A&quot;'}">
+    A content
+    <aq:If.Else>
+        <aq:If Condition="{aq:Expr 'Type == &quot;B&quot;'}">
+            B content
+            <aq:If.Else>Fallback content</aq:If.Else>
+        </aq:If>
+    </aq:If.Else>
+</aq:If>
+```
+
+This is correct "for free": each nested `If` keeps its own content current independent of
+whether its branch is currently attached, and jumping straight from branch A to the final
+fallback (skipping B) never touches B's content or mounts B's `DataContext` at all - only
+the outer `If`'s own `Condition` changing ever attaches/detaches the nested one. It does
+read visibly worse than Vue's flat sibling `v-else-if` past 3-4 branches, since WPF's
+content model has no equivalent to "grouped flat siblings" - a `Switch`/`Case` control
+would be the natural escape hatch if that becomes painful, deliberately not built here
+since it wasn't asked for.
+
+### Expr - conditional expressions
+
+```xml
+<aq:If Condition="{aq:Expr 'Count > 0'}">
+<Border aq:Directives.Show="{aq:Expr 'Status == &quot;Active&quot;'}">
+```
+
+A plain WPF `Binding` path has no expression language - `Comparisons` above covers the
+simplest single-value cases, but there was no way to write something like `a + b >= c`
+directly in XAML at all. `Expr` parses and reactively evaluates a small expression
+grammar over primitive-typed bound properties (identifiers resolve as ordinary property
+paths against the ambient `DataContext`, dotted paths like `Order.Total` work same as a
+plain `{Binding}`):
+
+| Category | Operators / forms |
+| --- | --- |
+| Comparison | `> >= < <= == !=` |
+| Logical (short-circuiting) | `&& \|\| !` |
+| Arithmetic | `+ - * /` and parentheses, all evaluated as `double` |
+| Ternary, right-associative | `condition ? whenTrue : whenFalse` (only the taken branch runs) |
+| Literals | numbers (`1`, `2.5`), strings (`"Hello World"`), lowercase `true`/`false` |
+
+**Enum comparison** goes through the string form rather than a bare `EnumType.Member`
+literal: `Status == "Active"` compares an enum-typed `Status` against the member name via
+`ToString()` (works in either operand order). A bare enum literal would need to
+distinguish a type name from an ordinary dotted property path at parse time, for no real
+benefit over the string form - deliberately not supported.
+
+**Element-referenced identifiers**: prefix an identifier with `#` to resolve it against a
+named element instead of `DataContext`:
+
+```xml
+<Slider x:Name="MySlider" Minimum="0" Maximum="100" />
+<Border aq:Directives.Show="{aq:Expr '#MySlider.Value > 50'}">
+```
+
+`#MySlider.Value` binds via `Binding.ElementName` the same way
+`{Binding ElementName=MySlider, Path=Value}` would; a bare `#MySlider` (no dot) binds to
+the element itself. Only `ElementName` works this way - `RelativeSource` doesn't: an
+`AncestorType` reference needs to resolve a type name through XAML's own type-resolution
+service, which would need a materially bigger identifier grammar for a need this rarely
+comes up for. `Expr.Evaluate(string, object?)` (below) cannot resolve `#` identifiers at
+all - there's no visual tree to search outside a real XAML load - and throws clearly if one
+appears.
+
+**Deliberately out of scope** (primitives only): string concatenation via `+` (both
+consumers this was built for - `If.Condition`/`Directives.Show` - are booleans; use
+`StringFormat` or multiple `Run`s to build display text instead), `RelativeSource`
+identifiers (see above), method calls, and indexers. For anything beyond this grammar, a
+`Computed<T>` in the ViewModel remains the right answer, same as Vue's own guidance to
+move non-trivial template expressions into a computed property.
+
+**XAML quoting**: since the whole markup extension already sits inside a double-quoted XML
+attribute, a string literal inside the expression needs its quotes written as `&quot;` (an
+XML entity, decoded before the expression text ever reaches the parser) rather than an
+escaped `\"` - XML attribute values have no backslash-escaping mechanism at all, so a
+literal `\"` would not protect the attribute boundary and would produce invalid XML.
+`Expr`'s own string-literal grammar still supports `\"`/`\\` for a literal quote/backslash
+*inside* the compared value itself - relevant when calling `Expr.Evaluate(string, object?)`
+directly from C# (a synchronous, non-reactive counterpart to the markup extension, mirroring
+`Inject.Get<T>`), where no XML layer is involved.
 
 ### Directives.Event (v-on)
 
