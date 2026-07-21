@@ -298,4 +298,65 @@ public class SlotXamlTests
             StaThread.PumpDispatcher();
         });
     }
+
+    [Fact]
+    public void SlotContentFiresTheFullVueStyleMountAndUnmountSequenceAsItIsAddedAndRemoved()
+    {
+        // Same underlying mechanism as If (see
+        // IfControlTests.ConditionTogglingFiresTheFullVueStyleMountAndUnmountSequence):
+        // SlotContent/SlotHost route through a real ContentPresenter.Content binding, so
+        // adding/removing a Slot from SlotHost.Items genuinely attaches/detaches its content
+        // from the visual tree - this is not a cache like Directives.Show/v-show (see
+        // DirectivesShowTests), it is the same "destroy and recreate" semantic v-if uses.
+        StaThread.Run(() =>
+        {
+            var xaml = """
+                <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                    <aq:SlotHost>
+                        <aq:SlotHost.Template>
+                            <ControlTemplate TargetType="aq:SlotHost">
+                                <ContentPresenter x:Name="HeaderPresenter" Content="{aq:SlotContent header}" />
+                            </ControlTemplate>
+                        </aq:SlotHost.Template>
+                    </aq:SlotHost>
+                </Window>
+                """;
+
+            var window = (Window)XamlReader.Parse(xaml);
+            var host = (SlotHost)window.Content;
+
+            window.Show();
+            host.ApplyTemplate();
+            StaThread.PumpDispatcher();
+
+            var vm = new FakeLifecycleViewModel();
+            var content = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(content, true);
+            var slot = new Slot { Name = "header", Content = content };
+
+            host.Items.Add(slot);
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+
+            vm.Calls.Clear();
+            host.Items.Remove(slot);
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(["OnDeactivated", "OnBeforeUnmount", "OnUnmounted"], vm.Calls);
+
+            vm.Calls.Clear();
+            host.Items.Add(slot);
+            StaThread.PumpDispatcher();
+
+            // A fresh mount, same as the first time - re-adding to a slot is a genuine
+            // remount, not a resume, matching If's own re-mount behavior.
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
 }

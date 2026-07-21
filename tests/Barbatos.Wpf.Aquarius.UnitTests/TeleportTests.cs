@@ -365,6 +365,153 @@ public partial class TeleportTests
         });
     }
 
+    [Fact]
+    public void TeleportingIntoAnAlreadyRegisteredHostFromXamlFiresAnExtraUnmountRemountBeforeSettling()
+    {
+        // A surprising, confirmed-by-running-it finding that corrects what the Teleport
+        // class doc comment used to claim: object identity/state/DataContext genuinely
+        // survive a teleport (proven elsewhere in this file), but the *lifecycle hooks* do
+        // NOT stay quiet the way Vue's own <Teleport> keeps them - Vue's virtual-DOM diff
+        // decides a vnode's final DOM location before ever committing it anywhere, so its
+        // component instance is never considered unmounted. WPF has no such pre-commit
+        // step: when To is already set before the very first Load (the common declarative
+        // `<aq:Teleport To="Overlay">` usage), content briefly becomes a real child of the
+        // Teleport control itself as the window's Loaded broadcast walks the tree, fires
+        // its own Loaded there, and only *afterwards* does Teleport's own Loaded handler
+        // (which runs later in that same broadcast) discover the host and move it - a
+        // genuine detach-and-reattach one hook interface can't tell apart from If's v-if.
+        StaThread.Run(() =>
+        {
+            var hostName = $"Host-{Guid.NewGuid()}";
+            var host = new Grid();
+            TeleportHost.SetRegisterHost(host, hostName);
+
+            var vm = new FakeLifecycleViewModel();
+            var content = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(content, true);
+
+            var teleport = new Teleport { To = hostName, Content = content };
+            var root = new StackPanel { Children = { host, teleport } };
+            var window = new Window { Content = root, Width = 200, Height = 100 };
+            window.Show();
+            StaThread.PumpDispatcher();
+
+            Assert.Same(content, host.Children.OfType<ContentControl>().SingleOrDefault());
+            Assert.Equal(
+                ["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated", "OnBeforeUnmount", "OnDeactivated", "OnUnmounted", "OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"],
+                vm.Calls);
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
+    public void RetargetingToADifferentHostAfterSettlingFiresAFullUnmountThenRemountNotJustAMove()
+    {
+        // Same underlying WPF reality as the initial-settle case above, triggered instead
+        // by flipping To once content is already resting inside its first host: this is
+        // genuinely indistinguishable, hook-wise, from destroying and recreating the
+        // component (confirmed with a throwaway experiment that reproduces the identical
+        // sequence via plain Panel.Children.Remove/Add, with no Teleport involved at all -
+        // this is a WPF Loaded/Unloaded fact, not something Teleport's implementation could
+        // realistically avoid). The OnDeactivated/OnActivated blip *before* the unmount
+        // pair below is IsVisibleChanged noticing the element leave visibility mid-move,
+        // ahead of Unloaded itself - same root cause as the ordering note in
+        // IfControlTests.ConditionTogglingFiresTheFullVueStyleMountAndUnmountSequence.
+        StaThread.Run(() =>
+        {
+            var hostAName = $"HostA-{Guid.NewGuid()}";
+            var hostBName = $"HostB-{Guid.NewGuid()}";
+            var hostA = new Grid();
+            var hostB = new Grid();
+            TeleportHost.SetRegisterHost(hostA, hostAName);
+            TeleportHost.SetRegisterHost(hostB, hostBName);
+
+            var vm = new FakeLifecycleViewModel();
+            var content = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(content, true);
+
+            var teleport = new Teleport { To = hostAName, Content = content };
+            var root = new StackPanel { Children = { hostA, hostB, teleport } };
+            var window = new Window { Content = root, Width = 200, Height = 100 };
+            window.Show();
+            StaThread.PumpDispatcher();
+            vm.Calls.Clear();
+
+            teleport.To = hostBName;
+            StaThread.PumpDispatcher();
+
+            Assert.Same(content, hostB.Children.OfType<ContentControl>().SingleOrDefault());
+            Assert.Equal(
+                ["OnDeactivated", "OnActivated", "OnBeforeUnmount", "OnDeactivated", "OnUnmounted", "OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"],
+                vm.Calls);
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
+    public void ClosingTheDialogWhileFloatingAndComingHomeStillGoesThroughACleanUnmountRemountPair()
+    {
+        // The dockable-panel safety net (TeleportHost.HostUnregistered - see
+        // ClosingTheDialogWhileFloatingAutomaticallyReturnsContentHome for the plain content-
+        // identity version of this scenario) reuses the exact same move machinery as a
+        // manual retarget, so it inherits the same "genuine unmount+remount, not a silent
+        // relocation" reality proven in RetargetingToADifferentHostAfterSettlingFiresA...
+        // above - undocking into the dialog fires that same 8-hook sequence. The auto-
+        // restore triggered by the dialog Window itself closing is one hook shorter though:
+        // OnDeactivated fires once and stays deactivated (no flicker back to Activated)
+        // because the whole host window is tearing down under it, not just its parent
+        // Panel - there is no "briefly still visible" moment to flicker through. Either
+        // way, the component comes home cleanly mounted, never silently orphaned.
+        StaThread.Run(() =>
+        {
+            var mainHostName = $"MainDock-{Guid.NewGuid()}";
+            var dialogHostName = $"DialogDock-{Guid.NewGuid()}";
+
+            var mainHost = new Grid();
+            TeleportHost.SetRegisterHost(mainHost, mainHostName);
+
+            var vm = new FakeLifecycleViewModel();
+            var content = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(content, true);
+
+            var teleport = new Teleport { To = mainHostName, Content = content };
+            var parentRoot = new StackPanel { Children = { mainHost, teleport } };
+            var parentWindow = new Window { Content = parentRoot, Width = 200, Height = 100 };
+            parentWindow.Show();
+            StaThread.PumpDispatcher();
+            vm.Calls.Clear();
+
+            var dialogHost = new Grid();
+            TeleportHost.SetRegisterHost(dialogHost, dialogHostName);
+            var dialogWindow = new Window { Content = dialogHost, Width = 150, Height = 80 };
+            dialogWindow.Show();
+            StaThread.PumpDispatcher();
+
+            teleport.To = dialogHostName; // undock into the second window
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(
+                ["OnDeactivated", "OnActivated", "OnBeforeUnmount", "OnDeactivated", "OnUnmounted", "OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"],
+                vm.Calls);
+            vm.Calls.Clear();
+
+            dialogWindow.Close(); // forgot to redock first - the safety net kicks in
+            StaThread.PumpDispatcher();
+
+            Assert.Same(content, teleport.Content); // came home, same instance
+            Assert.Equal(
+                ["OnDeactivated", "OnBeforeUnmount", "OnUnmounted", "OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"],
+                vm.Calls);
+
+            parentWindow.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
     private sealed partial class NotesViewModel : ObservableObject
     {
         [ObservableProperty]

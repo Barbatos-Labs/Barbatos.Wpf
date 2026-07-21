@@ -23,6 +23,17 @@ namespace Barbatos.Wpf.Composition;
 /// a Vue component's <c>setup()</c>) is checked against every hook interface with a
 /// simple <see langword="is"/> pattern, so a ViewModel that implements none of them costs
 /// nothing, and one implementing all of them behaves like a full Options-API component.
+/// <para>
+/// Every hook except <see cref="IOnBeforeUpdate"/>/<see cref="IOnUpdated"/> also has an
+/// <c>*Async</c> counterpart (<see cref="IOnMountedAsync"/> and friends) returning
+/// <see cref="System.Threading.Tasks.Task"/>, for a ViewModel that needs to
+/// <see langword="await"/> something - loading data on mount being the common case. These
+/// are fired, never awaited (mirroring Vue itself, which does not wait for an async
+/// lifecycle callback before continuing either) - but never as a bare <c>async void</c>: a
+/// fault is always observed and routed through the same <see cref="IOnErrorCaptured"/>
+/// mechanism an ordinary unhandled exception already uses. See
+/// <see cref="IOnMountedAsync"/>'s own doc comment for the full set of rules these share.
+/// </para>
 /// </remarks>
 public static class Lifecycle
 {
@@ -74,6 +85,7 @@ public static class Lifecycle
         private readonly FrameworkElement _element = element;
         private INotifyPropertyChanged? _watchedDataContext;
         private bool _mounted;
+        private bool _createdInvoked;
         private bool _beforeMountInvoked;
         private bool _visibleActivated;
         private bool _updateDirty;
@@ -113,35 +125,100 @@ public static class Lifecycle
             // DataContext is very often set by the parent (DataContext="{Binding ...}" at
             // the usage site) *after* this element's own Initialized fires - so this is a
             // best-effort early call; OnLoaded below guarantees it fires at least once.
-            if (_element.DataContext is IOnBeforeMount hook)
-            {
-                _beforeMountInvoked = true;
-                hook.OnBeforeMount();
-            }
+            TryInvokeCreateHooks();
+            TryInvokeBeforeMount();
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            if (!_beforeMountInvoked)
-                InvokeHook<IOnBeforeMount>(hook => hook.OnBeforeMount());
+            // WPF can raise Loaded a second time without an intervening Unloaded - e.g. a
+            // TabItem's content that was realized (and Loaded) as soon as the TabControl
+            // itself loaded, long before that tab was ever selected, gets a further Loaded
+            // when it becomes the selected one. There was no real unmount in between, so
+            // there is nothing to do - re-running the block below would fire a spurious
+            // extra OnMounted with no matching OnBeforeMount, and double-subscribe
+            // StartMountedTracking's handlers.
+            if (_mounted)
+                return;
+
+            // Guaranteed fallback, same reasoning as OnBeforeMount below: most DataContext
+            // bindings still haven't resolved at Initialized time.
+            TryInvokeCreateHooks();
+            TryInvokeBeforeMount();
 
             _mounted = true;
             StartMountedTracking();
             InvokeHook<IOnMounted>(hook => hook.OnMounted());
+            InvokeHookAsync<IOnMountedAsync>(hook => hook.OnMountedAsync());
 
             // Mirrors Vue's own note: "onActivated is also called on mount" - a ViewModel
             // that only cares about IOnActivated/IOnDeactivated (not the full Mounted/
-            // Unmounted pair) still sees a consistent "currently shown" signal.
-            SetVisibleActivated(true);
+            // Unmounted pair) still sees a consistent "currently shown" signal - but only
+            // when the element is actually visible. Content that mounts already-hidden (a
+            // background, not-yet-selected TabControl tab; a Directives.Show=false sibling
+            // present from the start - see KeepAliveTests) must NOT report itself
+            // activated, because IsVisible never fires a change notification for a value
+            // that was false from the start, so a wrong assumption here would never
+            // self-correct - the real OnActivated, once the element actually becomes
+            // visible later, would be silently swallowed by SetVisibleActivated's own dedup
+            // guard thinking it already fired. A bare element with no PresentationSource at
+            // all (the synthetic RaiseEvent(Loaded) style most of LifecycleTests.cs uses)
+            // always reads IsVisible=false too despite not being hidden in any meaningful
+            // sense, so that case is explicitly treated as "assume visible" instead.
+            SetVisibleActivated(_element.IsVisible || PresentationSource.FromVisual(_element) is null);
+        }
+
+        /// <summary>
+        /// Fires <see cref="IOnBeforeCreate"/>/<see cref="IOnBeforeCreateAsync"/> then
+        /// <see cref="IOnCreated"/>/<see cref="IOnCreatedAsync"/>, back to back, the first
+        /// time <c>DataContext</c> is observed to implement any of the four - mirroring
+        /// Vue's <c>beforeCreate</c>/<c>created</c> pair, which have no observable gap
+        /// between them in this port either (see the interfaces' own doc comments).
+        /// </summary>
+        private void TryInvokeCreateHooks()
+        {
+            if (_createdInvoked)
+                return;
+
+            if (_element.DataContext is IOnBeforeCreate or IOnCreated or IOnBeforeCreateAsync or IOnCreatedAsync)
+            {
+                _createdInvoked = true;
+                InvokeHook<IOnBeforeCreate>(hook => hook.OnBeforeCreate());
+                InvokeHookAsync<IOnBeforeCreateAsync>(hook => hook.OnBeforeCreateAsync());
+                InvokeHook<IOnCreated>(hook => hook.OnCreated());
+                InvokeHookAsync<IOnCreatedAsync>(hook => hook.OnCreatedAsync());
+            }
+        }
+
+        /// <summary>
+        /// Fires <see cref="IOnBeforeMount"/>/<see cref="IOnBeforeMountAsync"/> the first
+        /// time <c>DataContext</c> is observed to implement either - same best-effort-at-
+        /// <c>Initialized</c>-then-guaranteed-at-<c>Loaded</c> shape as
+        /// <see cref="TryInvokeCreateHooks"/>.
+        /// </summary>
+        private void TryInvokeBeforeMount()
+        {
+            if (_beforeMountInvoked)
+                return;
+
+            if (_element.DataContext is IOnBeforeMount or IOnBeforeMountAsync)
+            {
+                _beforeMountInvoked = true;
+                InvokeHook<IOnBeforeMount>(hook => hook.OnBeforeMount());
+                InvokeHookAsync<IOnBeforeMountAsync>(hook => hook.OnBeforeMountAsync());
+            }
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
             // Reset so a later remount (e.g. `If.Condition` flipping true again, which
-            // detaches and reattaches this same instance) fires OnBeforeMount again too.
+            // detaches and reattaches this same instance) fires the whole create/mount
+            // sequence again too - every mount is treated as fresh, never a resume.
+            _createdInvoked = false;
             _beforeMountInvoked = false;
 
             InvokeHook<IOnBeforeUnmount>(hook => hook.OnBeforeUnmount());
+            InvokeHookAsync<IOnBeforeUnmountAsync>(hook => hook.OnBeforeUnmountAsync());
 
             // Mirrors Vue's "...and onDeactivated on unmount" - a no-op if IsVisibleChanged
             // already reported false first (e.g. it was hidden, then removed).
@@ -150,6 +227,7 @@ public static class Lifecycle
             _mounted = false;
             StopMountedTracking();
             InvokeHook<IOnUnmounted>(hook => hook.OnUnmounted());
+            InvokeHookAsync<IOnUnmountedAsync>(hook => hook.OnUnmountedAsync());
         }
 
         /// <summary>
@@ -158,11 +236,17 @@ public static class Lifecycle
         /// <see cref="IOnActivated"/>/<see cref="IOnDeactivated"/> directly, independent of
         /// (and in addition to) <see cref="SetVisibleActivated"/>'s dedup below.
         /// </summary>
-        private void OnActivated(object? sender, EventArgs e) =>
+        private void OnActivated(object? sender, EventArgs e)
+        {
             InvokeHook<IOnActivated>(hook => hook.OnActivated());
+            InvokeHookAsync<IOnActivatedAsync>(hook => hook.OnActivatedAsync());
+        }
 
-        private void OnDeactivated(object? sender, EventArgs e) =>
+        private void OnDeactivated(object? sender, EventArgs e)
+        {
             InvokeHook<IOnDeactivated>(hook => hook.OnDeactivated());
+            InvokeHookAsync<IOnDeactivatedAsync>(hook => hook.OnDeactivatedAsync());
+        }
 
         private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
@@ -188,9 +272,15 @@ public static class Lifecycle
             _visibleActivated = activated;
 
             if (activated)
+            {
                 InvokeHook<IOnActivated>(hook => hook.OnActivated());
+                InvokeHookAsync<IOnActivatedAsync>(hook => hook.OnActivatedAsync());
+            }
             else
+            {
                 InvokeHook<IOnDeactivated>(hook => hook.OnDeactivated());
+                InvokeHookAsync<IOnDeactivatedAsync>(hook => hook.OnDeactivatedAsync());
+            }
         }
 
         private void StartMountedTracking()
@@ -266,6 +356,46 @@ public static class Lifecycle
         {
             if (_element.DataContext is THook hook)
                 invoke(hook);
+        }
+
+        private void InvokeHookAsync<THook>(Func<THook, Task> invoke)
+        {
+            if (_element.DataContext is THook hook)
+                FireAndForget(invoke(hook));
+        }
+
+        /// <summary>
+        /// Starts (but never awaits) an async hook's <see cref="Task"/> - fires and moves
+        /// on to whatever comes next, exactly like Vue itself does not wait for an async
+        /// lifecycle callback before continuing. Never a bare <c>async void</c> though: a
+        /// fault is always observed and rethrown (see <see cref="ObserveFault"/>) instead
+        /// of risking an unobserved-task exception disappearing without a trace.
+        /// </summary>
+        private void FireAndForget(Task task)
+        {
+            if (task.IsCompleted)
+            {
+                ObserveFault(task);
+                return;
+            }
+
+            task.ContinueWith(ObserveFault, TaskScheduler.Default);
+        }
+
+        /// <summary>
+        /// Rethrows a faulted hook's exception onto the element's own <see cref="Dispatcher"/> -
+        /// the same route an ordinary unhandled exception already takes to reach
+        /// <see cref="OnDispatcherUnhandledException"/>/<see cref="IOnErrorCaptured"/>, so an
+        /// async hook's failure surfaces through that existing mechanism rather than
+        /// needing a dedicated async error hook.
+        /// </summary>
+        private void ObserveFault(Task task)
+        {
+            if (task.Exception is not { } aggregate)
+                return;
+
+            var exception = aggregate.Flatten().InnerException ?? aggregate;
+            _element.Dispatcher.BeginInvoke(() => throw exception);
         }
     }
 }

@@ -204,6 +204,49 @@ public class IfControlTests
     }
 
     [Fact]
+    public void ConditionTogglingFiresTheFullVueStyleMountAndUnmountSequence()
+    {
+        // Not just "Contains" - the exact BeforeMount->Mounted / BeforeUnmount->Unmounted
+        // order Vue itself documents for v-if, since If is the primary port of that "destroy
+        // and recreate a subtree" semantic (unlike Directives.Show/v-show, which never
+        // unmounts at all - see DirectivesShowTests for that distinction).
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel();
+            var child = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(child, true);
+            var ifControl = new If { Condition = true, Child = child };
+
+            var window = new Window { Content = ifControl, Width = 200, Height = 100 };
+            window.Show();
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+
+            vm.Calls.Clear();
+            ifControl.Condition = false;
+            StaThread.PumpDispatcher();
+
+            // Deactivated fires before BeforeUnmount here - unlike a synthetic RaiseEvent
+            // test, a real detach from the visual tree fires the real IsVisibleChanged
+            // (going false) slightly before Unloaded does, so by the time OnUnloaded's own
+            // SetVisibleActivated(false) call runs it's already a no-op (dedup guard).
+            Assert.Equal(["OnDeactivated", "OnBeforeUnmount", "OnUnmounted"], vm.Calls);
+
+            vm.Calls.Clear();
+            ifControl.Condition = true;
+            StaThread.PumpDispatcher();
+
+            // A fresh mount, same as the first time - If never "resumes" a torn-down child,
+            // it genuinely destroys and recreates it, matching Vue's real v-if.
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
     public void TogglingConditionMountsAndUnmountsTheChildsDataContext()
     {
         StaThread.Run(() =>

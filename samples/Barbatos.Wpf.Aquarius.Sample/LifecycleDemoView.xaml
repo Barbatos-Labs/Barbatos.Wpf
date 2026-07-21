@@ -21,6 +21,23 @@
                 <Button Content="Tick twice (batches to one OnUpdated)"
                         Command="{Binding TickTwiceCommand}" />
             </StackPanel>
+
+            <TextBlock Margin="0,12,0,4"
+                       FontStyle="Italic"
+                       TextWrapping="Wrap"
+                       Text="IOnMountedAsync + Suspense - fires alongside OnMounted above, awaits 1.2s, then resolves. Toggle this demo off/on to see it fire fresh on every remount, not just once:" />
+            <aq:Suspense IsPending="{Binding IsLoadingDashboard}">
+                <Border Background="#E5F7E5"
+                        Padding="8">
+                    <TextBlock Text="{Binding DashboardData}" />
+                </Border>
+                <aq:Suspense.Fallback>
+                    <Border Background="#FFF6E0"
+                            Padding="8">
+                        <TextBlock Text="Loading (OnMountedAsync awaiting)..." />
+                    </Border>
+                </aq:Suspense.Fallback>
+            </aq:Suspense>
         </StackPanel>
     </Border>
 </UserControl>

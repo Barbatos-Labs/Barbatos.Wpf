@@ -1,0 +1,27 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.SuspenseDemoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.dev/aquarius">
+    <StackPanel Margin="12">
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   FontStyle="Italic"
+                   Text="A plain, manually-triggered IsPending toggle - see the Lifecycle tab for the same control paired with a real IOnMountedAsync hook instead of a button." />
+        <Button HorizontalAlignment="Left"
+                Margin="0,0,0,8"
+                Content="Simulate load (1.5s)"
+                Command="{Binding SimulateLoadCommand}" />
+        <aq:Suspense IsPending="{Binding IsLoadingDashboard}">
+            <Border Background="#E5F7E5"
+                    Padding="12">
+                <TextBlock Text="Dashboard content, resolved." />
+            </Border>
+            <aq:Suspense.Fallback>
+                <Border Background="#FFF6E0"
+                        Padding="12">
+                    <TextBlock Text="Loading..." />
+                </Border>
+            </aq:Suspense.Fallback>
+        </aq:Suspense>
+    </StackPanel>
+</UserControl>

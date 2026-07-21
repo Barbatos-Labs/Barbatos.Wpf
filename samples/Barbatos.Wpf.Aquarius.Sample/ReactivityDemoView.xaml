@@ -1,0 +1,39 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.ReactivityDemoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.dev/aquarius">
+    <StackPanel Margin="12">
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,12"
+                   FontStyle="Italic"
+                   Text="Ref&lt;T&gt;/Computed&lt;T&gt;/Watch - Aquarius's reactivity primitives, built on CommunityToolkit.Mvvm." />
+
+        <StackPanel Orientation="Horizontal"
+                    Margin="0,0,0,12">
+            <Button Content="Increment"
+                    Margin="0,0,12,0"
+                    Command="{Binding IncrementCommand}" />
+            <TextBlock VerticalAlignment="Center"
+                       Margin="0,0,16,0"
+                       Text="{Binding Count.Value, StringFormat='Count: {0}'}" />
+            <TextBlock VerticalAlignment="Center"
+                       Text="{Binding Doubled.Value, StringFormat='Doubled (computed): {0}'}" />
+        </StackPanel>
+
+        <TextBlock TextWrapping="Wrap"
+                   Text="Writable computed - editing Full Name splits back into First/Last, editing either name updates Full Name:" />
+        <StackPanel Orientation="Horizontal"
+                    Margin="0,4,0,0">
+            <TextBox Width="90"
+                     aq:Directives.Model="{Binding FirstName}" />
+            <TextBox Width="110"
+                     Margin="4,0,0,0"
+                     aq:Directives.Model="{Binding LastName}" />
+            <TextBlock Text="-&gt;"
+                       Margin="8,0"
+                       VerticalAlignment="Center" />
+            <TextBox Width="180"
+                     aq:Directives.Model="{Binding FullName.Value}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

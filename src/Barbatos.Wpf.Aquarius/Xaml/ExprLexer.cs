@@ -15,6 +15,7 @@ internal enum TokenType
     Identifier,
     True,
     False,
+    Null,
     And,
     Or,
     Equal,
@@ -129,6 +130,7 @@ internal static class ExprLexer
                 {
                     "true" => TokenType.True,
                     "false" => TokenType.False,
+                    "null" => TokenType.Null,
                     _ => TokenType.Identifier,
                 };
                 tokens.Add(new Token(type, text, start));

@@ -12,14 +12,74 @@ namespace Barbatos.Wpf.Composition;
 /// the ones it needs, the same way a Vue component only imports the hooks it uses.
 /// Attaching <see cref="Lifecycle.EnableProperty"/> to a <see cref="System.Windows.FrameworkElement"/>
 /// is what actually invokes whichever of these its <c>DataContext</c> implements.
+/// Mirrors Vue's <c>beforeCreate</c>.
+/// </summary>
+/// <remarks>
+/// Since a ViewModel's constructor has necessarily already run by the time it can be
+/// observed as a <c>DataContext</c> at all - there is no WPF equivalent of hooking in
+/// earlier than that - this fires at the same first opportunity <see cref="IOnBeforeMount"/>
+/// does (<c>Initialized</c>, or as a guaranteed fallback on <c>Loaded</c>), just one step
+/// before it.
+/// </remarks>
+public interface IOnBeforeCreate
+{
+    /// <inheritdoc cref="IOnBeforeCreate"/>
+    void OnBeforeCreate();
+}
+
+/// <inheritdoc cref="IOnBeforeCreate"/>
+/// <remarks>
+/// The async counterpart of <see cref="IOnBeforeCreate"/> - see
+/// <see cref="IOnMountedAsync"/> for the shared rules every <c>*Async</c> hook interface
+/// follows (fire-and-forget with respect to the rest of the lifecycle, exceptions routed
+/// through <see cref="IOnErrorCaptured"/>). Implement this one instead of the sync version
+/// when the work needs <see langword="await"/>; implement both only if you genuinely need
+/// two independent calls, which is unusual.
+/// </remarks>
+public interface IOnBeforeCreateAsync
+{
+    /// <inheritdoc cref="IOnBeforeCreateAsync"/>
+    Task OnBeforeCreateAsync();
+}
+
+/// <summary>
+/// Mirrors Vue's <c>created</c>: fires immediately after <see cref="IOnBeforeCreate"/>,
+/// still before <see cref="IOnBeforeMount"/>. Vue itself does reactive-system setup work
+/// between the two - a ViewModel's own constructor (and, for
+/// <see cref="Barbatos.Wpf.Reactivity"/> types, its base class) already did the
+/// equivalent work before either hook could fire here, so nothing observable happens
+/// between them in this port.
+/// </summary>
+public interface IOnCreated
+{
+    /// <inheritdoc cref="IOnCreated"/>
+    void OnCreated();
+}
+
+/// <inheritdoc cref="IOnCreated"/>
+/// <remarks>See <see cref="IOnMountedAsync"/> for the shared <c>*Async</c> hook rules.</remarks>
+public interface IOnCreatedAsync
+{
+    /// <inheritdoc cref="IOnCreatedAsync"/>
+    Task OnCreatedAsync();
+}
+
+/// <summary>
+/// Mirrors <c>onBeforeMount</c>: the view exists (its constructor/XAML has run) but
+/// is not yet part of a live visual tree.
 /// </summary>
 public interface IOnBeforeMount
 {
-    /// <summary>
-    /// Mirrors <c>onBeforeMount</c>: the view exists (its constructor/XAML has run) but
-    /// is not yet part of a live visual tree.
-    /// </summary>
+    /// <inheritdoc cref="IOnBeforeMount"/>
     void OnBeforeMount();
+}
+
+/// <inheritdoc cref="IOnBeforeMount"/>
+/// <remarks>See <see cref="IOnMountedAsync"/> for the shared <c>*Async</c> hook rules.</remarks>
+public interface IOnBeforeMountAsync
+{
+    /// <inheritdoc cref="IOnBeforeMountAsync"/>
+    Task OnBeforeMountAsync();
 }
 
 /// <summary>
@@ -30,6 +90,48 @@ public interface IOnMounted
 {
     /// <inheritdoc cref="IOnMounted"/>
     void OnMounted();
+}
+
+/// <summary>
+/// The async counterpart of <see cref="IOnMounted"/> - implement this instead when
+/// mounting needs to <see langword="await"/> something (loading data, warming a cache,
+/// ...), the same way Vue lets a lifecycle callback be an async function.
+/// </summary>
+/// <remarks>
+/// Every <c>*Async</c> hook interface in this file (<see cref="IOnBeforeCreateAsync"/>,
+/// <see cref="IOnCreatedAsync"/>, <see cref="IOnBeforeMountAsync"/>, this one,
+/// <see cref="IOnBeforeUnmountAsync"/>, <see cref="IOnUnmountedAsync"/>,
+/// <see cref="IOnActivatedAsync"/>, <see cref="IOnDeactivatedAsync"/>) follows the same
+/// shape and the same rules - purely additive alongside the existing synchronous
+/// interfaces, not a replacement:
+/// <list type="bullet">
+/// <item>Fires at exactly the same point its synchronous counterpart does, in the same
+/// call order - only the <em>completion</em> is not waited for. Vue itself does not await
+/// an async lifecycle callback before continuing either; a slow <c>OnMountedAsync</c>
+/// does not delay <c>OnActivated</c>, a later remount, or anything else.</item>
+/// <item>Returns <see cref="Task"/>, not <see cref="ValueTask"/>: each hook fires at most
+/// once per mount/unmount/etc., never in a tight hot loop, so there is no meaningful
+/// allocation to save - <see cref="ValueTask"/> would only add sharp edges (cannot be
+/// awaited twice, cannot be inspected after it's already been awaited) for no benefit here.</item>
+/// <item>Invoked by <see cref="Lifecycle"/> as "fire, don't await, but never let a fault
+/// disappear silently" - never a bare <c>async void</c>. An exception thrown from the
+/// async method (before or after its first <see langword="await"/>) is rethrown onto the
+/// element's own <see cref="System.Windows.Threading.Dispatcher"/>, which is exactly what
+/// makes an ordinary unhandled exception reach <see cref="IOnErrorCaptured"/> today too -
+/// no separate async error hook is needed, faults from these hooks surface through the
+/// same, already-existing mechanism.</item>
+/// <item>There is no async counterpart of <see cref="IOnBeforeUpdate"/>/<see cref="IOnUpdated"/>
+/// (those are tied to synchronous, single-batch <see cref="Reactivity.NextTick"/> coalescing -
+/// an async hook firing partway through that would not compose with it) or of
+/// <see cref="IOnErrorCaptured"/> (its <see langword="bool"/> return has to decide
+/// <c>Handled</c> synchronously, before the dispatcher's own exception handling moves on -
+/// there is no "await, then decide" version of that contract).</item>
+/// </list>
+/// </remarks>
+public interface IOnMountedAsync
+{
+    /// <inheritdoc cref="IOnMountedAsync"/>
+    Task OnMountedAsync();
 }
 
 /// <summary>
@@ -67,6 +169,19 @@ public interface IOnBeforeUnmount
     void OnBeforeUnmount();
 }
 
+/// <inheritdoc cref="IOnBeforeUnmount"/>
+/// <remarks>
+/// See <see cref="IOnMountedAsync"/> for the shared <c>*Async</c> hook rules. Useful for
+/// flushing/saving state before the view actually goes away - the fire-and-forget nature
+/// still applies, so this cannot itself delay the real unmount from proceeding (mirroring
+/// how Vue does not wait for an async <c>onBeforeUnmount</c> either).
+/// </remarks>
+public interface IOnBeforeUnmountAsync
+{
+    /// <inheritdoc cref="IOnBeforeUnmountAsync"/>
+    Task OnBeforeUnmountAsync();
+}
+
 /// <summary>
 /// Mirrors Vue's <c>onUnmounted</c>: the view has been removed from the visual tree.
 /// </summary>
@@ -79,6 +194,14 @@ public interface IOnUnmounted
 {
     /// <inheritdoc cref="IOnUnmounted"/>
     void OnUnmounted();
+}
+
+/// <inheritdoc cref="IOnUnmounted"/>
+/// <remarks>See <see cref="IOnMountedAsync"/> for the shared <c>*Async</c> hook rules.</remarks>
+public interface IOnUnmountedAsync
+{
+    /// <inheritdoc cref="IOnUnmountedAsync"/>
+    Task OnUnmountedAsync();
 }
 
 /// <summary>
@@ -97,6 +220,14 @@ public interface IOnActivated
     void OnActivated();
 }
 
+/// <inheritdoc cref="IOnActivated"/>
+/// <remarks>See <see cref="IOnMountedAsync"/> for the shared <c>*Async</c> hook rules.</remarks>
+public interface IOnActivatedAsync
+{
+    /// <inheritdoc cref="IOnActivatedAsync"/>
+    Task OnActivatedAsync();
+}
+
 /// <summary>
 /// Mirrors Vue's <c>onDeactivated</c> (<c>&lt;KeepAlive&gt;</c>) - the counterpart to
 /// <see cref="IOnActivated"/>, raised on unmount, on
@@ -108,6 +239,14 @@ public interface IOnDeactivated
 {
     /// <inheritdoc cref="IOnDeactivated"/>
     void OnDeactivated();
+}
+
+/// <inheritdoc cref="IOnDeactivated"/>
+/// <remarks>See <see cref="IOnMountedAsync"/> for the shared <c>*Async</c> hook rules.</remarks>
+public interface IOnDeactivatedAsync
+{
+    /// <inheritdoc cref="IOnDeactivatedAsync"/>
+    Task OnDeactivatedAsync();
 }
 
 /// <summary>

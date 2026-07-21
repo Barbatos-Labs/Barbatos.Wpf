@@ -18,7 +18,17 @@ public class LifecycleTests
             element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
 
             // Vue's own note applies here too: "onActivated is also called on mount."
-            Assert.Equal(["OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+
+            // Every test in this file that mounts an element must unmount it again before
+            // returning, even when the test itself has nothing to do with unmounting:
+            // Application.Current is one process-lifetime singleton (see TestApplication),
+            // and a still-subscribed LifecycleState left over from a leaked mount would
+            // later get its DataContext touched from whichever thread happens to raise
+            // Application.Current.DispatcherUnhandledException next - a different thread
+            // than the one that created this element, which throws. xUnit does not
+            // guarantee test execution order, so this can't be "won't happen in practice."
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
         });
     }
 
@@ -37,6 +47,33 @@ public class LifecycleTests
 
             // Vue's own note applies here too: "...and onDeactivated on unmount."
             Assert.Equal(["OnBeforeUnmount", "OnDeactivated", "OnUnmounted"], vm.Calls);
+        });
+    }
+
+    [Fact]
+    public void RemountingAfterUnloadFiresTheWholeCreateThroughMountSequenceAgain()
+    {
+        // OnBeforeMount already re-fires on a real remount (see IfControlTests etc.) -
+        // this is the same fact, isolated at the Lifecycle mechanism level with synthetic
+        // events: OnBeforeCreate/OnCreated are not "only once per ViewModel object", they
+        // follow the element's own mount/unmount cycle exactly like every other hook here,
+        // firing again even though `vm` is the exact same instance both times.
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel();
+            var element = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(element, true);
+
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+            vm.Calls.Clear();
+
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+
+            // See the cleanup note in MountedFiresAfterBeforeMountOnLoaded above.
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
         });
     }
 
@@ -79,6 +116,9 @@ public class LifecycleTests
             StaThread.PumpDispatcher();
 
             Assert.Equal(["OnBeforeUpdate", "OnUpdated"], vm.Calls);
+
+            // See the cleanup note in MountedFiresAfterBeforeMountOnLoaded above.
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
         });
     }
 

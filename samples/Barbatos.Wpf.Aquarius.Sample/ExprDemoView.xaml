@@ -1,0 +1,80 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.ExprDemoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.dev/aquarius">
+    <StackPanel Margin="12">
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,4"
+                   Text="Directives.Show driven by an Expr instead of a converter - visible only once Count is above 5:" />
+        <StackPanel Orientation="Horizontal"
+                    Margin="0,0,0,8">
+            <Button Content="Increment"
+                    Margin="0,0,12,0"
+                    Command="{Binding IncrementCommand}" />
+            <TextBlock VerticalAlignment="Center"
+                       Text="{Binding Count, StringFormat='Count: {0}'}" />
+        </StackPanel>
+        <Border Background="#E5F7E5"
+                Padding="8"
+                Margin="0,0,0,12"
+                aq:Directives.Show="{aq:Expr 'Count > 5'}">
+            <TextBlock Text="Count &gt; 5" />
+        </Border>
+
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,4"
+                   Text="If / Else-if / Else - each branch below is its own aq:If, nested inside the previous one's aq:If.Else. StatusIndex decides which one is currently mounted - only ever exactly one of the three TextBlocks below actually exists in the tree at a time:" />
+        <StackPanel Orientation="Horizontal"
+                    Margin="0,0,0,8">
+            <Button Content="Cycle status"
+                    Margin="0,0,12,0"
+                    Command="{Binding CycleStatusCommand}" />
+            <TextBlock VerticalAlignment="Center"
+                       FontWeight="Bold"
+                       Text="{Binding StatusIndex, StringFormat='StatusIndex = {0}'}" />
+        </StackPanel>
+        <aq:If Condition="{aq:Expr 'StatusIndex == 0'}">
+            <TextBlock Foreground="Green">
+                <Run Text="[IF StatusIndex == 0]" FontWeight="Bold" /><Run Text=" -&gt; Normal" />
+            </TextBlock>
+            <aq:If.Else>
+                <aq:If Condition="{aq:Expr 'StatusIndex == 1'}">
+                    <TextBlock Foreground="DarkOrange">
+                        <Run Text="[ELSE-IF StatusIndex == 1]" FontWeight="Bold" /><Run Text=" -&gt; Warning" />
+                    </TextBlock>
+                    <aq:If.Else>
+                        <TextBlock Foreground="Red">
+                            <Run Text="[ELSE]" FontWeight="Bold" /><Run Text=" -&gt; Error" />
+                        </TextBlock>
+                    </aq:If.Else>
+                </aq:If>
+            </aq:If.Else>
+        </aq:If>
+
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,12,0,4"
+                   Text="Ternary feeding a TextBlock.Text directly - Expr isn't limited to If/Show, it's a plain MultiBinding underneath:" />
+        <StackPanel Orientation="Horizontal"
+                    Margin="0,0,0,4">
+            <CheckBox VerticalAlignment="Center"
+                      Margin="0,0,8,0"
+                      Content="ShowPanel"
+                      IsChecked="{Binding ShowPanel}" />
+        </StackPanel>
+        <TextBlock Text="{aq:Expr 'ShowPanel ? &quot;Panel is visible&quot; : &quot;Panel is hidden&quot;'}" />
+
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,8,0,4"
+                   Text="Element-referenced identifier (#Name.Path) - binds to a named element instead of DataContext:" />
+        <StackPanel Orientation="Horizontal">
+            <Slider x:Name="ExprDemoSlider"
+                    Width="150"
+                    Minimum="0"
+                    Maximum="100" />
+            <TextBlock Margin="12,0,0,0"
+                       VerticalAlignment="Center"
+                       Text="Above 50"
+                       aq:Directives.Show="{aq:Expr '#ExprDemoSlider.Value > 50'}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

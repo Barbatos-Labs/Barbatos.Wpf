@@ -9,8 +9,8 @@ namespace Barbatos.Wpf.Xaml;
 /// Recursive-descent parser for <see cref="Expr"/>'s grammar, lowest to highest precedence:
 /// ternary <c>?:</c> -&gt; <c>||</c> -&gt; <c>&amp;&amp;</c> -&gt; <c>== !=</c> -&gt;
 /// <c>&gt; &gt;= &lt; &lt;=</c> -&gt; binary <c>+ -</c> -&gt; <c>* /</c> -&gt; unary <c>! -</c>
-/// -&gt; primary (number, string, <c>true</c>/<c>false</c>, dotted identifier, optionally
-/// element-referenced via a leading <c>#</c>, or a parenthesized sub-expression).
+/// -&gt; primary (number, string, <c>true</c>/<c>false</c>/<c>null</c>, dotted identifier,
+/// optionally element-referenced via a leading <c>#</c>, or a parenthesized sub-expression).
 /// </summary>
 internal static class ExprParser
 {
@@ -174,6 +174,9 @@ internal static class ExprParser
             case TokenType.False:
                 cursor++;
                 return new LiteralNode(false);
+            case TokenType.Null:
+                cursor++;
+                return new LiteralNode(null);
             case TokenType.Identifier:
                 cursor++;
                 return new IdentifierNode(token.Text);

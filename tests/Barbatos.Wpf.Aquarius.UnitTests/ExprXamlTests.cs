@@ -184,6 +184,82 @@ public class ExprXamlTests
     }
 
     [Fact]
+    public void NullComparisonReactsThroughTheReactivePathForAnObjectTypedProperty()
+    {
+        StaThread.Run(() =>
+        {
+            var xaml = """
+                <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                    <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'Order != null'}" />
+                </Window>
+                """;
+
+            var window = (Window)XamlReader.Parse(xaml);
+            var target = (Border)window.FindName("Target");
+            var vm = new ExprTestViewModel(); // Order starts null
+            window.DataContext = vm;
+
+            window.Show();
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(Visibility.Collapsed, target.Visibility);
+
+            vm.Order = new ExprTestOrder { Total = 5 };
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(Visibility.Visible, target.Visibility);
+
+            vm.Order = null;
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(Visibility.Collapsed, target.Visibility);
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
+    public void ThrowOnUnresolvedIdentifiersThrowsClearlyInsteadOfFailingOpen()
+    {
+        // The opt-in answer to "a typo'd property name inside an Expr string is invisible to
+        // both the IDE and, by default, the app at runtime": flipping this switch turns that
+        // same DoesNotExist typo from UnresolvedIdentifierFallsBackTheSameWayAPlainBindingWould's
+        // silent "fail open" into an immediate, specific exception instead. Reset in `finally`
+        // - this is a process-wide static switch, and other tests in this suite rely on the
+        // default `false` (fail-open) behavior.
+        Expr.ThrowOnUnresolvedIdentifiers = true;
+        try
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() => StaThread.Run(() =>
+            {
+                var xaml = """
+                    <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                            xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'DoesNotExist > 0'}" />
+                    </Window>
+                    """;
+
+                var window = (Window)XamlReader.Parse(xaml);
+                window.DataContext = new ExprTestViewModel();
+
+                window.Show();
+                StaThread.PumpDispatcher();
+            }));
+
+            Assert.Contains("DoesNotExist", ex.Message);
+            Assert.Contains("DoesNotExist > 0", ex.Message);
+        }
+        finally
+        {
+            Expr.ThrowOnUnresolvedIdentifiers = false;
+        }
+    }
+
+    [Fact]
     public void UnresolvedIdentifierFallsBackTheSameWayAPlainBindingWould()
     {
         StaThread.Run(() =>

@@ -82,6 +82,8 @@ Both schedule via `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`.
 
 | Interface | Member |
 |-----------|--------|
+| `IOnBeforeCreate` | `void OnBeforeCreate()` |
+| `IOnCreated` | `void OnCreated()` |
 | `IOnBeforeMount` | `void OnBeforeMount()` |
 | `IOnMounted` | `void OnMounted()` |
 | `IOnBeforeUpdate` | `void OnBeforeUpdate()` |
@@ -91,6 +93,14 @@ Both schedule via `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`.
 | `IOnActivated` | `void OnActivated()` |
 | `IOnDeactivated` | `void OnDeactivated()` |
 | `IOnErrorCaptured` | `bool OnErrorCaptured(Exception exception)` - return `true` to mark handled. |
+
+Async counterparts (see [Async hooks](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#async-hooks)
+in the README) - every hook above except `IOnBeforeUpdate`/`IOnUpdated`/`IOnErrorCaptured`,
+each returning `Task` instead of `void`, purely additive, fired but never awaited:
+`IOnBeforeCreateAsync`, `IOnCreatedAsync`, `IOnBeforeMountAsync`, `IOnMountedAsync`,
+`IOnBeforeUnmountAsync`, `IOnUnmountedAsync`, `IOnActivatedAsync`, `IOnDeactivatedAsync`.
+A faulted `*Async` hook rethrows through the element's `Dispatcher`, which is exactly how
+an unhandled exception already reaches `IOnErrorCaptured` - no separate async error hook.
 
 See [Lifecycle Hooks](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#lifecycle-hooks)
 in the README for exactly what triggers each one.
@@ -204,6 +214,11 @@ public class Expr : MarkupExtension
 
 - **`Expr()`** / **`Expr(string expression)`** (positional, `{aq:Expr 'a > b'}`)
 - **`Expression`** (`string?`, `[ConstructorArgument("expression")]`)
+- **`static ThrowOnUnresolvedIdentifiers`** (`bool`, default `false`) - when `true`, an
+  unresolved identifier (typo'd property name) throws `InvalidOperationException` naming
+  it, instead of silently evaluating as `DependencyProperty.UnsetValue` (the same fallback
+  a plain `{Binding TypoPath}` produces). Set once during app startup; does not affect
+  `Evaluate`, which already always throws for this.
 - **`ProvideValue(IServiceProvider)`** → `object` - parses `Expression` and returns a
   `MultiBinding` (one child `Binding` per distinct identifier referenced) wired to an
   internal evaluator converter.
@@ -216,11 +231,15 @@ public class Expr : MarkupExtension
   (ordinary null propagation, not an error).
 
 Grammar: `>` `>=` `<` `<=` `==` `!=` `&&` `||` `!` `+` `-` `*` `/` `? :` (ternary,
-right-associative) and parentheses, over number/string/`true`/`false` literals and
-identifiers, all arithmetic evaluated as `double`. An identifier prefixed with `#`
-(`#ElementName.Path`) resolves via `Binding.ElementName` in the reactive path instead of
-`DataContext`. See the [README](README.md#expr---conditional-expressions) for the full
-grammar table, enum-comparison rules, element-reference details, and XAML quoting notes.
+right-associative) and parentheses, over number/string/`true`/`false`/`null` literals and
+identifiers, all arithmetic evaluated as `double`. `==`/`!=` work over any object type
+(via `object.Equals`, once numeric coercion/enum handling don't apply) - not just
+primitives - so null-checks (`SelectedOrder != null`) and arbitrary object comparisons
+both work; `> >= < <=` remain numbers-or-same-type-`IComparable` only. An identifier
+prefixed with `#` (`#ElementName.Path`) resolves via `Binding.ElementName` in the reactive
+path instead of `DataContext`. See the [README](README.md#expr---conditional-expressions)
+for the full grammar table, enum-comparison rules, element-reference details, the typo/
+`ThrowOnUnresolvedIdentifiers` tradeoff, and XAML quoting notes.
 
 ### `Suspense` Class
 

@@ -1,0 +1,27 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.ProvideInjectDemoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.dev/aquarius">
+    <StackPanel Margin="12">
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   Text="ThemeColor is provided once on this window's root Grid. The swatch below reads it via {aq:Inject ThemeColor}, nested a few GroupBoxes/Borders deep - no intermediate DataContext had to forward it." />
+        <Button HorizontalAlignment="Left"
+                Margin="0,0,0,8"
+                Content="Cycle theme color"
+                Command="{Binding CycleThemeColorCommand}" />
+        <GroupBox Header="nested">
+            <Border Padding="8">
+                <GroupBox Header="nested again">
+                    <Border Background="{aq:Inject ThemeColor}"
+                            Padding="16"
+                            CornerRadius="4">
+                        <TextBlock Text="Injected background color"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center" />
+                    </Border>
+                </GroupBox>
+            </Border>
+        </GroupBox>
+    </StackPanel>
+</UserControl>

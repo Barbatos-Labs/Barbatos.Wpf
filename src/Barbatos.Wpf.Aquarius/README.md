@@ -184,7 +184,8 @@ normalize away.
 
 ## Lifecycle Hooks
 
-`Barbatos.Wpf.Composition` - `Lifecycle.Enable` + nine `IOnXxx` interfaces.
+`Barbatos.Wpf.Composition` - `Lifecycle.Enable` + eleven `IOnXxx` interfaces (plus eight
+more `IOnXxxAsync` counterparts - see [below](#async-hooks)).
 
 Vue's Composition API hooks run inside a component's `setup()`; the WPF/MVVM analogue of
 `setup()` is the ViewModel. Each hook is its own tiny interface, so a ViewModel opts into
@@ -207,18 +208,28 @@ interface with a plain `is` pattern.
 
 | Interface | Fires on... | Vue equivalent |
 | --- | --- | --- |
+| `IOnBeforeCreate` | Same first opportunity as `IOnBeforeMount` below, one step before it | `beforeCreate` |
+| `IOnCreated` | Immediately after `IOnBeforeCreate` - nothing observable happens between them in this port | `created` |
 | `IOnBeforeMount` | `Initialized` (or, if `DataContext` wasn't bound yet at that point - the common case when it's set by the parent - as a guaranteed fallback right before `IOnMounted`) | `onBeforeMount` |
 | `IOnMounted` | `Loaded` | `onMounted` |
 | `IOnBeforeUpdate` | The first `PropertyChanged` from `DataContext` in a new update batch (synchronous) | `onBeforeUpdate` |
 | `IOnUpdated` | Once per batch, coalesced through `NextTick` | `onUpdated` |
 | `IOnBeforeUnmount` | `Unloaded`, before `IOnUnmounted` | `onBeforeUnmount` |
 | `IOnUnmounted` | `Unloaded` | `onUnmounted` |
-| `IOnActivated` | Mount, `IsVisible` flipping back to `true` while still mounted, and (additionally) a `Window` regaining focus | `onActivated` (`<KeepAlive>`) |
+| `IOnActivated` | Mount (only if actually visible at that point), `IsVisible` flipping back to `true` while still mounted, and (additionally) a `Window` regaining focus | `onActivated` (`<KeepAlive>`) |
 | `IOnDeactivated` | Unmount, `IsVisible` flipping to `false` while still mounted, and (additionally) a `Window` losing focus | `onDeactivated` (`<KeepAlive>`) |
 | `IOnErrorCaptured` | An unhandled exception reaches the dispatcher while mounted | `onErrorCaptured` |
 
 Notes:
 
+- A ViewModel's constructor has necessarily already run by the time it can be observed as
+  a `DataContext` at all - there's no WPF equivalent of hooking in earlier than that - so
+  `IOnBeforeCreate`/`IOnCreated` fire back to back, right before `IOnBeforeMount`, rather
+  than at any earlier, truer "construction" moment.
+- Every hook here follows the element's own mount/unmount cycle, not "once per ViewModel
+  object": if the same ViewModel instance is remounted (e.g. behind an `<aq:If>` that
+  toggles back), `IOnBeforeCreate`/`IOnCreated`/`IOnBeforeMount` all fire again too - none
+  of them are "only the first time this object is ever seen."
 - WPF raises one `Unloaded` event where Vue has two distinct moments -
   `IOnBeforeUnmount`/`IOnUnmounted` both fire from it, back to back.
 - `IOnUpdated`'s batching is real, not just a name: several synchronous property changes
@@ -230,12 +241,73 @@ Notes:
   propagating, chosen so it behaves the way every other "did you handle this" callback in
   WPF already does.
 - `IOnActivated`/`IOnDeactivated` are what makes ["KeepAlive"](#keepalive) work below -
-  see that section for why there's no separate `KeepAlive` control.
+  see that section for why there's no separate `KeepAlive` control, and why it matters
+  that mount only reports activated when the element is genuinely visible (content that
+  mounts already-hidden, like a background TabControl tab, must not falsely claim to be
+  activated - see that section for why).
 
 `If` ([below](#if-v-if)) genuinely detaches/reattaches its content from the visual tree,
 so a `Lifecycle.Enable`'d child behind an `<aq:If>` really does receive
 `IOnUnmounted`/`IOnMounted` calls as the condition toggles - the same way Vue actually
 destroys and recreates a `v-if` subtree.
+
+### Async hooks
+
+Every hook above except `IOnBeforeUpdate`/`IOnUpdated` has an `*Async` counterpart -
+`IOnBeforeCreateAsync`, `IOnCreatedAsync`, `IOnBeforeMountAsync`, `IOnMountedAsync`,
+`IOnBeforeUnmountAsync`, `IOnUnmountedAsync`, `IOnActivatedAsync`, `IOnDeactivatedAsync` -
+returning `Task` instead of `void`, purely additive alongside the sync ones (implement
+whichever fits; there's no reason to implement both for the same hook). The obvious use
+case is loading data on mount:
+
+```csharp
+public sealed partial class DashboardViewModel : ObservableObject, IOnMountedAsync
+{
+    [ObservableProperty] private bool _isPending = true;
+    [ObservableProperty] private DashboardData? _data;
+
+    public async Task OnMountedAsync()
+    {
+        IsPending = true;
+        try { Data = await _api.FetchDashboardAsync(); }
+        finally { IsPending = false; }
+    }
+}
+```
+```xml
+<aq:Suspense IsPending="{Binding IsPending}">
+    <local:DashboardView />
+    <aq:Suspense.Fallback>
+        <TextBlock Text="Loading..." />
+    </aq:Suspense.Fallback>
+</aq:Suspense>
+```
+
+No changes to `Suspense` itself were needed for this - `OnMountedAsync` toggling a plain
+`bool` property and `Suspense.IsPending` binding to it already compose on their own.
+
+A few rules distinguish these from a naive `async void OnMounted()`, which is exactly what
+this exists to avoid (an unobservable, uncatchable fire-and-forget with no way to route a
+failure anywhere):
+
+- **Fires at the same point as its sync counterpart, in the same call order - but is never
+  awaited.** A slow `OnMountedAsync` does not delay `OnActivated`, a later remount, or
+  anything else - Vue itself does not wait for an async lifecycle callback to resolve
+  before continuing either.
+- **Returns `Task`, not `ValueTask`.** Each hook fires at most once per mount/unmount/etc.,
+  never in a tight loop, so there's no allocation worth saving - `ValueTask` would only add
+  sharp edges (can't be awaited twice, can't be inspected once it's already been awaited)
+  for no benefit here.
+- **A fault is never silently dropped.** `Lifecycle` observes the returned `Task` and, if
+  it faults, rethrows the exception onto the element's own `Dispatcher` - the same route an
+  ordinary unhandled exception already takes to reach `IOnErrorCaptured` above. There is no
+  separate async error hook; a failure from any `*Async` hook surfaces through that same,
+  already-existing mechanism.
+- **No async counterpart for `IOnBeforeUpdate`/`IOnUpdated`** (tied to synchronous,
+  single-batch `NextTick` coalescing - an async hook firing partway through wouldn't
+  compose with that) **or `IOnErrorCaptured`** (its `bool` return has to decide `Handled`
+  synchronously, before the dispatcher's own exception handling moves on - there's no
+  "await, then decide" version of that contract).
 
 ---
 
@@ -332,9 +404,8 @@ since it wasn't asked for.
 A plain WPF `Binding` path has no expression language - `Comparisons` above covers the
 simplest single-value cases, but there was no way to write something like `a + b >= c`
 directly in XAML at all. `Expr` parses and reactively evaluates a small expression
-grammar over primitive-typed bound properties (identifiers resolve as ordinary property
-paths against the ambient `DataContext`, dotted paths like `Order.Total` work same as a
-plain `{Binding}`):
+grammar over bound properties (identifiers resolve as ordinary property paths against the
+ambient `DataContext`, dotted paths like `Order.Total` work same as a plain `{Binding}`):
 
 | Category | Operators / forms |
 | --- | --- |
@@ -342,7 +413,18 @@ plain `{Binding}`):
 | Logical (short-circuiting) | `&& \|\| !` |
 | Arithmetic | `+ - * /` and parentheses, all evaluated as `double` |
 | Ternary, right-associative | `condition ? whenTrue : whenFalse` (only the taken branch runs) |
-| Literals | numbers (`1`, `2.5`), strings (`"Hello World"`), lowercase `true`/`false` |
+| Literals | numbers (`1`, `2.5`), strings (`"Hello World"`), lowercase `true`/`false`/`null` |
+
+**Object types, not just primitives**: `==`/`!=` work over any object type - once the
+numeric-coercion and enum cases below don't apply, two operands compare via
+`object.Equals(object, object)` (reference equality unless the type overrides it), so
+`SomeOrder == OtherOrder` and null-checks like `SelectedOrder != null` both just work.
+`> >= < <=` still only support numbers or two same-concrete-type `IComparable` values -
+there's no general ordering for arbitrary objects.
+
+```xml
+<Border aq:Directives.Show="{aq:Expr 'SelectedOrder != null'}">
+```
 
 **Enum comparison** goes through the string form rather than a bare `EnumType.Member`
 literal: `Status == "Active"` compares an enum-typed `Status` against the member name via
@@ -367,12 +449,25 @@ comes up for. `Expr.Evaluate(string, object?)` (below) cannot resolve `#` identi
 all - there's no visual tree to search outside a real XAML load - and throws clearly if one
 appears.
 
-**Deliberately out of scope** (primitives only): string concatenation via `+` (both
-consumers this was built for - `If.Condition`/`Directives.Show` - are booleans; use
-`StringFormat` or multiple `Run`s to build display text instead), `RelativeSource`
-identifiers (see above), method calls, and indexers. For anything beyond this grammar, a
-`Computed<T>` in the ViewModel remains the right answer, same as Vue's own guidance to
-move non-trivial template expressions into a computed property.
+**Deliberately out of scope**: string concatenation via `+` (both consumers this was built
+for - `If.Condition`/`Directives.Show` - are booleans; use `StringFormat` or multiple
+`Run`s to build display text instead), `RelativeSource` identifiers (see above), method
+calls, and indexers. For anything beyond this grammar, a `Computed<T>` in the ViewModel
+remains the right answer, same as Vue's own guidance to move non-trivial template
+expressions into a computed property.
+
+**Typos are the real risk of a grammar living inside a XAML string**: no XAML editor can
+syntax-highlight, IntelliSense, or rename-refactor an identifier that only this parser
+understands, so renaming a ViewModel property silently stops an `Expr` string from
+matching it - no compiler error, nothing red-squiggled. By default an unresolved
+identifier fails exactly the way a plain `{Binding TypoPath}` already does (evaluates as
+`DependencyProperty.UnsetValue`, "fails open" - `If`/`Directives.Show` both default to
+showing content on an unresolved binding). Set `Expr.ThrowOnUnresolvedIdentifiers = true`
+once during app startup (e.g. wrapped in `#if DEBUG`) to turn that into an immediate,
+specific exception instead - naming exactly which identifier didn't resolve. There is no
+way to get real IDE syntax highlighting/IntelliSense for the expression text itself
+without a custom XAML language-service extension, which is a much bigger, IDE-specific
+undertaking outside this library's scope.
 
 **XAML quoting**: since the whole markup extension already sits inside a double-quoted XML
 attribute, a string literal inside the expression needs its quotes written as `&quot;` (an
@@ -909,14 +1004,20 @@ recognized, no new API was the right answer.
 
 Vue's `<KeepAlive>` caches component instances across dynamic-component switching so
 inactive state isn't lost, with `onActivated`/`onDeactivated` firing on cache-in/
-cache-out. A plain WPF `TabControl` (or several siblings toggled via
-[`Directives.Show`](#directivesshow-v-show)) **already never destroys inactive
-content** - unlike Vue, WPF's default *is* keep-alive. There's no cache to build. The
-actual gap was narrower: [`IOnActivated`/`IOnDeactivated`](#lifecycle-hooks) not firing
-for a hidden-but-alive tab - which is exactly what those two hooks' `IsVisible` wiring
-above is for. So: "KeepAlive" in Aquarius is a hidden-header `TabControl` or
-`Directives.Show`-toggled siblings, plus `Lifecycle.Enable`'s
-`IOnActivated`/`IOnDeactivated` - not a control to reach for.
+cache-out, and no unmount/remount at all. Only one native WPF pattern actually delivers
+that - the others look plausible but were confirmed, by actually running it, to
+genuinely destroy and recreate content instead:
+
+| Pattern | Actually keep-alive? |
+| --- | --- |
+| Several siblings toggled via [`Directives.Show`](#directivesshow-v-show), all present in the tree from the start | **Yes** - confirmed: only `IOnActivated`/`IOnDeactivated` ever fire, never `IOnUnmounted`/`IOnMounted`, no matter how many times you switch back and forth. |
+| A plain `TabControl` | **No** - every tab's content genuinely loads up front (confirmed via `IsLoaded`), but the moment you switch *away* from any tab, its content is for-real unloaded; switching back is a fresh mount, not a resume. The "never destroys" impression only holds for the initial render, before anything has been clicked. |
+| `Frame`/`Page` navigation | **No**, regardless of `Page.KeepAlive` - confirmed identical unmount/remount behavior with that flag either `true` or `false`. It governs journal/state retention for URI-based navigation, not whether content stays mounted. |
+
+So: "KeepAlive" in Aquarius is `Directives.Show`-toggled siblings plus `Lifecycle.Enable`'s
+`IOnActivated`/`IOnDeactivated` - specifically *not* `TabControl` or `Frame`, despite how
+native and tempting those look for a "switch between views" UI. See `KeepAliveTests.cs`
+in the test project for the exact hook sequences each pattern produces.
 
 ### Scoped slots for lists
 

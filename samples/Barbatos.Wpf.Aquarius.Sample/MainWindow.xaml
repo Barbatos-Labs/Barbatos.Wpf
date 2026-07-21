@@ -6,12 +6,11 @@
         xmlns:local="clr-namespace:Barbatos.Wpf.Aquarius.Sample"
         xmlns:aq="http://schemas.barbatos.dev/aquarius"
         mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=local:MainViewModel}"
         Title="Barbatos.Wpf.Aquarius Sample"
         Height="900"
         Width="640">
     <Window.Resources>
-        <local:FocusDirective x:Key="AutoFocus" />
-
         <Storyboard x:Key="FadeSlideIn">
             <DoubleAnimation Storyboard.TargetProperty="Opacity"
                               From="0" To="1" Duration="0:0:0.25" />
@@ -24,452 +23,80 @@
             <DoubleAnimation Storyboard.TargetProperty="Opacity"
                               From="0" To="1" Duration="0:0:0.4" />
         </Storyboard>
-
-        <!-- Directives.Class targets: each token in the bound string is looked up as one of these. -->
-        <Style x:Key="status-normal" TargetType="Border">
-            <Setter Property="Background" Value="#E5F7E5" />
-            <Setter Property="BorderBrush" Value="#4CAF50" />
-            <Setter Property="BorderThickness" Value="2" />
-        </Style>
-        <Style x:Key="status-warning" TargetType="Border">
-            <Setter Property="Background" Value="#FFF6E0" />
-            <Setter Property="BorderBrush" Value="#FFA000" />
-            <Setter Property="BorderThickness" Value="2" />
-        </Style>
-        <Style x:Key="status-error" TargetType="Border">
-            <Setter Property="Background" Value="#FCE4E4" />
-            <Setter Property="BorderBrush" Value="#D32F2F" />
-            <Setter Property="BorderThickness" Value="2" />
-        </Style>
-
-        <!-- Card's own ControlTemplate - a component author picks named slots back out of
-             whatever the consumer supplied, with SlotProvided skipping each wrapper Border
-             entirely when that slot wasn't used (Vue's own Conditional Slots pattern). -->
-        <Style TargetType="{x:Type local:Card}">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type local:Card}">
-                        <Border BorderBrush="Gray"
-                                BorderThickness="1"
-                                CornerRadius="4">
-                            <StackPanel>
-                                <aq:If Condition="{aq:SlotProvided header}">
-                                    <Border Background="#F0F0F0"
-                                            Padding="8">
-                                        <ContentPresenter Content="{aq:SlotContent header}" />
-                                    </Border>
-                                </aq:If>
-                                <aq:If Condition="{aq:SlotProvided}">
-                                    <Border Padding="8">
-                                        <ContentPresenter Content="{aq:SlotContent}" />
-                                    </Border>
-                                </aq:If>
-                                <aq:If Condition="{aq:SlotProvided footer}">
-                                    <Border Background="#F0F0F0"
-                                            Padding="8">
-                                        <ContentPresenter Content="{aq:SlotContent footer}" />
-                                    </Border>
-                                </aq:If>
-                            </StackPanel>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
 
+    <!--
+        Each tab below is a fully self-contained View+ViewModel pair (see e.g.
+        ReactivityDemoView/ReactivityDemoViewModel) - this shell only wires each one's
+        DataContext to its own property on MainViewModel and hosts the two things that
+        genuinely need to live above every tab: the shared activity log, and the Teleport
+        "Overlay" host (so a toast pinned there isn't clipped by whichever tab is selected).
+    -->
     <Grid aq:Provide.Key="ThemeColor"
-          aq:Provide.Value="{Binding ThemeColor.Value}">
-        <ScrollViewer Padding="16"
-                      VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <TextBlock TextWrapping="Wrap"
-                           FontWeight="Bold"
-                           FontSize="16"
-                           Margin="0,0,0,12"
-                           Text="Barbatos.Wpf.Aquarius - Vue.js concepts for WPF" />
+          aq:Provide.Value="{Binding ProvideInjectDemo.ThemeColor.Value}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-                <GroupBox Header="1. Reactivity - Ref&lt;T&gt;, Computed&lt;T&gt; (incl. writable), Watch"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,0,0,8">
-                            <Button Content="Increment"
-                                    Margin="0,0,12,0"
-                                    Command="{Binding IncrementCommand}" />
-                            <TextBlock VerticalAlignment="Center"
-                                       Margin="0,0,16,0"
-                                       Text="{Binding Count.Value, StringFormat='Count: {0}'}" />
-                            <TextBlock VerticalAlignment="Center"
-                                       Text="{Binding Doubled.Value, StringFormat='Doubled (computed): {0}'}" />
-                        </StackPanel>
+        <TabControl Grid.Row="0"
+                    Margin="8">
+            <TabItem Header="Reactivity">
+                <local:ReactivityDemoView DataContext="{Binding ReactivityDemo}" />
+            </TabItem>
 
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="Writable computed - editing Full Name splits back into First/Last, editing either name updates Full Name:" />
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,4,0,0">
-                            <TextBox Width="90"
-                                     aq:Directives.Model="{Binding FirstName}" />
-                            <TextBox Width="110"
-                                     Margin="4,0,0,0"
-                                     aq:Directives.Model="{Binding LastName}" />
-                            <TextBlock Text="-&gt;"
-                                       Margin="8,0"
-                                       VerticalAlignment="Center" />
-                            <TextBox Width="180"
-                                     aq:Directives.Model="{Binding FullName.Value}" />
-                        </StackPanel>
-                    </StackPanel>
-                </GroupBox>
+            <TabItem Header="Lifecycle">
+                <StackPanel Margin="12">
+                    <TextBlock TextWrapping="Wrap"
+                               Margin="0,0,0,8"
+                               Text="Toggling mounts/unmounts (and now animates) the child - see the activity log below." />
+                    <Button HorizontalAlignment="Left"
+                            Content="Toggle lifecycle demo"
+                            Command="{Binding ToggleLifecycleDemoCommand}" />
+                    <aq:Transition Show="{Binding ShowLifecycleDemo}"
+                                   Enter="{StaticResource FadeSlideIn}"
+                                   Leave="{StaticResource FadeSlideOut}">
+                        <local:LifecycleDemoView DataContext="{Binding LifecycleDemo}" />
+                    </aq:Transition>
+                </StackPanel>
+            </TabItem>
 
-                <GroupBox Header="2. Lifecycle hooks + Transition - toggling mounts/unmounts (and now animates) the child"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <Button HorizontalAlignment="Left"
-                                Content="Toggle lifecycle demo"
-                                Command="{Binding ToggleLifecycleDemoCommand}" />
-                        <aq:Transition Show="{Binding ShowLifecycleDemo}"
-                                       Enter="{StaticResource FadeSlideIn}"
-                                       Leave="{StaticResource FadeSlideOut}">
-                            <local:LifecycleDemoView DataContext="{Binding LifecycleDemo}" />
-                        </aq:Transition>
-                    </StackPanel>
-                </GroupBox>
+            <TabItem Header="Directives">
+                <local:DirectivesDemoView DataContext="{Binding DirectivesDemo}" />
+            </TabItem>
 
-                <GroupBox Header="3. Directives - Model, Show, Event (+modifiers), custom (v-focus)"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="Directives.Model (v-model sugar: two-way + UpdateSourceTrigger=PropertyChanged), also auto-focused via Directives.Use (v-focus):" />
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,4,0,12">
-                            <TextBox Width="180"
-                                     aq:Directives.Model="{Binding Name}"
-                                     aq:Directives.Use="{StaticResource AutoFocus}" />
-                            <TextBlock VerticalAlignment="Center"
-                                       Margin="8,0,0,0"
-                                       Text="{Binding Name, StringFormat='-> Hello, {0}!'}" />
-                        </StackPanel>
+            <TabItem Header="Teleport">
+                <local:TeleportDemoView DataContext="{Binding TeleportDemo}" />
+            </TabItem>
 
-                        <CheckBox Margin="0,0,0,4"
-                                  Content="Directives.Show target visible"
-                                  IsChecked="{Binding ShowPanel}" />
-                        <Border Background="#FFEFD5"
-                                Padding="8"
-                                Margin="0,0,0,12"
-                                aq:Directives.Show="{Binding ShowPanel}">
-                            <TextBlock Text="Toggled via aq:Directives.Show (Visibility.Collapsed when false)." />
-                        </Border>
+            <TabItem Header="Provide / Inject">
+                <local:ProvideInjectDemoView DataContext="{Binding ProvideInjectDemo}" />
+            </TabItem>
 
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="Directives.Event + Directives.Command (generic v-on: Border has no built-in Command) with .stop/.prevent modifiers:" />
-                        <Border Background="#E0E7FF"
-                                Padding="12"
-                                Margin="0,4,0,12"
-                                Cursor="Hand"
-                                aq:Directives.Event="MouseLeftButtonDown"
-                                aq:Directives.Command="{Binding BorderClickedCommand}"
-                                aq:Directives.Modifiers="stop,prevent">
-                            <TextBlock Text="Click this border (see log below)" />
-                        </Border>
+            <TabItem Header="Suspense">
+                <local:SuspenseDemoView DataContext="{Binding SuspenseDemo}" />
+            </TabItem>
 
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="Key-alias modifier - press Enter in this box (Directives.Modifiers=&quot;enter&quot;):" />
-                        <TextBox Width="220"
-                                 Margin="0,4,0,0"
-                                 HorizontalAlignment="Left"
-                                 aq:Directives.Event="KeyDown"
-                                 aq:Directives.Command="{Binding EnterPressedCommand}"
-                                 aq:Directives.Modifiers="enter" />
+            <TabItem Header="Slots">
+                <local:SlotsDemoView DataContext="{Binding SlotsDemo}" />
+            </TabItem>
 
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,12,0,0"
-                                   Text="BuildConfiguration.IsDebug - XAML has no #if DEBUG, so this reads the entry assembly's build config instead. This button only exists when the Sample is built Debug:" />
-                        <Button HorizontalAlignment="Left"
-                                Margin="0,4,0,0"
-                                Content="Reset local cache (debug only)"
-                                Command="{Binding ResetCacheCommand}"
-                                aq:Directives.Show="{x:Static aq:BuildConfiguration.IsDebug}" />
-                    </StackPanel>
-                </GroupBox>
+            <TabItem Header="Expr">
+                <local:ExprDemoView DataContext="{Binding ExprDemo}" />
+            </TabItem>
+        </TabControl>
 
-                <GroupBox Header="4. Teleport - escapes nested layout/clipping"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,8"
-                                   Text="The toast below is declared inside a clipped, fixed-height box, but Teleport renders it pinned at the window's top-right corner." />
-                        <Button HorizontalAlignment="Left"
-                                Content="Toggle toast"
-                                Command="{Binding ToggleToastCommand}" />
-                        <Border BorderBrush="Gray"
-                                BorderThickness="1"
-                                Height="70"
-                                ClipToBounds="True"
-                                Margin="0,8,0,0">
-                            <GroupBox Header="deeply nested + clipped">
-                                <Border>
-                                    <aq:If Condition="{Binding ShowToast}">
-                                        <aq:Teleport To="Overlay">
-                                            <local:ToastView />
-                                        </aq:Teleport>
-                                    </aq:If>
-                                </Border>
-                            </GroupBox>
-                        </Border>
-                    </StackPanel>
-                </GroupBox>
+        <GroupBox Grid.Row="1"
+                  Header="Activity log (each new entry fades in via TransitionGroup.Enter)"
+                  Margin="8,0,8,8">
+            <ListBox Height="140"
+                     ItemsSource="{Binding ActivityLog}"
+                     VirtualizingPanel.IsVirtualizing="False"
+                     aq:TransitionGroup.Enter="{StaticResource LogEnter}" />
+        </GroupBox>
 
-                <GroupBox Header="5. Provide / Inject - no prop-drilling through every DataContext"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,8"
-                                   Text="ThemeColor is provided once on this window's root Grid. The swatch below reads it via {aq:Inject ThemeColor}, nested a few GroupBoxes/Borders deep - no intermediate DataContext had to forward it." />
-                        <Button HorizontalAlignment="Left"
-                                Margin="0,0,0,8"
-                                Content="Cycle theme color"
-                                Command="{Binding CycleThemeColorCommand}" />
-                        <GroupBox Header="nested">
-                            <Border Padding="8">
-                                <GroupBox Header="nested again">
-                                    <Border Background="{aq:Inject ThemeColor}"
-                                            Padding="16"
-                                            CornerRadius="4">
-                                        <TextBlock Text="Injected background color"
-                                                   Foreground="White"
-                                                   HorizontalAlignment="Center" />
-                                    </Border>
-                                </GroupBox>
-                            </Border>
-                        </GroupBox>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="6. Directives.Class / Directives.Style - a lighter DataTrigger"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="Directives.Class merges a named Style's setters onto the element instead of needing a DataTrigger:" />
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,4,0,12">
-                            <Button Content="Cycle status"
-                                    Margin="0,0,12,0"
-                                    Command="{Binding CycleStatusCommand}" />
-                            <Border Padding="8"
-                                    aq:Directives.Class="{Binding StatusClass.Value}">
-                                <TextBlock Text="{Binding StatusClass.Value}" />
-                            </Border>
-                        </StackPanel>
-
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="Directives.Style applies a property-name/value dictionary directly - drag to resize this text:" />
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,4,0,12">
-                            <Slider Width="180"
-                                    Minimum="10"
-                                    Maximum="36"
-                                    aq:Directives.Model="{Binding PreviewFontSize.Value}" />
-                            <TextBlock Margin="12,0,0,0"
-                                       Text="Resizable text"
-                                       aq:Directives.Style="{Binding PreviewStyle.Value}" />
-                        </StackPanel>
-
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="Comparisons.Not - visible only when the Directives.Show target above (section 3) is hidden:" />
-                        <Border Background="#E5E5FF"
-                                Padding="8"
-                                Margin="0,4,0,0"
-                                aq:Directives.Show="{Binding ShowPanel, Converter={x:Static aq:Comparisons.Not}}">
-                            <TextBlock Text="Shown via Comparisons.Not(ShowPanel)" />
-                        </Border>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="7. Suspense - fallback content while loading"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <Button HorizontalAlignment="Left"
-                                Margin="0,0,0,8"
-                                Content="Simulate load (1.5s)"
-                                Command="{Binding SimulateLoadCommand}" />
-                        <aq:Suspense IsPending="{Binding IsLoadingDashboard}">
-                            <Border Background="#E5F7E5"
-                                    Padding="12">
-                                <TextBlock Text="Dashboard content, resolved." />
-                            </Border>
-                            <aq:Suspense.Fallback>
-                                <Border Background="#FFF6E0"
-                                        Padding="12">
-                                    <TextBlock Text="Loading..." />
-                                </Border>
-                            </aq:Suspense.Fallback>
-                        </aq:Suspense>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="8. Slots - free-form named (aq:Slot) and list-scoped (ItemsControl.ItemTemplate)"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,4"
-                                   Text="Card derives from SlotHost - header/footer are free-form named slots (no DependencyProperty declared per name), each skipped entirely via SlotProvided+If when not supplied:" />
-                        <local:Card Margin="0,0,0,12">
-                            <aq:Slot Name="header">
-                                <TextBlock Text="Here might be a page title"
-                                           FontWeight="Bold" />
-                            </aq:Slot>
-
-                            <TextBlock Text="A paragraph for the main content - the default slot, no aq:Slot wrapper needed."
-                                       TextWrapping="Wrap" />
-
-                            <aq:Slot Name="footer">
-                                <TextBlock Text="Here's some contact info"
-                                           FontStyle="Italic" />
-                            </aq:Slot>
-                        </local:Card>
-
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,8"
-                                   Text="Posts is just fetched data; this ItemTemplate is entirely consumer-styled - the same &quot;scoped slot passes data back to the parent's template&quot; idea Vue's FancyList docs example demonstrates. This is the repeated-list case, deliberately not unified with aq:Slot above - a Slot holds one already-realized element, a DataTemplate is re-instantiated per item." />
-                        <ItemsControl ItemsSource="{Binding Posts}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#F5F5F5"
-                                            Padding="8"
-                                            Margin="0,0,0,4"
-                                            CornerRadius="4">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Body}"
-                                                       TextWrapping="Wrap" />
-                                            <TextBlock Margin="0,4,0,0"
-                                                       FontStyle="Italic"
-                                                       Opacity="0.7">
-                                                <Run Text="by " /><Run Text="{Binding Username}" /><Run Text=" &#183; " /><Run Text="{Binding Likes}" /><Run Text=" likes" />
-                                            </TextBlock>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="9. Teleport for dockable panels - the same primitive as section 4, extended"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,8"
-                                   Text="Undock opens a real second Window with its own registered host; retargeting the same Teleport moves the panel there and back, keeping whatever you typed. Try closing the floating window with its own [X] instead of clicking Redock - TeleportHost.HostUnregistered still brings it home automatically." />
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,0,0,8">
-                            <Button Content="Undock"
-                                    Margin="0,0,8,0"
-                                    Command="{Binding UndockCommand}" />
-                            <Button Content="Redock"
-                                    Command="{Binding RedockCommand}" />
-                        </StackPanel>
-
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,4"
-                                   FontStyle="Italic"
-                                   Text="Docked home slot (empty while undocked):" />
-                        <Border BorderBrush="Gray"
-                                BorderThickness="1"
-                                MinHeight="70"
-                                Padding="4">
-                            <Grid aq:TeleportHost.RegisterHost="MainDock" />
-                        </Border>
-
-                        <aq:Teleport To="{Binding DockTarget.Value}">
-                            <Border Background="#E0F0FF"
-                                    Padding="8"
-                                    Margin="0,8,0,0">
-                                <StackPanel>
-                                    <TextBlock TextWrapping="Wrap"
-                                               Text="Dockable panel content - same TextBox instance the whole time:" />
-                                    <TextBox Margin="0,4,0,0"
-                                             aq:Directives.Model="{Binding DockableNotes}" />
-                                </StackPanel>
-                            </Border>
-                        </aq:Teleport>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="10. Expr - conditional expressions, and If / Else / Else-if"
-                          Margin="0,0,0,12">
-                    <StackPanel Margin="4">
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,8"
-                                   Text="Directives.Show driven by an Expr instead of a converter - visible only once Count (section 1) is above 5:" />
-                        <Border Background="#E5F7E5"
-                                Padding="8"
-                                Margin="0,0,0,12"
-                                aq:Directives.Show="{aq:Expr 'Count.Value > 5'}">
-                            <TextBlock Text="Count.Value &gt; 5" />
-                        </Border>
-
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,0,0,4"
-                                   Text="If / Else-if / Else - each branch below is its own aq:If, nested inside the previous one's aq:If.Else. StatusIndex (the same value section 6 cycles) decides which one is currently mounted - only ever exactly one of the three TextBlocks below actually exists in the tree at a time:" />
-                        <StackPanel Orientation="Horizontal"
-                                    Margin="0,0,0,8">
-                            <Button Content="Cycle status"
-                                    Margin="0,0,12,0"
-                                    Command="{Binding CycleStatusCommand}" />
-                            <TextBlock VerticalAlignment="Center"
-                                       FontWeight="Bold"
-                                       Text="{Binding StatusIndex, StringFormat='StatusIndex = {0}'}" />
-                        </StackPanel>
-                        <aq:If Condition="{aq:Expr 'StatusIndex == 0'}">
-                            <TextBlock Foreground="Green">
-                                <Run Text="[IF StatusIndex == 0]" FontWeight="Bold" /><Run Text=" -&gt; Normal" />
-                            </TextBlock>
-                            <aq:If.Else>
-                                <aq:If Condition="{aq:Expr 'StatusIndex == 1'}">
-                                    <TextBlock Foreground="DarkOrange">
-                                        <Run Text="[ELSE-IF StatusIndex == 1]" FontWeight="Bold" /><Run Text=" -&gt; Warning" />
-                                    </TextBlock>
-                                    <aq:If.Else>
-                                        <TextBlock Foreground="Red">
-                                            <Run Text="[ELSE]" FontWeight="Bold" /><Run Text=" -&gt; Error" />
-                                        </TextBlock>
-                                    </aq:If.Else>
-                                </aq:If>
-                            </aq:If.Else>
-                        </aq:If>
-
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,12,0,4"
-                                   Text="Ternary feeding a TextBlock.Text directly - Expr isn't limited to If/Show, it's a plain MultiBinding underneath:" />
-                        <TextBlock Text="{aq:Expr 'ShowPanel ? &quot;Panel is visible (section 3)&quot; : &quot;Panel is hidden (section 3)&quot;'}" />
-
-                        <TextBlock TextWrapping="Wrap"
-                                   Margin="0,8,0,4"
-                                   Text="Element-referenced identifier (#Name.Path) - binds to a named element instead of DataContext:" />
-                        <StackPanel Orientation="Horizontal">
-                            <Slider x:Name="ExprDemoSlider"
-                                    Width="150"
-                                    Minimum="0"
-                                    Maximum="100" />
-                            <TextBlock Margin="12,0,0,0"
-                                       VerticalAlignment="Center"
-                                       Text="Above 50"
-                                       aq:Directives.Show="{aq:Expr '#ExprDemoSlider.Value > 50'}" />
-                        </StackPanel>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="Activity log (each new entry fades in via TransitionGroup.Enter)">
-                    <ListBox Height="160"
-                             ItemsSource="{Binding ActivityLog}"
-                             VirtualizingPanel.IsVirtualizing="False"
-                             aq:TransitionGroup.Enter="{StaticResource LogEnter}" />
-                </GroupBox>
-            </StackPanel>
-        </ScrollViewer>
-
-        <Grid Margin="0,12,12,0"
+        <Grid Grid.RowSpan="2"
+              Margin="0,12,12,0"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch"
               aq:TeleportHost.RegisterHost="Overlay" />

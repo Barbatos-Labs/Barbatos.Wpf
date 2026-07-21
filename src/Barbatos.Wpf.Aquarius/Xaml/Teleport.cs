@@ -25,9 +25,21 @@ namespace Barbatos.Wpf.Xaml;
 /// content declared deep inside some nested layout (and subject to its clipping/z-order)
 /// can still render pinned above everything else. <see cref="Disabled"/> (mirroring
 /// Vue's <c>:disabled</c>) keeps the content local instead. Because the moved element
-/// keeps its object identity, its own bindings/<c>DataContext</c>/
-/// <see cref="Composition.Lifecycle.EnableProperty"/> hooks keep working after the move - it is
-/// still "the same component", just rendered elsewhere.
+/// keeps its object identity, its own state and any binding sourced from an inherited
+/// <c>DataContext</c> that stays the same across the move keep working afterwards - it is
+/// still "the same component" from a plain-C#-object point of view.
+/// <para>
+/// Unlike Vue's own <c>&lt;Teleport&gt;</c>, this does <b>not</b> extend to
+/// <see cref="Composition.Lifecycle.EnableProperty"/> hooks: Vue's virtual-DOM diff decides
+/// a vnode's final location before ever committing it to the real DOM, so a teleported
+/// component's instance is never considered unmounted. WPF has no such pre-commit step -
+/// moving an already-loaded element from one <see cref="Panel"/> to another is a genuine
+/// detach followed by a reattach, so every move (including the very first time content
+/// settles into a host that was already registered when this control loaded) fires a full
+/// <c>OnBeforeUnmount</c>/<c>OnUnmounted</c> then <c>OnBeforeMount</c>/<c>OnMounted</c>
+/// pair, exactly as if the content had been torn down and recreated. See
+/// <c>TeleportTests</c> in the test project for the confirmed hook sequences.
+/// </para>
 /// <para>
 /// This is also the building block for a dockable panel: keep this <see cref="Teleport"/>
 /// declared in one stable place (e.g. the main window) and flip <see cref="To"/> between a

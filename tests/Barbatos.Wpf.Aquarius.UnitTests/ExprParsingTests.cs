@@ -193,6 +193,59 @@ public class ExprParsingTests
     }
 
     [Fact]
+    public void NullLiteralEqualsItself()
+    {
+        Assert.Equal(true, Expr.Evaluate("null == null", null));
+        Assert.Equal(false, Expr.Evaluate("null != null", null));
+    }
+
+    [Fact]
+    public void NullValuedObjectPropertyComparesEqualToTheNullLiteral()
+    {
+        var vm = new ExprTestViewModel(); // Order is null
+
+        Assert.Equal(true, Expr.Evaluate("Order == null", vm));
+        Assert.Equal(false, Expr.Evaluate("Order != null", vm));
+    }
+
+    [Fact]
+    public void NonNullObjectPropertyComparesUnequalToTheNullLiteral()
+    {
+        var vm = new ExprTestViewModel { Order = new ExprTestOrder { Total = 10 } };
+
+        Assert.Equal(false, Expr.Evaluate("Order == null", vm));
+        Assert.Equal(true, Expr.Evaluate("Order != null", vm));
+    }
+
+    [Fact]
+    public void SameObjectReferenceComparesEqualToItself()
+    {
+        var order = new ExprTestOrder { Total = 10 };
+        var vm = new ExprTestViewModel { Order = order };
+
+        // Order == Order - both identifiers share one slot (see RepeatedIdentifierResolvesConsistently),
+        // so this is really "the same reference, compared to itself."
+        Assert.Equal(true, Expr.Evaluate("Order == Order", vm));
+    }
+
+    [Fact]
+    public void TwoDistinctObjectInstancesCompareUnequalRatherThanThrowingOrCoercing()
+    {
+        // ExprTestOrder doesn't override Equals, so two separate instances - even with
+        // identical property values - are unequal by reference, exactly like plain C#
+        // "==" on two non-record class instances. This is the AreEqual fallback path
+        // (Equals(left, right)) for object types generally, not anything special-cased.
+        var vm = new ExprTestViewModel
+        {
+            Order = new ExprTestOrder { Total = 10 },
+            OtherOrder = new ExprTestOrder { Total = 10 },
+        };
+
+        Assert.Equal(false, Expr.Evaluate("Order == OtherOrder", vm));
+        Assert.Equal(true, Expr.Evaluate("Order != OtherOrder", vm));
+    }
+
+    [Fact]
     public void DivisionByZeroYieldsInfinityWithoutThrowing()
     {
         Assert.Equal(double.PositiveInfinity, Expr.Evaluate("1 / 0", null));
