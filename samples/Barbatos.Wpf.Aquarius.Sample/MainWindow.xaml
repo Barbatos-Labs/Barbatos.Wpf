@@ -41,6 +41,41 @@
             <Setter Property="BorderBrush" Value="#D32F2F" />
             <Setter Property="BorderThickness" Value="2" />
         </Style>
+
+        <!-- Card's own ControlTemplate - a component author picks named slots back out of
+             whatever the consumer supplied, with SlotProvided skipping each wrapper Border
+             entirely when that slot wasn't used (Vue's own Conditional Slots pattern). -->
+        <Style TargetType="{x:Type local:Card}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type local:Card}">
+                        <Border BorderBrush="Gray"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                            <StackPanel>
+                                <aq:If Condition="{aq:SlotProvided header}">
+                                    <Border Background="#F0F0F0"
+                                            Padding="8">
+                                        <ContentPresenter Content="{aq:SlotContent header}" />
+                                    </Border>
+                                </aq:If>
+                                <aq:If Condition="{aq:SlotProvided}">
+                                    <Border Padding="8">
+                                        <ContentPresenter Content="{aq:SlotContent}" />
+                                    </Border>
+                                </aq:If>
+                                <aq:If Condition="{aq:SlotProvided footer}">
+                                    <Border Background="#F0F0F0"
+                                            Padding="8">
+                                        <ContentPresenter Content="{aq:SlotContent footer}" />
+                                    </Border>
+                                </aq:If>
+                            </StackPanel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid aq:Provide.Key="ThemeColor"
@@ -273,12 +308,30 @@
                     </StackPanel>
                 </GroupBox>
 
-                <GroupBox Header="8. &quot;Slots&quot; - ItemsControl.ItemTemplate is a scoped slot"
+                <GroupBox Header="8. Slots - free-form named (aq:Slot) and list-scoped (ItemsControl.ItemTemplate)"
                           Margin="0,0,0,12">
                     <StackPanel Margin="4">
                         <TextBlock TextWrapping="Wrap"
+                                   Margin="0,0,0,4"
+                                   Text="Card derives from SlotHost - header/footer are free-form named slots (no DependencyProperty declared per name), each skipped entirely via SlotProvided+If when not supplied:" />
+                        <local:Card Margin="0,0,0,12">
+                            <aq:Slot Name="header">
+                                <TextBlock Text="Here might be a page title"
+                                           FontWeight="Bold" />
+                            </aq:Slot>
+
+                            <TextBlock Text="A paragraph for the main content - the default slot, no aq:Slot wrapper needed."
+                                       TextWrapping="Wrap" />
+
+                            <aq:Slot Name="footer">
+                                <TextBlock Text="Here's some contact info"
+                                           FontStyle="Italic" />
+                            </aq:Slot>
+                        </local:Card>
+
+                        <TextBlock TextWrapping="Wrap"
                                    Margin="0,0,0,8"
-                                   Text="Posts is just fetched data; this ItemTemplate is entirely consumer-styled - the same &quot;scoped slot passes data back to the parent's template&quot; idea Vue's FancyList docs example demonstrates." />
+                                   Text="Posts is just fetched data; this ItemTemplate is entirely consumer-styled - the same &quot;scoped slot passes data back to the parent's template&quot; idea Vue's FancyList docs example demonstrates. This is the repeated-list case, deliberately not unified with aq:Slot above - a Slot holds one already-realized element, a DataTemplate is re-instantiated per item." />
                         <ItemsControl ItemsSource="{Binding Posts}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -358,18 +411,29 @@
 
                         <TextBlock TextWrapping="Wrap"
                                    Margin="0,0,0,4"
-                                   Text="If / Else-if / Else, keyed off the same StatusIndex section 6 cycles - each branch is its own aq:If, nested in the previous one's Else:" />
-                        <Button HorizontalAlignment="Left"
-                                Margin="0,0,0,8"
-                                Content="Cycle status"
-                                Command="{Binding CycleStatusCommand}" />
+                                   Text="If / Else-if / Else - each branch below is its own aq:If, nested inside the previous one's aq:If.Else. StatusIndex (the same value section 6 cycles) decides which one is currently mounted - only ever exactly one of the three TextBlocks below actually exists in the tree at a time:" />
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,0,0,8">
+                            <Button Content="Cycle status"
+                                    Margin="0,0,12,0"
+                                    Command="{Binding CycleStatusCommand}" />
+                            <TextBlock VerticalAlignment="Center"
+                                       FontWeight="Bold"
+                                       Text="{Binding StatusIndex, StringFormat='StatusIndex = {0}'}" />
+                        </StackPanel>
                         <aq:If Condition="{aq:Expr 'StatusIndex == 0'}">
-                            <TextBlock Text="Normal" Foreground="Green" />
+                            <TextBlock Foreground="Green">
+                                <Run Text="[IF StatusIndex == 0]" FontWeight="Bold" /><Run Text=" -&gt; Normal" />
+                            </TextBlock>
                             <aq:If.Else>
                                 <aq:If Condition="{aq:Expr 'StatusIndex == 1'}">
-                                    <TextBlock Text="Warning" Foreground="DarkOrange" />
+                                    <TextBlock Foreground="DarkOrange">
+                                        <Run Text="[ELSE-IF StatusIndex == 1]" FontWeight="Bold" /><Run Text=" -&gt; Warning" />
+                                    </TextBlock>
                                     <aq:If.Else>
-                                        <TextBlock Text="Error" Foreground="Red" />
+                                        <TextBlock Foreground="Red">
+                                            <Run Text="[ELSE]" FontWeight="Bold" /><Run Text=" -&gt; Error" />
+                                        </TextBlock>
                                     </aq:If.Else>
                                 </aq:If>
                             </aq:If.Else>

@@ -25,7 +25,6 @@
     <Using Include="Barbatos.Wpf.Reactivity" />
     <Using Include="Barbatos.Wpf.Composition" />
     <Using Include="Barbatos.Wpf.Xaml" />
-    <Using Include="Barbatos.Wpf.Teleportation" />
     <Using Include="Barbatos.Wpf.Animation" />
   </ItemGroup>
 

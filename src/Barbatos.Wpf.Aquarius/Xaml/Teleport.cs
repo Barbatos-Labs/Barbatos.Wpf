@@ -6,7 +6,7 @@
 using System.Windows;
 using System.Windows.Controls;
 
-namespace Barbatos.Wpf.Teleportation;
+namespace Barbatos.Wpf.Xaml;
 
 /// <summary>
 /// Renders its content into a different part of the visual tree - the Aquarius

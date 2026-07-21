@@ -39,9 +39,10 @@ CommunityToolkit.Mvvm.**
 * **[Transition / TransitionGroup](#transition--transitiongroup)**
 * **[Provide / Inject](#provide--inject)**
 * **[Suspense](#suspense)**
+* **[Slots](#slots)**
 * **[Patterns that are already native](#patterns-that-are-already-native)**
   * ["KeepAlive"](#keepalive)
-  * ["Slots"](#slots)
+  * [Scoped slots for lists](#scoped-slots-for-lists)
 * **[Ecosystem](#ecosystem)**
 * **[API Reference](#api-reference)**
 * **[Community](#community)**
@@ -91,8 +92,8 @@ Everything in this document lives behind a single XAML namespace:
 ```
 
 That one `aq:` prefix reaches every namespace below (`Barbatos.Wpf.Reactivity`,
-`Barbatos.Wpf.Composition`, `Barbatos.Wpf.Xaml`, `Barbatos.Wpf.Teleportation`,
-`Barbatos.Wpf.Animation`) - the same way WPF's own `.../presentation` xmlns quietly spans
+`Barbatos.Wpf.Composition`, `Barbatos.Wpf.Xaml`, `Barbatos.Wpf.Animation`) - the same way
+WPF's own `.../presentation` xmlns quietly spans
 `System.Windows`, `System.Windows.Controls`, etc.
 
 Aquarius has no dependency on Barbatos.Wpf.Core and works in any WPF app - install it
@@ -528,7 +529,7 @@ Not ported - each already has a direct, better-established WPF equivalent:
 
 ## Teleport
 
-`Barbatos.Wpf.Teleportation` - `TeleportHost` + `Teleport`.
+`Barbatos.Wpf.Xaml` - `TeleportHost` + `Teleport`.
 
 ```xml
 <Grid aq:TeleportHost.RegisterHost="Overlay" Panel.ZIndex="100" />
@@ -802,6 +803,103 @@ in, one of two contents out.
 
 ---
 
+## Slots
+
+`Barbatos.Wpf.Xaml` - `Slot`, `SlotHost`, `SlotContent`, `SlotProvided`.
+
+A real port of Vue's `<slot>`/`<slot name="x">` outlets: free-form slot names chosen at the
+use site, not pre-declared as a `DependencyProperty` per name by the component author.
+(WPF's `ContentControl.Content`/`ItemsControl.ItemTemplate` already cover Vue's default
+slot and list-repeated scoped slots respectively - see
+[Patterns that are already native](#patterns-that-are-already-native) below for those; this
+section is specifically for the free-form *named* slots case, which had no native WPF
+equivalent at all.)
+
+A component author derives from `SlotHost` and writes their own `ControlTemplate`:
+
+```xml
+<Style TargetType="{x:Type local:Card}">
+    <Setter Property="Template">
+        <Setter.Value>
+            <ControlTemplate TargetType="{x:Type local:Card}">
+                <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                    <StackPanel>
+                        <aq:If Condition="{aq:SlotProvided header}">
+                            <Border Background="#F0F0F0" Padding="8">
+                                <ContentPresenter Content="{aq:SlotContent header}" />
+                            </Border>
+                        </aq:If>
+                        <aq:If Condition="{aq:SlotProvided}">
+                            <Border Padding="8">
+                                <ContentPresenter Content="{aq:SlotContent}" />
+                            </Border>
+                        </aq:If>
+                        <aq:If Condition="{aq:SlotProvided footer}">
+                            <Border Background="#F0F0F0" Padding="8">
+                                <ContentPresenter Content="{aq:SlotContent footer}" />
+                            </Border>
+                        </aq:If>
+                    </StackPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter.Value>
+    </Setter>
+</Style>
+```
+
+Consumers write a flat mix of `Slot`-wrapped (named) and plain (implicit default) children -
+Vue's own docs' 3-slot Card example, translated 1:1:
+
+```xml
+<local:Card>
+    <aq:Slot Name="header">
+        <TextBlock Text="Here might be a page title" FontWeight="Bold" />
+    </aq:Slot>
+
+    <TextBlock Text="A paragraph for the main content." TextWrapping="Wrap" />
+
+    <aq:Slot Name="footer">
+        <TextBlock Text="Here's some contact info" FontStyle="Italic" />
+    </aq:Slot>
+</local:Card>
+```
+
+Named-slot content and the bare default-slot `TextBlock` sit flatly together, distinguished
+only by the `aq:Slot` wrapper - exactly Vue's own rule ("all top-level non-`<template>`
+nodes are implicitly the default slot").
+
+**Fallback + "was this provided" (Vue's `$slots.header`)** is two mechanisms:
+- `SlotProvided` composed with [`If`](#if-v-if--v-else--v-else-if) (shown above) - the
+  faithful mirror of Vue's own `v-if="$slots.header"` Conditional Slots example, skipping
+  the wrapper `Border` entirely rather than just showing blank content in its place.
+- `SlotContent.Fallback` - a convenience for a simple/primitive substitute value:
+  `{aq:SlotContent footer, Fallback='No contact info'}`.
+
+A slot that was provided but left empty (`<aq:Slot Name="header" />`, no content) still
+counts as *provided* - only a genuinely absent slot name falls back or fails `SlotProvided`.
+
+**Reactive**: adding or removing a `Slot` from a `SlotHost`'s `Items` at runtime (not just
+during initial XAML parse) updates whatever is currently displaying it - mutating an
+already-added `Slot`'s own `Name`/`Content` in place does not, though (no property-changed
+notification of its own, the same characteristic `ObservableCollection<T>` itself already
+has toward its elements) - replace the `Slot` object instead.
+
+**Scoped slots** (the child passing data back through the outlet) work for a single,
+non-repeated slot with zero new syntax: a component author already holds a direct reference
+to a slot's content object and can set `.DataContext` on it directly - ordinary WPF, picked
+up by the consumer's own `{Binding}`s through normal inheritance. The *repeated/list* case
+(Vue's actual "FancyList" example) stays out of scope here, deliberately - a slot holds one
+already-realized element instance, which cannot be reused N times the way a `DataTemplate`
+can; that's precisely why `ItemsControl.ItemTemplate` exists, and is already documented
+separately below.
+
+Each slot (default included) holds exactly one content object - the same rule
+[`If.Child`](#if-v-if--v-else--v-else-if)/[`Suspense.Child`](#suspense)/[`Teleport`](#teleport)'s
+content already have throughout this library. Two items claiming the same slot name
+(including two un-wrapped items both implicitly claiming the default slot) throws.
+
+---
+
 ## Patterns that are already native
 
 Two more concepts from Vue's docs turned out to already exist in WPF - once that was
@@ -820,13 +918,15 @@ above is for. So: "KeepAlive" in Aquarius is a hidden-header `TabControl` or
 `Directives.Show`-toggled siblings, plus `Lifecycle.Enable`'s
 `IOnActivated`/`IOnDeactivated` - not a control to reach for.
 
-### "Slots"
+### Scoped slots for lists
 
 | Vue | WPF equivalent (already exists) |
 | --- | --- |
-| Default slot | `ContentControl.Content` |
-| Named slots | Multiple content-bearing `DependencyProperty`s + named `ContentPresenter`s in a `ControlTemplate` - the exact pattern `HeaderedContentControl` (`Header` + `Content`) already ships in WPF |
-| Scoped slots (child passes data *back* to the parent's template) | `ContentTemplate`/`DataTemplate` - the template runs with whatever object is set as its `DataContext`, which *is* the "props passed to the slot" |
+| Default slot (nothing named) | `ContentControl.Content` |
+| Scoped slots for a repeated list (Vue's own "FancyList" example) | `ItemsControl.ItemTemplate`/`DataTemplate` - the template runs with whatever object is set as its `DataContext`, which *is* the "props passed to the slot" |
+
+For free-form *named* slots (`header`/`footer`/anything a consumer chooses), see the new
+[Slots](#slots) section above instead - that's a real port now, not just a native mapping.
 
 Vue's own canonical scoped-slot example, a `FancyList` that encapsulates fetching/paging
 logic but lets the consumer supply the per-item template, ports directly:

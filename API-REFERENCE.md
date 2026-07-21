@@ -11,6 +11,6 @@ reference:
   `Barbatos.Wpf.Dialogs`.
 - **[Barbatos.Wpf.Aquarius API Reference](src/Barbatos.Wpf.Aquarius/API-REFERENCE.md)** -
   `Barbatos.Wpf.Reactivity`, `Barbatos.Wpf.Composition`, `Barbatos.Wpf.Xaml`,
-  `Barbatos.Wpf.Teleportation`, `Barbatos.Wpf.Animation`.
+  `Barbatos.Wpf.Animation`.
 
 See the [root README](README.md) for an overview of both packages.

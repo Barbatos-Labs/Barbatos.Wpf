@@ -9,11 +9,10 @@ modeled after the official .NET API documentation.
 |-----------|-------------|
 | **[`Barbatos.Wpf.Reactivity`](#barbatoswpfreactivity-namespace)** | `Ref<T>`, `Computed<T>`, `Watch`, `NextTick` - thin sugar over CommunityToolkit.Mvvm. |
 | **[`Barbatos.Wpf.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, plus `Provide`/`Inject`. |
-| **[`Barbatos.Wpf.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, and `BuildConfiguration`. |
-| **[`Barbatos.Wpf.Teleportation`](#barbatoswpfteleportation-namespace)** | `Teleport`, `TeleportHost`. |
+| **[`Barbatos.Wpf.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
 | **[`Barbatos.Wpf.Animation`](#barbatoswpfanimation-namespace)** | `Transition`, `TransitionGroup`. |
 
-All five map onto the single `aq:` XAML namespace - see
+All four map onto the single `aq:` XAML namespace - see
 [Quick Start](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#quick-start)
 in the README.
 
@@ -251,10 +250,6 @@ Use via `Converter={x:Static aq:Comparisons.Not}` etc.
 - **`static IsAssemblyDebugBuild(Assembly? assembly)`** → `bool` - the same check against a
   specific assembly instead of the entry one.
 
----
-
-## `Barbatos.Wpf.Teleportation` Namespace
-
 ### `TeleportHost` Static Class
 
 - **`RegisterHostProperty`** (`DependencyProperty`, `string`) - `SetRegisterHost`/
@@ -275,6 +270,70 @@ public class Teleport : ContentControl
 - **`To`** (`string?`) - the registered `TeleportHost` name to render into.
 - **`Disabled`** (`bool`, default `false`) - when `true`, content renders locally instead
   of teleporting.
+
+### `Slot` Class
+
+```csharp
+[ContentProperty(nameof(Content))]
+public sealed class Slot
+```
+
+- **`Name`** (`string`, default `""`) - `""` targets the default slot.
+- **`Content`** (`object?`) - the XAML content property.
+
+Plain CLR class, not a `DependencyObject` - never enters the visual tree itself, only
+`Content` does once resolved. Used inside a `SlotHost`'s `Items`.
+
+### `SlotHost` Class
+
+```csharp
+[ContentProperty(nameof(Items))]
+public class SlotHost : Control
+```
+
+- **`Items`** (`ObservableCollection<object>`) - the XAML content property; a flat mix of
+  `Slot`-wrapped (named) and plain (implicit default) children.
+- **`ResolvedSlots`** (`IReadOnlyDictionary<string, object?>`, read-only DP) - recomputed
+  from `Items` on every add/remove/replace/clear.
+- **`protected GetSlotContent(string name = "")`** → `object?` - the C#-callable
+  counterpart of `SlotContent`, for use by a derived component's own code.
+- **`protected IsSlotProvided(string name = "")`** → `bool` - the C#-callable counterpart
+  of `SlotProvided`.
+
+Base class for a custom control that wants free-form named slots - a component author
+derives from this (e.g. `Card : SlotHost`) and writes their own `ControlTemplate` using
+`SlotContent`/`SlotProvided`. Two items claiming the same slot name throws
+`InvalidOperationException`.
+
+### `SlotContent` Class
+
+```csharp
+[MarkupExtensionReturnType(typeof(object))]
+public class SlotContent : MarkupExtension
+```
+
+- **`SlotContent()`** / **`SlotContent(string name)`** (positional, `{aq:SlotContent header}`)
+- **`Name`** (`string`, default `""`, `[ConstructorArgument("name")]`)
+- **`Fallback`** (`object?`) - a simple/primitive substitute when the slot was never
+  provided at all (a provided-but-empty slot does not fall back).
+
+`ProvideValue` returns a real, deferred `Binding` (`RelativeSource=TemplatedParent`,
+`Path=ResolvedSlots`) with a lookup converter - used inside a `SlotHost`-derived control's
+own `ControlTemplate` to project a named slot's content back out.
+
+### `SlotProvided` Class
+
+```csharp
+[MarkupExtensionReturnType(typeof(bool))]
+public class SlotProvided : MarkupExtension
+```
+
+- **`SlotProvided()`** / **`SlotProvided(string name)`** (positional, `{aq:SlotProvided header}`)
+- **`Name`** (`string`, default `""`, `[ConstructorArgument("name")]`)
+
+Whether `Name` is a present key in the enclosing `SlotHost`'s `ResolvedSlots` - typically
+composed with `If.Condition` to skip a wrapper element entirely when a slot wasn't used.
+See the [README](README.md#slots) for the full mechanism and a worked `Card` example.
 
 ---
 

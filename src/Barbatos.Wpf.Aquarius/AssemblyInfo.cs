@@ -12,6 +12,5 @@ using System.Windows.Markup;
 [assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Reactivity")]
 [assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Composition")]
 [assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Xaml")]
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Teleportation")]
 [assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Animation")]
 [assembly: XmlnsPrefix("http://schemas.barbatos.dev/aquarius", "aq")]

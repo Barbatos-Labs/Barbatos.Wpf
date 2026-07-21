@@ -6,7 +6,7 @@
 using System.Windows;
 using System.Windows.Controls;
 
-namespace Barbatos.Wpf.Teleportation;
+namespace Barbatos.Wpf.Xaml;
 
 /// <summary>
 /// Marks a <see cref="Panel"/> as a named mount point a <see cref="Teleport"/> can render
