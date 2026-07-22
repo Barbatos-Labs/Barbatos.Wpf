@@ -1,7 +1,7 @@
 <UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.SuspenseDemoView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:aq="http://schemas.barbatos.dev/aquarius">
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
     <StackPanel Margin="12">
         <TextBlock TextWrapping="Wrap"
                    Margin="0,0,0,8"

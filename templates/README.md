@@ -66,24 +66,32 @@ symbol rather than resolving it). Omitting `--namespace` still generates working
 under the obviously-fake placeholder namespace `ChangeMe.Namespace`, so a forgotten override
 is easy to spot rather than silently landing in the wrong namespace.
 
-## `barbatos-wpf-app` - Aquarius + Core starter app (project template)
+## `barbatos-wpf-app` - Aquarius + Core + i18n starter app (project template)
 
 ```powershell
 dotnet new barbatos-wpf-app -n MyApp
 ```
 
-A complete, runnable WPF app in a new `MyApp/` folder, referencing both packages via
+A complete, runnable WPF app in a new `MyApp/` folder, referencing all three packages via
 `PackageReference` (not a `ProjectReference` into this repo - a real, portable starter a
-consumer outside this repo can restore once both packages are published) and showing them
-working together, not just coexisting: `Barbatos.Wpf.Core`'s `WpfApp`/`WpfAppBuilder`
-supplies the DI container, and `Barbatos.Wpf.Aquarius`'s `Setup.ServiceProvider` is pointed
-at that same container, so `MainWindow`'s `aq:Setup.Enable="True"` resolves `MainViewModel`
-through it instead of a bare `Activator.CreateInstance`.
+consumer outside this repo can restore once `Barbatos.Wpf.Core`/`Barbatos.Wpf.Aquarius` are
+published too) and showing them working together, not just coexisting:
+- `Barbatos.Wpf.Core`'s `WpfApp`/`WpfAppBuilder` supplies the DI container.
+- `Barbatos.Wpf.Aquarius`'s `Setup.ServiceProvider` is pointed at that same container, so
+  `MainWindow`'s `aq:Setup.ViewModel="{x:Type local:MainViewModel}"` resolves `MainViewModel`
+  through it instead of a bare `Activator.CreateInstance` (the explicit-type form, not
+  `Setup.Enable`'s naming convention - `MainWindow` doesn't end in `"View"`, so the
+  convention wouldn't find anything).
+- `Barbatos.i18n`'s `AddStringLocalizer`/`UseWpfLocalization` are wired into that same
+  container too, so `Barbatos.i18n.Wpf`'s `{i18n:StringLocalizer}` markup extension has a
+  provider to read from - demonstrated with an English/Vietnamese greeting and a live language
+  switch.
 
-Both packages aren't published to NuGet.org yet as of this writing - restoring a freshly
-generated project will fail with NU1101 until they are (see the template's own
-`.template.config/template.json` for the `--PackageVersion` parameter, if the version needs
-to move once they do publish).
+`Barbatos.Wpf.Core`/`Barbatos.Wpf.Aquarius` aren't published to NuGet.org yet as of this
+writing - restoring a freshly generated project will fail with NU1101 for those two until
+they are (see the template's own `.template.config/template.json` for the `--PackageVersion`
+parameter, if the version needs to move once they do publish). `Barbatos.i18n.Wpf`/
+`Barbatos.i18n.DependencyInjection` are already published and resolve normally.
 
 ## Uninstall
 

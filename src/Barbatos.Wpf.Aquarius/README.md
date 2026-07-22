@@ -89,7 +89,7 @@ Everything in this document lives behind a single XAML namespace:
 
 ```xml
 <Window ...
-        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
 ```
 
 That one `aq:` prefix reaches every namespace below (`Barbatos.Wpf.Aquarius.Reactivity`,
@@ -112,7 +112,7 @@ dotnet new aq-view -n Dashboard --namespace MyApp.Features.Dashboard
 ```
 
 See the [root README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/README.md#templates)
-for the full template lineup (including a combined Aquarius + Core starter project) and
+for the full template lineup (including a combined Aquarius + Core + i18n starter project) and
 Visual Studio 2022 / Rider-specific steps.
 
 ---

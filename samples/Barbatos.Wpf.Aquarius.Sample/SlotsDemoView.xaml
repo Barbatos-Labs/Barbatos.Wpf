@@ -2,7 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Barbatos.Wpf.Aquarius.Sample"
-             xmlns:aq="http://schemas.barbatos.dev/aquarius">
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
     <UserControl.Resources>
         <!-- Card's own ControlTemplate - a component author picks named slots back out of
              whatever the consumer supplied, with SlotProvided skipping each wrapper Border

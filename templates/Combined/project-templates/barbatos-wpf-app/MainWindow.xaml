@@ -1,12 +1,24 @@
 <Window x:Class="BarbatosWpfApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:aq="http://schemas.barbatos.dev/aquarius"
-        aq:Setup.Enable="True"
+        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+        xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml"
+        xmlns:local="clr-namespace:BarbatosWpfApp"
+        aq:Setup.ViewModel="{x:Type local:MainViewModel}"
         Title="BarbatosWpfApp" Height="450" Width="800">
     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-        <TextBlock Text="{Binding Greeting}" FontSize="18" Margin="0,0,0,16" />
+        <!-- Barbatos.i18n.Wpf's markup extension - BindArg (not the static Arg) is what makes
+             this refresh when SwitchLanguage below changes CurrentCultureName; see
+             MainViewModel's own remarks on CurrentCultureName for why that's needed at all. -->
+        <TextBlock FontSize="18" Margin="0,0,0,16" TextWrapping="Wrap" MaxWidth="400" TextAlignment="Center"
+                   Text="{i18n:StringLocalizer Text='Greeting', BindArg={Binding CurrentCultureName}}" />
+
         <TextBlock Text="{Binding Count.Value}" FontSize="32" HorizontalAlignment="Center" />
         <Button Content="Count" Command="{Binding IncrementCommand}" Padding="20,8" Margin="0,16,0,0" HorizontalAlignment="Center" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
+            <Button Content="English" Command="{Binding SwitchLanguageCommand}" CommandParameter="en-US" Padding="12,4" Margin="0,0,8,0" />
+            <Button Content="Tiếng Việt" Command="{Binding SwitchLanguageCommand}" CommandParameter="vi-VN" Padding="12,4" />
+        </StackPanel>
     </StackPanel>
 </Window>

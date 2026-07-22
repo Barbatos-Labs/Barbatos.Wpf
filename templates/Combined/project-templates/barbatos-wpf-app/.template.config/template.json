@@ -1,10 +1,10 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Barbatos Labs",
-  "classifications": [ "WPF", "Barbatos.Wpf", "Aquarius", "Core", "MVVM" ],
+  "classifications": [ "WPF", "Barbatos.Wpf", "Aquarius", "Core", "i18n", "MVVM" ],
   "identity": "Barbatos.Wpf.Templates.CombinedApp",
-  "name": "Barbatos.Wpf App (Aquarius + Core)",
-  "description": "A starter WPF app referencing both Barbatos.Wpf.Core (MAUI-style hosting/DI) and Barbatos.Wpf.Aquarius (Vue-style reactivity/Setup), with Setup.ServiceProvider wired to Core's DI container so Views resolve ViewModels through the same graph rather than the two packages merely coexisting.",
+  "name": "Barbatos.Wpf App (Aquarius + Core + i18n)",
+  "description": "A starter WPF app referencing Barbatos.Wpf.Core (MAUI-style hosting/DI), Barbatos.Wpf.Aquarius (Vue-style reactivity/Setup), and Barbatos.i18n (localization) together: Setup.ServiceProvider is wired to Core's DI container so Views resolve ViewModels through the same graph, and that same container backs Barbatos.i18n.Wpf's {i18n:StringLocalizer} markup extension via UseWpfLocalization - all three work together rather than merely coexisting.",
   "shortName": "barbatos-wpf-app",
   "tags": {
     "language": "C#",

@@ -6,8 +6,9 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <UseWPF>true</UseWPF>
     <CommonTags>$(CommonTags)</CommonTags>
-    <Description>Barbatos.Wpf.Core - MAUI-style Hosting and Essentials for WPF</Description>
+    <Description>Bring .NET MAUI's hosting model and Essentials APIs (AppInfo, Preferences, SecureStorage, Connectivity, Notifications, Tray Icon, and more) to plain desktop WPF - dependency injection, configuration, logging, and lifecycle events included.</Description>
     <RootNamespace>Barbatos.Wpf</RootNamespace>
+    <PackageIconSourceFile>core-logo.png</PackageIconSourceFile>
     <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply. -->
     <NoWarn>$(NoWarn);IL2026;IL3050</NoWarn>
   </PropertyGroup>

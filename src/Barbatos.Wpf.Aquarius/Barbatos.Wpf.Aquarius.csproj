@@ -6,11 +6,12 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <UseWPF>true</UseWPF>
     <!-- Full override, not an append to the shared $(CommonTags) - that shared value bakes in
-         Core-specific words ("hosting;setup;foundation") that don't describe Aquarius and would
-         mislead NuGet search. -->
-    <CommonTags>dotnet;wpf;windows;presentation;vue;vuejs;reactivity;mvvm;directives;teleport;animation;xaml</CommonTags>
-    <Description>Barbatos.Wpf.Aquarius - Vue.js-inspired reactivity, lifecycle hooks, directives, Teleport, and Transitions for WPF</Description>
+         Core-specific words (maui, hosting, essentials, notifications, ...) that don't describe
+         Aquarius and would mislead NuGet search. -->
+    <CommonTags>dotnet;wpf;windows;desktop;presentation;vue;vuejs;compositionapi;reactivity;lifecycle;mvvm;directives;teleport;animation;xaml</CommonTags>
+    <Description>Bring Vue 3's Composition API - ref/computed/watch, lifecycle hooks, v-model/v-show/v-if/v-on, custom directives, Teleport, Transition, provide/inject, Suspense - to plain desktop WPF, built directly on CommunityToolkit.Mvvm.</Description>
     <RootNamespace>Barbatos.Wpf.Aquarius</RootNamespace>
+    <PackageIconSourceFile>aquarius-logo.png</PackageIconSourceFile>
     <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply.
          IL2075 additionally covers Directives.Event's own use of reflection (Type.GetEvent) to wire
          up an arbitrary named event, which is inherently dynamic by design (see its XML docs).

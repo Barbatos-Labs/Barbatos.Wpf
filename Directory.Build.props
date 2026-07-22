@@ -7,14 +7,20 @@
   <PropertyGroup>
     <Authors>Pham The Hung</Authors>
     <Product>Barbatos.Wpf</Product>
-    <CommonTags>dotNet;wpf;windows;presentation;hosting;setup;foundation</CommonTags>
+    <!-- The Barbatos.Wpf.Core-specific baseline; Barbatos.Wpf.Aquarius fully overrides this
+         with its own list instead of appending, since these words don't describe it and would
+         mislead NuGet search - see Barbatos.Wpf.Aquarius.csproj. -->
+    <CommonTags>dotnet;maui;wpf;windows;desktop;presentation;hosting;dependencyinjection;essentials;notifications;trayicon;splashscreen</CommonTags>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <Copyright>(c) 2026 Barbatos Labs | Pham The Hung and Barbatos.Wpf. All rights reserved.</Copyright>
-    <Description>WPF Hosting</Description>
+    <Description>Part of Barbatos.Wpf - a family of libraries that bring proven application-development ergonomics to plain desktop WPF.</Description>
     <PackageProjectUrl>https://github.com/Barbatos-Labs/Barbatos.Wpf</PackageProjectUrl>
     <PackageReleaseNotes>https://github.com/Barbatos-Labs/Barbatos.Wpf/releases</PackageReleaseNotes>
     <PackageIcon>Icon.png</PackageIcon>
+    <!-- Each package ships its own icon; override per-project (see Barbatos.Wpf.Core.csproj /
+         Barbatos.Wpf.Aquarius.csproj). Falls back to the shared repo logo otherwise. -->
+    <PackageIconSourceFile Condition="'$(PackageIconSourceFile)' == ''">nuget.png</PackageIconSourceFile>
   </PropertyGroup>
 
 

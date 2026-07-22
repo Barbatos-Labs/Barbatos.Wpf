@@ -20,7 +20,7 @@ public class ExprXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'A > 5'}" />
                 </Window>
                 """;
@@ -53,7 +53,7 @@ public class ExprXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'Status == &quot;Active&quot;'}" />
                 </Window>
                 """;
@@ -86,7 +86,7 @@ public class ExprXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:If x:Name="Target" Condition="{aq:Expr 'A + B >= 10'}">
                         <TextBlock Text="shown" />
                     </aq:If>
@@ -121,7 +121,7 @@ public class ExprXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'A + A > 10'}" />
                 </Window>
                 """;
@@ -154,7 +154,7 @@ public class ExprXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <StackPanel>
                         <Slider x:Name="MySlider" Minimum="0" Maximum="100" />
                         <Border x:Name="Target" aq:Directives.Show="{aq:Expr '#MySlider.Value > 50'}" />
@@ -191,7 +191,7 @@ public class ExprXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'Order != null'}" />
                 </Window>
                 """;
@@ -238,7 +238,7 @@ public class ExprXamlTests
                 var xaml = """
                     <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                            xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                            xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                         <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'DoesNotExist > 0'}" />
                     </Window>
                     """;
@@ -267,14 +267,14 @@ public class ExprXamlTests
             var xamlWithExpr = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <Border x:Name="Target" aq:Directives.Show="{aq:Expr 'DoesNotExist > 0'}" />
                 </Window>
                 """;
             var xamlWithPlainBinding = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <Border x:Name="Target" aq:Directives.Show="{Binding DoesNotExist}" />
                 </Window>
                 """;

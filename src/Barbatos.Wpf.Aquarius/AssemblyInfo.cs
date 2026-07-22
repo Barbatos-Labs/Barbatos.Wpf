@@ -7,10 +7,10 @@ using System.Windows.Markup;
 
 // Maps every Aquarius namespace onto a single XAML xmlns, the same way WPF itself maps
 // System.Windows/System.Windows.Controls/... onto one presentation xmlns - so consumers
-// only need one `xmlns:aq="http://schemas.barbatos.dev/aquarius"` to reach Ref<T>/Computed<T>,
+// only need one `xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"` to reach Ref<T>/Computed<T>,
 // Lifecycle.Enable, the Directives.* attached properties, and Teleport/TeleportHost together.
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Reactivity")]
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Composition")]
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Xaml")]
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Animation")]
-[assembly: XmlnsPrefix("http://schemas.barbatos.dev/aquarius", "aq")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.co/aquarius/2026/xaml", "Barbatos.Wpf.Aquarius.Reactivity")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.co/aquarius/2026/xaml", "Barbatos.Wpf.Aquarius.Composition")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.co/aquarius/2026/xaml", "Barbatos.Wpf.Aquarius.Xaml")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.co/aquarius/2026/xaml", "Barbatos.Wpf.Aquarius.Animation")]
+[assembly: XmlnsPrefix("http://schemas.barbatos.co/aquarius/2026/xaml", "aq")]

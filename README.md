@@ -2,26 +2,72 @@
 
 ![Barbatos.Wpf logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/nuget.png?raw=true)
 
-### *A family of libraries that bring proven application-development ergonomics to plain desktop WPF*
+### *Already know .NET MAUI or Vue? You already know Barbatos.Wpf.*
 
 [![GitHub stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
-[![License](https://img.shields.io/github/license/Barbatos-Labs/Barbatos.Wpf)](https://github.com/Barbatos-Labs/Barbatos.Wpf/tree/main/LICENSE.md)
+[![License](https://img.shields.io/github/license/Barbatos-Labs/Barbatos.Wpf)](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/LICENSE.md)
 
 Barbatos.Wpf ports well-established ideas from other ecosystems onto plain, unpackaged
-desktop WPF - keeping each source ecosystem's own shape and naming wherever that maps
-honestly, and clearly documenting it where WPF genuinely differs. It ships as several
-independent NuGet packages rather than one monolith; install only what you need.
+desktop WPF - no MAUI Blazor Hybrid, no JS runtime, no rewrite. Each package keeps its
+source ecosystem's own shape and naming wherever that maps honestly, and clearly
+documents it where WPF genuinely differs, rather than reinventing something WPF already
+does natively. It ships as several independent NuGet packages rather than one monolith -
+install only what you need, add the rest whenever you need it.
 
 ## Packages
 
-| Package | Ports | Docs |
-| --- | --- | --- |
-| **Barbatos.Wpf.Core** | .NET MAUI's `MauiApp`/`MauiAppBuilder` hosting model and Essentials APIs (`AppInfo`, `Preferences`, `SecureStorage`, `Connectivity`, ...) - dependency injection, configuration, logging, and lifecycle events for WPF. Also includes an MCP (Model Context Protocol) client + bring-your-own-key AI chat feature - the app's own end user supplies their Gemini/Claude/ChatGPT/other API key, the publisher never pays for usage. | [README](src/Barbatos.Wpf.Core/README.md) · [API Reference](src/Barbatos.Wpf.Core/API-REFERENCE.md) |
-| **Barbatos.Wpf.Aquarius** | Vue 3's Composition API - `ref`/`computed`/`watch`, lifecycle hooks, `v-model`/`v-show`/`v-if`/`v-on`, custom directives, `<Teleport>`, `<Transition>`, `provide`/`inject`, `<Suspense>` - built directly on CommunityToolkit.Mvvm. | [README](src/Barbatos.Wpf.Aquarius/README.md) · [API Reference](src/Barbatos.Wpf.Aquarius/API-REFERENCE.md) |
+<table>
+<tr>
+<td width="72" align="center">
+<a href="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Core/README.md">
+<img src="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/core-logo.png?raw=true" width="64" height="64" alt="Barbatos.Wpf.Core" />
+</a>
+</td>
+<td>
+
+**[Barbatos.Wpf.Core](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Core/README.md)**
+&nbsp;
+[![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.Core.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Core)
+[![Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.Core.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Core)
+[![Stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
+
+.NET MAUI's `MauiApp`/`MauiAppBuilder` hosting model and Essentials APIs (`AppInfo`,
+`Preferences`, `SecureStorage`, `Connectivity`, ...) - dependency injection,
+configuration, logging, and lifecycle events for WPF. Also ships an MCP (Model Context
+Protocol) client + bring-your-own-key AI chat feature - your app's own end user supplies
+their Gemini/Claude/ChatGPT/other API key, you never pay for their usage.
+
+[README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Core/README.md) · [API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Core/API-REFERENCE.md)
+
+</td>
+</tr>
+<tr>
+<td width="72" align="center">
+<a href="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md">
+<img src="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquarius-logo.png?raw=true" width="64" height="64" alt="Barbatos.Wpf.Aquarius" />
+</a>
+</td>
+<td>
+
+**[Barbatos.Wpf.Aquarius](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md)**
+&nbsp;
+[![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.Aquarius.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Aquarius)
+[![Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.Aquarius.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Aquarius)
+[![Stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
+
+Vue 3's Composition API - `ref`/`computed`/`watch`, lifecycle hooks,
+`v-model`/`v-show`/`v-if`/`v-on`, custom directives, `<Teleport>`, `<Transition>`,
+`provide`/`inject`, `<Suspense>` - built directly on CommunityToolkit.Mvvm. No dependency
+on Core - install it standalone or alongside.
+
+[README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md) · [API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/API-REFERENCE.md)
+
+</td>
+</tr>
+</table>
 
 Both packages share the same `Barbatos.Wpf` root C# namespace and target
-`net8.0-windows`/`net9.0-windows`/`net10.0-windows`; Aquarius has no dependency on Core
-and works standalone.
+`net8.0-windows`/`net9.0-windows`/`net10.0-windows`.
 
 ```powershell
 dotnet add package Barbatos.Wpf.Core
@@ -31,7 +77,7 @@ dotnet add package Barbatos.Wpf.Aquarius
 ## Templates
 
 Scaffold new code instead of typing every `DataContext`/`PackageReference` line by hand -
-`dotnet new` templates for both packages live in [`templates/`](templates/README.md).
+`dotnet new` templates for both packages live in [`templates/`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md).
 
 Install once, from the repo root:
 
@@ -44,7 +90,7 @@ Then use from the CLI - this works identically inside Visual Studio 2022's or Je
 Rider's own integrated terminal, or a plain terminal:
 
 ```powershell
-# A whole new starter app, referencing both Barbatos.Wpf.Core and Barbatos.Wpf.Aquarius:
+# A whole new starter app, referencing Barbatos.Wpf.Core, Barbatos.Wpf.Aquarius, and Barbatos.i18n:
 dotnet new barbatos-wpf-app -n MyApp
 
 # A View + ViewModel pair inside an existing project:
@@ -64,7 +110,7 @@ own GUI dialogs:
 GUI discovery can vary by IDE version - if a template doesn't show up in either picker, the
 CLI form above always works, including from each IDE's own integrated terminal.
 
-See [`templates/README.md`](templates/README.md) for the full list, folder layout, and
+See [`templates/README.md`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md) for the full list, folder layout, and
 per-template details (including why `--namespace` has to be passed explicitly for the item
 template, and why the project template uses `PackageReference` rather than a path into this
 repo even though neither package is published to NuGet.org yet).

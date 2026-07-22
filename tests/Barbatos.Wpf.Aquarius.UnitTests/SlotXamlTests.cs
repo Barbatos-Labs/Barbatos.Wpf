@@ -19,7 +19,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
@@ -65,7 +65,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
@@ -105,7 +105,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
@@ -146,7 +146,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
@@ -182,7 +182,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
@@ -222,7 +222,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
@@ -265,7 +265,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
@@ -313,7 +313,7 @@ public class SlotXamlTests
             var xaml = """
                 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:aq="http://schemas.barbatos.dev/aquarius">
+                        xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
                     <aq:SlotHost>
                         <aq:SlotHost.Template>
                             <ControlTemplate TargetType="aq:SlotHost">
