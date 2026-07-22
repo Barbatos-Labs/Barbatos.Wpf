@@ -17,19 +17,28 @@ internal sealed class PeriodicServiceScheduler : IPeriodicServiceScheduler, IDis
 {
     sealed class Entry
     {
-        public Entry(IWpfPeriodicService service, PeriodicServiceStatus status)
+        public Entry(IWpfPeriodicService service, PeriodicSchedule schedule, PeriodicServiceStatus status, IDispatcherTimer timer)
         {
             Service = service;
+            Schedule = schedule;
             Status = status;
+            Timer = timer;
         }
 
         public IWpfPeriodicService Service { get; }
 
+        // The scheduler's own working copy, used for GetNextOccurrence - never exposed. Kept
+        // separate from Status.Schedule so external code can never mutate its way into desyncing
+        // (or corrupting) the armed timer; see UpdateSchedule/AddEntry.
+        public PeriodicSchedule Schedule { get; set; }
+
         public PeriodicServiceStatus Status { get; }
 
-        public IDispatcherTimer? Timer { get; set; }
+        public IDispatcherTimer Timer { get; }
 
         public bool IsExecuting { get; set; }
+
+        public bool IsRemoved { get; set; }
     }
 
     readonly PeriodicServiceOptions _options;
@@ -48,18 +57,9 @@ internal sealed class PeriodicServiceScheduler : IPeriodicServiceScheduler, IDis
         _serviceProvider = serviceProvider;
         _logger = logger;
 
+        var now = DateTimeOffset.Now;
         foreach (var service in services)
-        {
-            // An interval from configuration overrides the service's default interval.
-            var interval = _options.Intervals.TryGetValue(service.Name, out var configured)
-                ? configured
-                : service.Interval;
-
-            if (interval <= TimeSpan.Zero)
-                throw new InvalidOperationException($"The periodic service '{service.Name}' has a non-positive interval ({interval}).");
-
-            _entries.Add(new Entry(service, new PeriodicServiceStatus(service.Name, interval)));
-        }
+            AddEntry(service, now);
     }
 
     public event EventHandler? IsEnabledChanged;
@@ -76,51 +76,123 @@ internal sealed class PeriodicServiceScheduler : IPeriodicServiceScheduler, IDis
         if (enabled == IsEnabled)
             return;
 
+        IsEnabled = enabled;
+
+        var now = DateTimeOffset.Now;
         foreach (var entry in _entries)
         {
             if (enabled)
-                StartTimer(entry);
+            {
+                RecomputeSchedule(entry, now);
+            }
             else
-                StopTimer(entry);
+            {
+                // Unconditional, and deliberately not routed through RecomputeSchedule: disabling
+                // must be reflected in status immediately, even for an entry that's mid-execution.
+                entry.Timer.Stop();
+                entry.Status.NextRunTime = null;
+            }
         }
 
-        IsEnabled = enabled;
         IsEnabledChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void UpdateInterval(string name, TimeSpan interval)
+    public void UpdateSchedule(string name, PeriodicSchedule schedule)
     {
-        if (interval <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(interval), interval, "The interval must be positive.");
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(schedule);
 
-        var entry = _entries.Find(entry => string.Equals(entry.Status.Name, name, StringComparison.OrdinalIgnoreCase))
+        var entry = Find(name)
             ?? throw new ArgumentException($"No periodic service named '{name}' has been registered.", nameof(name));
 
-        entry.Status.Interval = interval;
+        var clone = schedule.Clone();
+        clone.Validate();
 
-        if (IsEnabled)
-        {
-            // Restart the timer so the new interval takes effect immediately.
-            StopTimer(entry);
-            StartTimer(entry);
-        }
+        entry.Schedule = clone;
+        entry.Status.Schedule = clone.Clone();
+
+        RecomputeSchedule(entry, DateTimeOffset.Now);
     }
 
-    void StartTimer(Entry entry)
+    public void Register(IWpfPeriodicService service)
     {
+        ArgumentNullException.ThrowIfNull(service);
+
+        AddEntry(service, DateTimeOffset.Now);
+    }
+
+    public bool Unregister(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        var entry = Find(name);
+        if (entry is null)
+            return false;
+
+        // The timer has very likely already auto-stopped itself (it is never repeating), but an
+        // in-flight execution's eventual post-tick reschedule must not resurrect it - IsRemoved
+        // guards that in OnTimerTick.
+        entry.IsRemoved = true;
+        entry.Timer.Stop();
+        _entries.Remove(entry);
+
+        return true;
+    }
+
+    Entry? Find(string name) =>
+        _entries.Find(entry => string.Equals(entry.Status.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    Entry AddEntry(IWpfPeriodicService service, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(service.Name))
+            throw new ArgumentException("A periodic service must have a non-empty Name.", nameof(service));
+
+        if (Find(service.Name) is not null)
+            throw new ArgumentException($"A periodic service named '{service.Name}' is already registered.", nameof(service));
+
+        // A schedule from configuration overrides the service's own schedule entirely.
+        var schedule = (_options.Schedules.TryGetValue(service.Name, out var configured) ? configured : service.Schedule).Clone();
+        schedule.Validate();
+
+        var status = new PeriodicServiceStatus(service.Name, schedule.Clone());
         var timer = _serviceProvider.GetRequiredApplicationDispatcher().CreateTimer();
-        timer.Interval = entry.Status.Interval;
-        timer.IsRepeating = true;
+        timer.IsRepeating = false;
+
+        var entry = new Entry(service, schedule, status, timer);
         timer.Tick += (sender, args) => OnTimerTick(entry);
 
-        entry.Timer = timer;
-        timer.Start();
+        _entries.Add(entry);
+
+        // Safe to call before the scheduler is ever enabled: RecomputeSchedule only arms the
+        // timer when IsEnabled is true, so this just establishes NextRunTime/IsCompleted.
+        RecomputeSchedule(entry, now);
+
+        return entry;
     }
 
-    static void StopTimer(Entry entry)
+    void RecomputeSchedule(Entry entry, DateTimeOffset now)
     {
-        entry.Timer?.Stop();
-        entry.Timer = null;
+        // Defers to that execution's own post-tick reschedule (see OnTimerTick) rather than
+        // racing it - this also means a schedule change made mid-execution takes effect only
+        // once the in-flight run finishes, not immediately.
+        if (entry.IsExecuting)
+            return;
+
+        entry.Timer.Stop();
+
+        var next = entry.Schedule.GetNextOccurrence(now, entry.Status.LastRunTime);
+
+        entry.Status.IsCompleted = next is null;
+        entry.Status.NextRunTime = null;
+
+        if (next is null || !IsEnabled)
+            return;
+
+        var delay = next.Value - now;
+
+        entry.Status.NextRunTime = next;
+        entry.Timer.Interval = delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
+        entry.Timer.Start();
     }
 
     async void OnTimerTick(Entry entry)
@@ -154,6 +226,22 @@ internal sealed class PeriodicServiceScheduler : IPeriodicServiceScheduler, IDis
         entry.Status.RunCount++;
 
         ServiceExecuted?.Invoke(this, new PeriodicServiceExecutedEventArgs(entry.Status, error));
+
+        if (entry.IsRemoved || _shutdownTokenSource.IsCancellationRequested)
+            return;
+
+        try
+        {
+            // Guarded rather than left to throw: this runs inside an async void handler, where an
+            // uncaught exception would surface as an unhandled dispatcher exception (or crash the
+            // app) instead of failing predictably back to a caller, unlike Register/UpdateSchedule/
+            // the constructor - which validate synchronously and are meant to throw.
+            RecomputeSchedule(entry, DateTimeOffset.Now);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Failed to reschedule the periodic service '{Name}'.", entry.Status.Name);
+        }
     }
 
     /// <summary>

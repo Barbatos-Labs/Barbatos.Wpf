@@ -24,8 +24,13 @@ public class PeriodicServiceOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Overrides the interval of a named service, for example
-    /// <c>"Barbatos:PeriodicServices:Intervals:Sync" = "00:05:00"</c>.
+    /// Overrides the whole schedule of a named service, for example
+    /// <c>"Barbatos:PeriodicServices:Schedules:Sync:Frequency" = "Custom"</c> and
+    /// <c>"Barbatos:PeriodicServices:Schedules:Sync:Interval" = "00:05:00"</c>. When present for
+    /// a given service name, this entirely replaces the schedule the service's own
+    /// <see cref="IWpfPeriodicService.Schedule"/> provides (including its
+    /// <see cref="PeriodicSchedule.Description"/>) rather than overriding individual fields, so
+    /// restate every field that should survive the override.
     /// </summary>
-    public Dictionary<string, TimeSpan> Intervals { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, PeriodicSchedule> Schedules { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

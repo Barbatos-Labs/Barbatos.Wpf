@@ -13,10 +13,11 @@ public static partial class AppHostBuilderExtensions
 {
     /// <summary>
     /// Adds the optional periodic services feature: every <see cref="IWpfPeriodicService"/>
-    /// registered in the service collection is executed on its interval. Intervals can be
-    /// configured from code (the service's <see cref="IWpfPeriodicService.Interval"/>),
+    /// registered in the service collection is executed on its schedule. Schedules can be
+    /// configured from code (the service's <see cref="IWpfPeriodicService.Schedule"/>),
     /// overridden from the <c>Barbatos:PeriodicServices</c> configuration section, and
-    /// changed at runtime through <see cref="IPeriodicServiceScheduler"/>.
+    /// changed at runtime - or registered/unregistered altogether - through
+    /// <see cref="IPeriodicServiceScheduler"/>.
     /// </summary>
     public static WpfAppBuilder ConfigurePeriodicServices(this WpfAppBuilder builder, Action<PeriodicServiceOptions>? configure = null)
     {

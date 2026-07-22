@@ -29,282 +29,337 @@
         </Style>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     </Window.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0"
-                   Text="{Binding Greeting}"
-                   FontSize="20"
-                   FontWeight="SemiBold"
-                   TextWrapping="Wrap" />
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="{Binding Greeting}"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
 
-        <TextBlock Grid.Row="1"
-                   Margin="0,8,0,0"
-                   Text="{Binding EnvironmentDescription}"
-                   Foreground="Gray"
-                   TextWrapping="Wrap" />
+            <TextBlock Margin="0,8,0,0"
+                       Text="{Binding EnvironmentDescription}"
+                       Foreground="Gray"
+                       TextWrapping="Wrap" />
 
-        <TextBlock Grid.Row="2"
-                   Margin="0,4,0,0"
-                   Foreground="Gray"
-                   TextWrapping="Wrap">
-            <Run Text="{Binding AppDeviceDescription, Mode=OneWay}" />
-            <LineBreak />
-            <Run Text="{Binding InstallInfoDescription, Mode=OneWay}" />
-        </TextBlock>
+            <TextBlock Margin="0,4,0,0"
+                       Foreground="Gray"
+                       TextWrapping="Wrap">
+                <Run Text="{Binding AppDeviceDescription, Mode=OneWay}" />
+                <LineBreak />
+                <Run Text="{Binding InstallInfoDescription, Mode=OneWay}" />
+            </TextBlock>
+        </StackPanel>
 
-        <Border Grid.Row="3"
-                Margin="0,16,0,0"
-                Padding="12"
-                BorderBrush="#DDDDDD"
-                BorderThickness="1"
-                CornerRadius="6">
-            <StackPanel>
-                <Grid Style="{StaticResource SettingRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Run on startup" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="Automatically start this app when you log in to your computer"
+        <TabControl Grid.Row="1">
+            <TabItem Header="Desktop Features">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <Grid Style="{StaticResource SettingRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Run on startup" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="Automatically start this app when you log in to your computer"
+                                           Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding RunOnStartupEnabled}" />
+                        </Grid>
+
+                        <Separator Margin="0,2" />
+
+                        <Grid Style="{StaticResource SettingRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="System tray" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="Keep this app running in the system tray (closing the window hides it)"
+                                           Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding TrayIconEnabled}" />
+                        </Grid>
+
+                        <Separator Margin="0,2" />
+
+                        <Grid Style="{StaticResource SettingRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Keep computer awake" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="Prevent your computer from idle-sleeping while this app is open. Your display can still turn off."
+                                           Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding KeepAwakeEnabled}" />
+                        </Grid>
+
+                        <Separator Margin="0,2" />
+
+                        <Grid Style="{StaticResource SettingRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Periodic background tasks" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="Run the registered periodic services (heartbeat) on a schedule. Interval in seconds."
+                                           Style="{StaticResource SettingDescription}" />
+                                <TextBlock Text="{Binding HeartbeatStatusText}" Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1"
+                                     Width="60"
+                                     Margin="0,0,12,0"
+                                     VerticalAlignment="Center"
+                                     TextAlignment="Center"
+                                     Text="{Binding HeartbeatIntervalSeconds, UpdateSourceTrigger=LostFocus}" />
+                            <CheckBox Grid.Column="2"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding PeriodicServicesEnabled}" />
+                        </Grid>
+
+                        <Separator Margin="0,2" />
+
+                        <Grid Style="{StaticResource SettingRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Notifications" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="{Binding NotificationsStatusDescription}"
+                                           Style="{StaticResource NotificationsStatusDescription}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1"
+                                        Margin="0,0,12,0"
+                                        Orientation="Horizontal">
+                                <Button Padding="10,2"
+                                        Content="Send test notification"
+                                        Click="SendTestNotificationButton_Click" />
+                                <Button Margin="6,0,0,0"
+                                        Padding="10,2"
+                                        Content="Send rich notification"
+                                        Click="SendRichTestNotificationButton_Click" />
+                                <Button Margin="6,0,0,0"
+                                        Padding="10,2"
+                                        Content="Send image notification"
+                                        Click="SendImageTestNotificationButton_Click" />
+                                <Button Margin="6,0,0,0"
+                                        Padding="10,2"
+                                        Content="Open notification settings"
+                                        Visibility="{Binding NotificationsUnavailable, Converter={StaticResource BoolToVisibility}}"
+                                        Click="OpenNotificationSettingsButton_Click" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="2"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding NotificationsEnabled}" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Push Notifications">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="Push notifications (IPushNotificationService)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
+                        <TextBlock Style="{StaticResource SettingDescription}"
+                                   Text="A client for a realtime push-notification server (SignalR). Disabled by default here since no real server exists yet. Uncheck the 'Notifications' toggle on the Desktop Features tab, then simulate, to see the in-app fallback window instead of a real toast." />
+                        <TextBlock Text="{Binding PushNotificationStatusDescription}" Style="{StaticResource SettingDescription}" Margin="0,4,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Padding="10,2" Margin="0,0,8,0" Content="Connect" Click="ConnectPushNotificationsButton_Click" />
+                            <Button Padding="10,2" Margin="0,0,8,0" Content="Disconnect" Click="DisconnectPushNotificationsButton_Click" />
+                            <Button Padding="10,2" Content="Simulate incoming notification" Click="SimulatePushNotificationButton_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Essentials">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="{Binding PublisherDescription}" Style="{StaticResource SettingDescription}" />
+                        <TextBlock Text="{Binding VersionTrackingDescription}" Style="{StaticResource SettingDescription}" Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding ConnectivityDescription}" Style="{StaticResource SettingDescription}" Margin="0,2,0,0" />
+                        <TextBlock Style="{StaticResource SettingDescription}" Margin="0,2,0,0">
+                            <Run Text="{Binding DisplayInfoDescription, Mode=OneWay}" />
+                            <Run Text=" | Launch count (via Preferences): " />
+                            <Run Text="{Binding LaunchCount, Mode=OneWay}" />
+                        </TextBlock>
+
+                        <Separator Margin="0,8,0,4" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="SecureStorage" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="{Binding SecureStorageResult}" Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1"
+                                     Width="160"
+                                     Margin="0,0,8,0"
+                                     VerticalAlignment="Center"
+                                     Text="{Binding SecureStorageInput, UpdateSourceTrigger=PropertyChanged}" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <Button Padding="10,2" Margin="0,0,4,0" Content="Save" Click="SaveSecureValueButton_Click" />
+                                <Button Padding="10,2" Content="Load" Click="LoadSecureValueButton_Click" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Separator Margin="0,8,0,4" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Email" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="Opens the default email client via Simple MAPI" Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Padding="10,2" Content="Compose email" Click="ComposeEmailButton_Click" />
+                        </Grid>
+
+                        <Separator Margin="0,8,0,4" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Device identity (licensing)" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="{Binding DeviceIdentityDescription}" Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Padding="10,2" Content="Show device identity" Click="ShowDeviceIdentityButton_Click" />
+                        </Grid>
+
+                        <TextBlock Margin="0,8,0,0"
+                                   Text="App action: right-click this app's taskbar icon and choose &quot;Open&quot; (registered via ConfigureEssentials)."
                                    Style="{StaticResource SettingDescription}" />
                     </StackPanel>
-                    <CheckBox Grid.Column="1"
-                              VerticalAlignment="Center"
-                              IsChecked="{Binding RunOnStartupEnabled}" />
-                </Grid>
+                </ScrollViewer>
+            </TabItem>
 
-                <Separator Margin="0,2" />
-
-                <Grid Style="{StaticResource SettingRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="System tray" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="Keep this app running in the system tray (closing the window hides it)"
-                                   Style="{StaticResource SettingDescription}" />
+            <TabItem Header="Dialogs">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="Dialogs (IDialogService)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
+                        <TextBlock Style="{StaticResource SettingDescription}"
+                                   Text="Show opens About non-modally, owned by this window; double-clicking it activates the existing instance instead of opening a duplicate. ShowDialog opens it modally. About has its own button that opens Details, owned by About (not this window) - closing About cascades to close Details too, unless Details vetoes via its own Closing." />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Padding="10,2" Margin="0,0,8,0" Content="Show About" Click="ShowAboutButton_Click" />
+                            <Button Padding="10,2" Margin="0,0,8,0" Content="ShowDialog About" Click="ShowDialogAboutButton_Click" />
+                            <Button Padding="10,2" Content="Close all dialogs" Click="CloseAllDialogsButton_Click" />
+                        </StackPanel>
                     </StackPanel>
-                    <CheckBox Grid.Column="1"
-                              VerticalAlignment="Center"
-                              IsChecked="{Binding TrayIconEnabled}" />
-                </Grid>
+                </ScrollViewer>
+            </TabItem>
 
-                <Separator Margin="0,2" />
+            <TabItem Header="AI Chat + MCP">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                <Grid Style="{StaticResource SettingRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Keep computer awake" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="Prevent your computer from idle-sleeping while this app is open. Your display can still turn off."
-                                   Style="{StaticResource SettingDescription}" />
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="AI chat + MCP (IAiChatService)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
+                        <TextBlock Style="{StaticResource SettingDescription}"
+                                   Text="Bring-your-own-key: pick a provider, paste your own API key (goes straight to that provider and to DPAPI-encrypted SecureStorage - never into a config file), then chat. Every connected MCP server's tools are made available to the model automatically, with no extra wiring." />
                     </StackPanel>
-                    <CheckBox Grid.Column="1"
-                              VerticalAlignment="Center"
-                              IsChecked="{Binding KeepAwakeEnabled}" />
-                </Grid>
 
-                <Separator Margin="0,2" />
-
-                <Grid Style="{StaticResource SettingRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Periodic background tasks" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="Run the registered periodic services (heartbeat) on a schedule. Interval in seconds."
-                                   Style="{StaticResource SettingDescription}" />
+                    <StackPanel Grid.Row="1" Margin="0,4,0,0">
+                        <TextBlock Text="{Binding McpServersDescription}" Style="{StaticResource SettingDescription}" />
+                        <TextBlock Text="{Binding AiStatusDescription}" Style="{StaticResource SettingDescription}" Margin="0,2,0,0" />
                     </StackPanel>
-                    <TextBox Grid.Column="1"
-                             Width="60"
-                             Margin="0,0,12,0"
-                             VerticalAlignment="Center"
-                             TextAlignment="Center"
-                             Text="{Binding HeartbeatIntervalSeconds, UpdateSourceTrigger=LostFocus}" />
-                    <CheckBox Grid.Column="2"
-                              VerticalAlignment="Center"
-                              IsChecked="{Binding PeriodicServicesEnabled}" />
-                </Grid>
 
-                <Separator Margin="0,2" />
-
-                <Grid Style="{StaticResource SettingRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Notifications" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="{Binding NotificationsStatusDescription}"
-                                   Style="{StaticResource NotificationsStatusDescription}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1"
-                                Margin="0,0,12,0"
-                                Orientation="Horizontal">
-                        <Button Padding="10,2"
-                                Content="Send test notification"
-                                Click="SendTestNotificationButton_Click" />
-                        <Button Margin="6,0,0,0"
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding AiProviders}"
+                                  SelectedItem="{Binding SelectedAiProvider}"
+                                  Width="90"
+                                  VerticalAlignment="Center" />
+                        <TextBox Grid.Column="1"
+                                 Margin="6,0,0,0"
+                                 VerticalAlignment="Center"
+                                 Text="{Binding AiModel, UpdateSourceTrigger=PropertyChanged}" />
+                        <PasswordBox x:Name="AiApiKeyPasswordBox"
+                                     Grid.Column="2"
+                                     Margin="6,0,0,0"
+                                     VerticalAlignment="Center"
+                                     PasswordChanged="AiApiKeyPasswordBox_PasswordChanged" />
+                        <Button Grid.Column="3"
+                                Margin="6,0,0,0"
                                 Padding="10,2"
-                                Content="Send rich notification"
-                                Click="SendRichTestNotificationButton_Click" />
-                        <Button Margin="6,0,0,0"
+                                Content="Save AI settings"
+                                Click="SaveAiSettingsButton_Click" />
+                    </Grid>
+
+                    <ListBox Grid.Row="3"
+                             Margin="0,8,0,0"
+                             ItemsSource="{Binding AiChatTranscript}"
+                             FontFamily="Consolas" />
+
+                    <Grid Grid.Row="4" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox VerticalAlignment="Center"
+                                 Text="{Binding AiChatInput, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyDown="AiChatInputTextBox_KeyDown" />
+                        <Button Grid.Column="1"
+                                Margin="6,0,0,0"
                                 Padding="10,2"
-                                Content="Send image notification"
-                                Click="SendImageTestNotificationButton_Click" />
-                        <Button Margin="6,0,0,0"
-                                Padding="10,2"
-                                Content="Open notification settings"
-                                Visibility="{Binding NotificationsUnavailable, Converter={StaticResource BoolToVisibility}}"
-                                Click="OpenNotificationSettingsButton_Click" />
-                    </StackPanel>
-                    <CheckBox Grid.Column="2"
-                              VerticalAlignment="Center"
-                              IsChecked="{Binding NotificationsEnabled}" />
+                                Content="Send"
+                                Click="SendAiChatMessageButton_Click" />
+                    </Grid>
                 </Grid>
-            </StackPanel>
-        </Border>
+            </TabItem>
 
-        <Border Grid.Row="4"
-                Margin="0,12,0,0"
-                Padding="12"
-                BorderBrush="#DDDDDD"
-                BorderThickness="1"
-                CornerRadius="6">
-            <StackPanel>
-                <TextBlock Text="Push notifications (IPushNotificationService)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
-                <TextBlock Style="{StaticResource SettingDescription}"
-                           Text="A client for a realtime push-notification server (SignalR). Disabled by default here since no real server exists yet. Uncheck the 'Notifications' toggle above, then simulate, to see the in-app fallback window instead of a real toast." />
-                <TextBlock Text="{Binding PushNotificationStatusDescription}" Style="{StaticResource SettingDescription}" Margin="0,4,0,0" />
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button Padding="10,2" Margin="0,0,8,0" Content="Connect" Click="ConnectPushNotificationsButton_Click" />
-                    <Button Padding="10,2" Margin="0,0,8,0" Content="Disconnect" Click="DisconnectPushNotificationsButton_Click" />
-                    <Button Padding="10,2" Content="Simulate incoming notification" Click="SimulatePushNotificationButton_Click" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <Border Grid.Row="5"
-                Margin="0,12,0,0"
-                Padding="12"
-                BorderBrush="#DDDDDD"
-                BorderThickness="1"
-                CornerRadius="6">
-            <StackPanel>
-                <TextBlock Text="Essentials" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
-
-                <TextBlock Text="{Binding PublisherDescription}" Style="{StaticResource SettingDescription}" />
-                <TextBlock Text="{Binding VersionTrackingDescription}" Style="{StaticResource SettingDescription}" Margin="0,2,0,0" />
-                <TextBlock Text="{Binding ConnectivityDescription}" Style="{StaticResource SettingDescription}" Margin="0,2,0,0" />
-                <TextBlock Style="{StaticResource SettingDescription}" Margin="0,2,0,0">
-                    <Run Text="{Binding DisplayInfoDescription, Mode=OneWay}" />
-                    <Run Text=" | Launch count (via Preferences): " />
-                    <Run Text="{Binding LaunchCount, Mode=OneWay}" />
-                </TextBlock>
-
-                <Separator Margin="0,8,0,4" />
-
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="SecureStorage" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="{Binding SecureStorageResult}" Style="{StaticResource SettingDescription}" />
-                    </StackPanel>
-                    <TextBox Grid.Column="1"
-                             Width="160"
-                             Margin="0,0,8,0"
-                             VerticalAlignment="Center"
-                             Text="{Binding SecureStorageInput, UpdateSourceTrigger=PropertyChanged}" />
-                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                        <Button Padding="10,2" Margin="0,0,4,0" Content="Save" Click="SaveSecureValueButton_Click" />
-                        <Button Padding="10,2" Content="Load" Click="LoadSecureValueButton_Click" />
-                    </StackPanel>
+            <TabItem Header="Logs">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0"
+                               Margin="0,0,0,8"
+                               Text="Live lifecycle events across every feature on every tab."
+                               Style="{StaticResource SettingDescription}" />
+                    <ListBox Grid.Row="1"
+                             ItemsSource="{Binding LifecycleEvents}"
+                             FontFamily="Consolas" />
                 </Grid>
-
-                <Separator Margin="0,8,0,4" />
-
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Email" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="Opens the default email client via Simple MAPI" Style="{StaticResource SettingDescription}" />
-                    </StackPanel>
-                    <Button Grid.Column="1" Padding="10,2" Content="Compose email" Click="ComposeEmailButton_Click" />
-                </Grid>
-
-                <Separator Margin="0,8,0,4" />
-
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Device identity (licensing)" Style="{StaticResource SettingTitle}" />
-                        <TextBlock Text="{Binding DeviceIdentityDescription}" Style="{StaticResource SettingDescription}" />
-                    </StackPanel>
-                    <Button Grid.Column="1" Padding="10,2" Content="Show device identity" Click="ShowDeviceIdentityButton_Click" />
-                </Grid>
-
-                <TextBlock Margin="0,8,0,0"
-                           Text="App action: right-click this app's taskbar icon and choose &quot;Open&quot; (registered via ConfigureEssentials)."
-                           Style="{StaticResource SettingDescription}" />
-            </StackPanel>
-        </Border>
-
-        <Border Grid.Row="6"
-                Margin="0,12,0,0"
-                Padding="12"
-                BorderBrush="#DDDDDD"
-                BorderThickness="1"
-                CornerRadius="6">
-            <StackPanel>
-                <TextBlock Text="Dialogs (IDialogService)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
-                <TextBlock Style="{StaticResource SettingDescription}"
-                           Text="Show opens About non-modally, owned by this window; double-clicking it activates the existing instance instead of opening a duplicate. ShowDialog opens it modally. About has its own button that opens Details, owned by About (not this window) - closing About cascades to close Details too, unless Details vetoes via its own Closing." />
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button Padding="10,2" Margin="0,0,8,0" Content="Show About" Click="ShowAboutButton_Click" />
-                    <Button Padding="10,2" Margin="0,0,8,0" Content="ShowDialog About" Click="ShowDialogAboutButton_Click" />
-                    <Button Padding="10,2" Content="Close all dialogs" Click="CloseAllDialogsButton_Click" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <TextBlock Grid.Row="7"
-                   Margin="0,16,0,4"
-                   Text="Logs:"
-                   FontWeight="SemiBold" />
-
-        <ListBox Grid.Row="8"
-                 Height="220"
-                 ItemsSource="{Binding LifecycleEvents}"
-                 FontFamily="Consolas" />
+            </TabItem>
+        </TabControl>
     </Grid>
-    </ScrollViewer>
 </Window>

@@ -9,14 +9,22 @@ namespace Barbatos.Wpf.Core.Sample;
 
 /// <summary>
 /// A sample <see cref="IWpfPeriodicService"/> that logs a heartbeat into the lifecycle
-/// event list. Its interval defaults to 5 seconds and can be overridden from
-/// <c>Barbatos:PeriodicServices:Intervals:Heartbeat</c> or from the settings UI.
+/// event list. Its schedule defaults to a 5 second Custom interval and can be overridden from
+/// <c>Barbatos:PeriodicServices:Schedules:Heartbeat</c> or from the settings UI.
 /// </summary>
 public sealed class HeartbeatService : IWpfPeriodicService
 {
+    /// <summary>Shared with <see cref="MainViewModel"/>'s "Heartbeat interval" setting so both stay in sync.</summary>
+    public const string DescriptionText = "Logs a heartbeat into the lifecycle event list.";
+
     public string Name => "Heartbeat";
 
-    public TimeSpan Interval => TimeSpan.FromSeconds(5);
+    public PeriodicSchedule Schedule => new()
+    {
+        Frequency = PeriodicFrequency.Custom,
+        Interval = TimeSpan.FromSeconds(5),
+        Description = DescriptionText,
+    };
 
     public Task ExecuteAsync(IServiceProvider services, CancellationToken cancellationToken)
     {

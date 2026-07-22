@@ -23,6 +23,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.PushNotifications`](#barbatoswpfpushnotifications-namespace)** | The realtime push-notification client optional feature (SignalR). |
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
 | **[`Barbatos.Wpf.Dialogs`](#barbatoswpfdialogs-namespace)** | The dialog service: owner assignment, duplicate-open prevention, and graceful bulk-close for child windows. |
+| **[`Barbatos.Wpf.Mcp`](#barbatoswpfmcp-namespace)** | The MCP (Model Context Protocol) client + bring-your-own-key AI chat optional feature. |
 
 ---
 
@@ -40,8 +41,9 @@ extension methods that wire up Essentials and every optional desktop feature.
 | [`WpfHostEnvironment`](#wpfhostenvironment-class) | The WPF `IHostEnvironment` implementation. |
 | `WpfApplication` | A `System.Windows.Application` subclass that owns the built `WpfApp` and forwards lifecycle events. See [splash screen support](#wpfapplication-splash-screen-support) below. |
 | `EssentialsExtensions` | `UseEssentials()` / `ConfigureEssentials(...)` — registers every Essentials service and app-action activation detection. |
-| `PeriodicServiceOptions` | Options for `ConfigurePeriodicServices` (`Enabled`, `Intervals`). |
-| `PeriodicServiceStatus` | Live status of a registered periodic service (`Name`, `Interval`, `LastRunTime`, `RunCount`). |
+| `PeriodicServiceOptions` | Options for `ConfigurePeriodicServices` (`Enabled`, `Schedules`). |
+| [`PeriodicSchedule`](#periodicschedule-class) | When and how often a periodic service runs: `Frequency`, `StartTime`, `EndTime`, `TimeOfDay`, `DaysOfWeek`, `DayOfMonth`, `Interval`, `Description`. |
+| `PeriodicServiceStatus` | Live status of a registered periodic service (`Name`, `Schedule`, `NextRunTime`, `IsCompleted`, `LastRunTime`, `RunCount`). |
 | `PeriodicServiceExecutedEventArgs` | Raised by `IPeriodicServiceScheduler.ServiceExecuted` after each run. |
 | [`SplashScreenOptions`](#wpfapplication-splash-screen-support) | Configures the built-in `SplashWindow` (app name, logo, tagline, sponsor logos, related links, minimum display duration). |
 | `SplashScreenLogo` | A single sponsor/developer logo entry in `SplashScreenOptions.SponsorLogos`. |
@@ -154,10 +156,14 @@ Represents a service that is executed periodically while the application is runn
 public interface IWpfPeriodicService
 {
     string Name { get; }
-    TimeSpan Interval { get; }
+    PeriodicSchedule Schedule { get; }
     Task ExecuteAsync(IServiceProvider services, CancellationToken cancellationToken);
 }
 ```
+
+`Schedule` is read once, when the service is registered (via DI at `ConfigurePeriodicServices`
+time, or via `IPeriodicServiceScheduler.Register` at any later time) — call `UpdateSchedule` to
+change what's active afterwards.
 
 ---
 
@@ -175,11 +181,49 @@ public interface IPeriodicServiceScheduler
 
 #### Methods
 - **`SetEnabled(bool)`** — starts/stops every registered service's timer.
-- **`UpdateInterval(string name, TimeSpan interval)`** — reschedules a running service immediately.
+- **`UpdateSchedule(string name, PeriodicSchedule schedule)`** — reschedules a running service immediately (throws `ArgumentException` for an unknown name, `InvalidOperationException` for an invalid schedule).
+- **`Register(IWpfPeriodicService service)`** — adds a service at runtime, after the host has already been built (throws `ArgumentException` for a duplicate name). Arms it immediately if the scheduler is currently enabled. The service's `ExecuteAsync` is still ordinary developer-written code — this just removes the "only at host-build time" restriction on when it can be wired up.
+- **`Unregister(string name)`** (`bool`) — removes a service, stopping it if running; returns whether one was found. An execution already in flight finishes but is not rescheduled afterwards.
 
 #### Events
 - **`IsEnabledChanged`**
 - **`ServiceExecuted`** (`PeriodicServiceExecutedEventArgs`) — raised after every run, including failed ones.
+
+---
+
+### `PeriodicSchedule` Class
+
+When and how often a periodic service runs. `Daily`, `Weekly` and `Monthly` are
+calendar-anchored (a wall-clock time of day, specific days of the week, or a specific day of the
+month — the same way a calendar reminder or a Windows Task Scheduler trigger would); `Hourly`
+and `Custom` are plain fixed-duration repeats.
+
+```csharp
+public sealed class PeriodicSchedule
+```
+
+#### Properties
+- **`Frequency`** (`PeriodicFrequency`) — `Once`, `Hourly`, `Daily`, `Weekly`, `Monthly`, or `Custom`. Defaults to `Once`.
+- **`StartTime`** (`DateTimeOffset?`) — no occurrence before this time; `null` means occurrences are computed relative to "now" instead.
+- **`EndTime`** (`DateTimeOffset?`) — no occurrence after this time (inclusive); `null` means it never expires.
+- **`TimeOfDay`** (`TimeSpan?`) — wall-clock time of day; used by `Daily`/`Weekly`/`Monthly`. Defaults to `StartTime`'s (or "now"'s) time of day.
+- **`DaysOfWeek`** (`WeekDays`) — used by `Weekly`. `WeekDays.None` (the default) defaults to `StartTime`'s (or "now"'s) day of week.
+- **`DayOfMonth`** (`int?`, 1-31) — used by `Monthly`; clamped to the last day of shorter months. Defaults to `StartTime`'s (or "now"'s) day.
+- **`Interval`** (`TimeSpan?`) — required and must be positive when `Frequency` is `Custom`; ignored otherwise.
+- **`Description`** (`string?`) — human-readable, for display in a settings UI.
+
+#### Methods
+- **`Validate()`** — throws `InvalidOperationException` if the schedule isn't internally consistent (a `Custom` schedule without a positive `Interval`, an out-of-range `DayOfMonth`, or `StartTime` later than `EndTime`).
+- **`GetNextOccurrence(DateTimeOffset now, DateTimeOffset? lastRun)`** (`DateTimeOffset?`) — a pure function (never reads the system clock itself) that computes the next time the schedule should run, or `null` if it has none left. Missed occurrences (the schedule was disabled, or the app was closed, across several periods) are caught up to a single next occurrence rather than replayed as a backlog. Useful on its own to preview a schedule, e.g. from a settings UI, before saving it.
+- **`Clone()`** (`PeriodicSchedule`) — an independent copy.
+
+#### `PeriodicFrequency`
+`Once`, `Hourly`, `Daily`, `Weekly`, `Monthly`, `Custom` — see `Frequency` above.
+
+#### `WeekDays`
+A `[Flags]` enum (unlike `DayOfWeek`, more than one day can be combined):
+`None`, `Monday`, `Tuesday`, `Wednesday`, `Thursday`, `Friday`, `Saturday`, `Sunday`, plus the
+combinations `Workdays` (Monday-Friday), `Weekend` (Saturday-Sunday), and `All`.
 
 ---
 
@@ -791,3 +835,110 @@ MAUI's page-based navigation model has no equivalent of WPF's multi-window/owner
   `Closing` veto. When enabled, this service closes a window's owned dialogs itself first,
   ahead of WPF's own cascade, so each one gets a real, respected veto — and if any refuse, the
   window's own close is cancelled too.
+
+---
+
+## `Barbatos.Wpf.Mcp` Namespace
+
+MCP (Model Context Protocol) client + bring-your-own-key (BYOK) AI chat. Has no .NET MAUI
+counterpart. See [AI chat + MCP](README.md#ai-chat--mcp-barbatoswpfmcp) in the README for the
+full behavior description, including the BYOK rationale and provider list.
+
+### `IMcpServerRegistry`
+
+Connects to MCP servers and aggregates their tools.
+
+- **`Servers`** (`IReadOnlyList<McpServerStatus>`)
+- **`Tools`** (`IReadOnlyList<Microsoft.Extensions.AI.AITool>`) — aggregated from every
+  currently-connected server; if two servers expose a same-named tool, the most recently
+  connected one wins (logged as a warning).
+- **`Changed`** (`event EventHandler`)
+- **`AddServerAsync(McpServerDescriptor, CancellationToken = default)`** → `Task<McpServerStatus>`
+  — throws `InvalidOperationException` for a descriptor that fails its own
+  `McpServerDescriptor.Validate()`, `ArgumentException` for a duplicate `Name` (mirrors
+  `IPeriodicServiceScheduler.Register`'s exception split). A connection failure is both recorded
+  on the returned/tracked `McpServerStatus` and rethrown.
+- **`RemoveServerAsync(string name, CancellationToken = default)`** → `Task<bool>`
+
+### `McpServerDescriptor` / `McpTransportKind` / `McpServerStatus`
+
+- **`McpServerDescriptor`**: **`Name`** (`string?`, required), **`TransportKind`**
+  (`McpTransportKind`, default `Stdio`), **`Command`**/**`Arguments`**/**`WorkingDirectory`**
+  (stdio), **`Endpoint`**/**`AdditionalHeaders`** (http). **`Validate()`** checks internal
+  consistency for the current `TransportKind` without attempting a connection (throws
+  `InvalidOperationException`) - the same role `PeriodicSchedule.Validate()` plays, usable to
+  check a server entry from a settings UI before saving/connecting it.
+- **`McpTransportKind`**: **`Stdio`** (a local child process, `ModelContextProtocol.Client.StdioClientTransport`),
+  **`Http`** (Streamable HTTP with SSE fallback, `ModelContextProtocol.Client.HttpClientTransport`).
+- **`McpServerStatus`**: **`Name`** (`string`), **`IsConnected`** (`bool`), **`LastError`**
+  (`string?`), **`Tools`** (`IReadOnlyList<AITool>`) — as of the last successful connection.
+
+### `McpOptions`
+
+- **`SectionName`** = `"Barbatos:Mcp"`
+- **`Enabled`** (`bool`, default `true`) — whether the seed `Servers` list is connected at
+  startup; does not affect `AddServerAsync` calls made later at runtime.
+- **`Servers`** (`IList<McpServerDescriptor>`) — connected once, at startup, by `ConfigureMcp`.
+
+### `IAiApiKeyProvider`
+
+Resolves/stores the end user's own API key, keyed per provider string (case-insensitively).
+
+- **`GetApiKeyAsync(string provider, CancellationToken = default)`** → `Task<string?>`
+- **`SetApiKeyAsync(string provider, string apiKey, CancellationToken = default)`** → `Task`
+
+Registered via `TryAddSingleton` — replace with your own implementation (registered before
+`ConfigureMcp`) to use a different secret store (Windows Credential Manager, an enterprise key
+vault, ...) instead of the built-in `SecureStorageAiApiKeyProvider` (DPAPI via
+`Barbatos.Wpf.Storage.ISecureStorage`).
+
+### `AiProviderDescriptor` / `AiProviderOptions`
+
+- **`AiProviderDescriptor`**: **`Key`** (`string?`, required) — the catalog lookup key passed to
+  `IAiChatClientFactory.SelectProvider`, **`Provider`** (`string`, default `"openai"`),
+  **`Model`** (`string?`), **`Endpoint`** (`string?`). **`Validate()`** checks `Key`/`Provider`
+  are set (throws `InvalidOperationException`) — the same role `McpServerDescriptor.Validate()`
+  plays.
+- **`AiProviderOptions`** (`SectionName` = `"Barbatos:Mcp:Provider"`): **`Provider`** (`string`,
+  default `"openai"`, case-insensitive — only `"anthropic"` is special-cased, every other value
+  is treated as OpenAI-wire-compatible), **`Model`** (`string?`, required), **`Endpoint`**
+  (`string?`, used for any non-`"openai"` OpenAI-compatible endpoint, e.g. Gemini's
+  `"https://generativelanguage.googleapis.com/v1beta/openai/"`), **`Providers`**
+  (`IList<AiProviderDescriptor>`) — an optional catalog of provider choices the app wants to
+  offer (e.g. in a settings UI), seeded the same way `McpOptions.Servers` seeds MCP servers.
+  Deliberately carries no API key/secret.
+
+### `IAiChatClientFactory`
+
+The "which provider" seam — builds/caches the `Microsoft.Extensions.AI.IChatClient` for the
+currently-configured provider/model.
+
+- **`ConfigurationChanged`** (`event EventHandler`)
+- **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>` — true once a model is set
+  and an API key has been stored for the configured provider, without building a client.
+- **`GetChatClientAsync(CancellationToken = default)`** → `Task<IChatClient>` — throws
+  `InvalidOperationException`, naming what's missing, if the model/endpoint/API key isn't set yet.
+- **`UpdateProvider(string provider, string model, string? endpoint = null)`** — changes the
+  active provider/model, invalidating any cached client.
+- **`SelectProvider(string key)`** — looks `key` up in `AiProviderOptions.Providers` and calls
+  `UpdateProvider` with that entry's own `Provider`/`Model`/`Endpoint`. Throws
+  `InvalidOperationException` if no catalog entry has that `Key`, if the entry fails its own
+  `Validate()`, or if the entry has no `Model` set.
+- **`RefreshApiKeyAsync(CancellationToken = default)`** → `Task` — invalidates any cached client
+  so the next `GetChatClientAsync` re-reads the stored key immediately (already re-checked on
+  every call regardless; this only makes `ConfigurationChanged` fire right away).
+
+### `IAiChatService`
+
+The facade most application code calls — merges `IMcpServerRegistry.Tools` into the caller's own
+`ChatOptions` (appended, never clobbering caller-supplied tools) before delegating to
+`IAiChatClientFactory`. Tool calls the model requests execute automatically, with no confirmation
+step.
+
+- **`ConfigurationChanged`** (`event EventHandler`) — forwards `IAiChatClientFactory.ConfigurationChanged`.
+- **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>`
+- **`GetResponseAsync(IEnumerable<ChatMessage>, ChatOptions? = null, CancellationToken = default)`** → `Task<ChatResponse>`
+- **`GetStreamingResponseAsync(IEnumerable<ChatMessage>, ChatOptions? = null, CancellationToken = default)`** → `IAsyncEnumerable<ChatResponseUpdate>`
+
+Both throw `InvalidOperationException` (via `IAiChatClientFactory.GetChatClientAsync`) if no
+provider is fully configured yet.

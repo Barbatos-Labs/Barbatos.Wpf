@@ -43,6 +43,9 @@ injection, configuration, logging, and lifecycle events built in.**
   * [Showing it conditionally](#showing-it-conditionally)
   * [Avoiding flicker: minimum display duration](#avoiding-flicker-minimum-display-duration)
 * **[Periodic services](#periodic-services)**
+* **[AI chat + MCP (Barbatos.Wpf.Mcp)](#ai-chat--mcp-barbatoswpfmcp)**
+  * [Providers](#providers)
+  * [Configuration](#configuration)
 * **[Ecosystem](#ecosystem)**
   * [Repository layout](#repository-layout)
 * **[API Reference](#api-reference)**
@@ -910,14 +913,21 @@ is any.
 ## Periodic services
 
 `IWpfPeriodicService` is the recurring counterpart of `IWpfInitializeService`: implement it,
-register it, and it runs every `Interval` (5 seconds, 5 minutes, 1 hour, ...) on the
-application dispatcher.
+register it, and it runs on the application dispatcher according to its `PeriodicSchedule` -
+a class carrying a start time, an end time, a recurrence frequency, and a description.
 
 ```csharp
 public sealed class SyncService : IWpfPeriodicService
 {
     public string Name => "Sync";
-    public TimeSpan Interval => TimeSpan.FromMinutes(5); // default, configurable
+
+    public PeriodicSchedule Schedule => new()
+    {
+        Frequency = PeriodicFrequency.Custom,
+        Interval = TimeSpan.FromMinutes(5), // default, configurable
+        Description = "Synchronizes local data with the server.",
+    };
+
     public async Task ExecuteAsync(IServiceProvider services, CancellationToken ct)
     {
         await Task.Run(() => { /* heavy work off the UI thread */ }, ct);
@@ -929,23 +939,245 @@ builder.ConfigurePeriodicServices<SyncService>();
 //     builder.ConfigurePeriodicServices();
 ```
 
-The interval can be configured in three ways (file overrides code; UI wins at runtime):
+`Frequency` is `Once`, `Hourly`, `Daily`, `Weekly`, `Monthly`, or `Custom`. `Daily`, `Weekly` and
+`Monthly` are calendar-anchored - they run at a specific wall-clock `TimeOfDay`, on specific
+`DaysOfWeek` or a specific `DayOfMonth`, the same way a calendar reminder or a Windows Task
+Scheduler trigger would - not simply "every N days from whenever the app happened to start":
 
-1. **Code** — the service's own `Interval` property.
+```csharp
+public PeriodicSchedule Schedule => new()
+{
+    Frequency = PeriodicFrequency.Weekly,
+    DaysOfWeek = WeekDays.Monday | WeekDays.Thursday,
+    TimeOfDay = new TimeSpan(9, 0, 0), // 09:00
+    Description = "Sends the weekly digest email.",
+};
+```
+
+`Hourly` and `Custom` are plain fixed-duration repeats instead (`Custom` requires a positive
+`Interval`). `StartTime`/`EndTime` bound when a schedule is allowed to produce an occurrence at
+all - both are optional; `Once` runs a single time at `StartTime` (or immediately if unset).
+
+The schedule can be configured in three ways (file overrides code, as a whole schedule per
+service; UI wins at runtime):
+
+1. **Code** — the service's own `Schedule` property.
 2. **File** — the `Barbatos:PeriodicServices` section:
 
    ```json
-   { "Barbatos": { "PeriodicServices": { "Enabled": true, "Intervals": { "Sync": "00:05:00" } } } }
+   {
+     "Barbatos": {
+       "PeriodicServices": {
+         "Enabled": true,
+         "Schedules": {
+           "Sync": { "Frequency": "Custom", "Interval": "00:05:00" }
+         }
+       }
+     }
+   }
    ```
 
 3. **UI** — through `IPeriodicServiceScheduler`:
-   `scheduler.UpdateInterval("Sync", TimeSpan.FromHours(1))` reschedules immediately;
-   `SetEnabled(bool)` starts/stops all services; `Services` exposes live status
-   (interval, last run, run count) and `ServiceExecuted` reports every run, including failures.
+   `scheduler.UpdateSchedule("Sync", new PeriodicSchedule { ... })` reschedules immediately;
+   `SetEnabled(bool)` starts/stops all services; `Services` exposes live status (schedule, next
+   run time, last run, run count, whether it has completed) and `ServiceExecuted` reports every
+   run, including failures.
 
 Failed executions are logged and do not stop the schedule; a tick is skipped while the
 previous run is still in progress; the cancellation token passed to `ExecuteAsync` is
 cancelled when the host is disposed.
+
+### Registering services after startup
+
+Every example above registers `SyncService` at host-build time via DI, but
+`IPeriodicServiceScheduler` also exposes `Register`/`Unregister`, which work at any time after
+the host has already started - not only while the builder is being configured:
+
+```csharp
+scheduler.Register(new SyncService());
+scheduler.Unregister("Sync");
+```
+
+This doesn't let a settings UI conjure new behavior out of nothing - `ExecuteAsync` is still
+ordinary code written by a developer - but that code no longer has to be wired up only at
+startup. A plugin loaded later, or a factory parameterized by something the end user picked in a
+settings UI, can hand the scheduler a new `IWpfPeriodicService` at any time.
+
+---
+
+## AI chat + MCP (`Barbatos.Wpf.Mcp`)
+
+Every modern AI-capable desktop app now ships MCP ([Model Context
+Protocol](https://modelcontextprotocol.io)) support, so it can call out to external tools through
+a standard, LLM-agnostic protocol. `ConfigureMcp()` gives any WPF app built on Barbatos.Wpf.Core
+the same capability - connect to any number of MCP servers, and chat with an LLM that
+automatically gets every connected server's tools.
+
+**Bring-your-own-key (BYOK), deliberately**: this feature exists so the *application publisher
+never pays for LLM usage* - the application's own end user supplies their own Gemini, Claude,
+ChatGPT, or other-provider API key at runtime (typically through a settings screen you build),
+and `IAiApiKeyProvider` stores it via `SecureStorage` (DPAPI-encrypted, never written to a config
+file or sent anywhere but that provider).
+
+```csharp
+builder.ConfigureMcp(
+    options => options.Servers.Add(new McpServerDescriptor
+    {
+        Name = "MyTools",
+        TransportKind = McpTransportKind.Stdio,
+        Command = "dotnet",
+        Arguments = { "dnx", "NuGet.Mcp.Server", "--version", "1.4.16", "--yes" },
+    }),
+    configureProvider: options =>
+    {
+        // The providers this app wants to offer - a settings UI provider picker would read
+        // options.Providers back out (see the sample's MainViewModel.AiProviders). Any string
+        // works as Key/Provider, not just these four - see "Providers" below.
+        options.Providers.Add(new AiProviderDescriptor { Key = "openai", Provider = "openai", Model = "gpt-5.2" });
+        options.Providers.Add(new AiProviderDescriptor { Key = "gemini", Provider = "gemini", Model = "gemini-3.5-flash", Endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/" });
+        options.Providers.Add(new AiProviderDescriptor { Key = "anthropic", Provider = "anthropic", Model = "claude-opus-4-8" });
+
+        options.Provider = "gemini"; // active on startup
+        options.Model = "gemini-3.5-flash";
+        options.Endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/";
+    });
+```
+
+```csharp
+// Anywhere in the app, after the end user has entered their own key (e.g. from a settings screen):
+await apiKeyProvider.SetApiKeyAsync("gemini", theUsersOwnApiKey);
+
+// Switch to a different catalog entry (looks up Provider/Model/Endpoint from options.Providers):
+aiChatClientFactory.SelectProvider("anthropic");
+
+// Then just chat - every connected MCP server's tools are merged in automatically:
+var response = await aiChatService.GetResponseAsync([new ChatMessage(ChatRole.User, "What's new in Newtonsoft.Json?")]);
+Console.WriteLine(response.Text);
+```
+
+| Type | Role |
+| --- | --- |
+| `IMcpServerRegistry` | Connects to MCP servers (stdio child process or HTTP), aggregates their tools. Runtime-mutable (`AddServerAsync`/`RemoveServerAsync`), not just a fixed config list - build your own "add an MCP server" settings UI on top if your app should let the end user do that themselves, the same way Claude Desktop/Cursor do. |
+| `IAiApiKeyProvider` | Resolves/stores the end user's own API key, keyed per provider string (case-insensitively) so switching providers never loses a different provider's key. The default implementation is `SecureStorage`-backed; swap in Credential Manager/a key vault by registering your own before calling `ConfigureMcp`. |
+| `IAiChatClientFactory` | The "which provider" seam (structurally the same role `IPushNotificationTransport` plays for push notifications) - builds/caches the `Microsoft.Extensions.AI.IChatClient` for whichever provider/model is currently selected. Inject this directly instead of `IAiChatService` if you want a raw chat client with no MCP tools merged in. |
+| `IAiChatService` | The facade most app code actually calls - merges every connected server's tools into `ChatOptions.Tools` automatically before delegating to `IAiChatClientFactory`, so callers never wire MCP tools in by hand. `GetResponseAsync`/`GetStreamingResponseAsync`. |
+
+### Providers
+
+`AiProviderOptions.Provider` is a plain string, not a fixed enum - baking every provider name an
+app might ever want into a shared library enum would need a new release for each one. This
+library only ever draws one real technical distinction: (case-insensitively) `"anthropic"` uses
+the official Anthropic .NET SDK (that SDK's own documentation notes it is still versioned 10+ but
+currently in beta, with possible breaking changes in minor/patch releases - this repository pins
+an exact version in `Directory.Packages.props`, no floating ranges, so a breaking change is only
+ever absorbed when this repository deliberately bumps that pin); every other string is assumed
+OpenAI-wire-compatible, covering:
+
+- **`"openai"`** (or any other spelling you like) - ChatGPT, via the official OpenAI API. Leave
+  `Endpoint` unset.
+- **Google Gemini** - via [Gemini's own OpenAI-compatible endpoint](https://ai.google.dev/gemini-api/docs/openai) -
+  set `Endpoint` to `"https://generativelanguage.googleapis.com/v1beta/openai/"`. No separate
+  Gemini SDK dependency.
+- **Any other OpenAI-wire-compatible endpoint** - a self-hosted model via Ollama/LM Studio/vLLM,
+  OpenRouter, a proxy, or a future provider this library has never heard of - set `Endpoint`
+  yourself. Does not cover Azure OpenAI, which needs its own client for correct auth/routing.
+
+**`AiProviderOptions.Providers`** is an optional catalog of provider choices your app wants to
+offer (e.g. in a settings UI's provider picker) - seeded the same way `McpOptions.Servers` seeds
+MCP servers. It is purely a catalog: `Barbatos.Wpf.Mcp` itself never reads it automatically -
+`IAiChatClientFactory.SelectProvider(key)` is what actually looks an entry up and switches to it,
+calling `UpdateProvider` with that entry's own `Provider`/`Model`/`Endpoint`. Leave it empty if
+your app hardcodes its own list instead, or only ever supports one provider - `Provider`/`Model`/
+`Endpoint` directly on `AiProviderOptions` work with or without a `Providers` catalog behind them.
+
+### Attachments (images, documents)
+
+`GetResponseAsync`/`GetStreamingResponseAsync` take `Microsoft.Extensions.AI.ChatMessage` as-is,
+so sending an image or a document alongside the text is just building a `ChatMessage` with more
+than one `AIContent` in it - `Barbatos.Wpf.Mcp` has no separate "attachment" API to learn:
+
+```csharp
+using Microsoft.Extensions.AI;
+
+// A local file, embedded inline as base64 - works for any provider, no hosting/upload step.
+// MediaType is a plain MIME type; it's sent through as-is, not inspected or validated.
+var imageBytes = await File.ReadAllBytesAsync(screenshotPath);
+var response = await aiChatService.GetResponseAsync(
+[
+    new ChatMessage(ChatRole.User,
+    [
+        new TextContent("What's in this screenshot?"),
+        new DataContent(imageBytes, "image/png"),
+    ]),
+]);
+
+// A document works the same way - just a different media type:
+var pdfBytes = await File.ReadAllBytesAsync(reportPath);
+var docResponse = await aiChatService.GetResponseAsync(
+[
+    new ChatMessage(ChatRole.User,
+    [
+        new TextContent("Summarize this document."),
+        new DataContent(pdfBytes, "application/pdf"),
+    ]),
+]);
+
+// Already-hosted content can be referenced by URL instead of embedding bytes - prefer
+// DataContent above for local files picked from the end user's machine.
+var byUrl = new ChatMessage(ChatRole.User,
+[
+    new TextContent("What's in this image?"),
+    new UriContent("https://example.com/photo.jpg", "image/jpeg"),
+]);
+```
+
+A couple of things worth knowing before relying on this:
+
+- **Which media types a given provider/model actually accepts varies** (e.g. PDF support isn't
+  universal) - check that provider's own docs; `Barbatos.Wpf.Mcp` doesn't transform, downscale, or
+  reject anything, it passes `ChatMessage.Contents` straight to the underlying SDK.
+- **`ChatMessage.Text` only ever reflects `TextContent`** - if you log or display `message.Text`
+  (e.g. building a transcript UI), an attached `DataContent`/`UriContent` won't show up in it; walk
+  `message.Contents` yourself if the UI needs to indicate "this message had an attachment."
+
+### Configuration
+
+```json
+{
+  "Barbatos": {
+    "Mcp": {
+      "Enabled": true,
+      "Provider": { "Provider": "gemini", "Model": "gemini-3.5-flash" }
+    }
+  }
+}
+```
+
+`Barbatos:Mcp:Servers` and `Barbatos:Mcp:Provider:Providers` aren't practical to express as flat
+config keys (each server/provider entry has several fields, and array-index config keys like
+`Providers:0:Key` are unwieldy to hand-author), so both are more commonly seeded from code via
+`options.Servers.Add(...)`/`options.Providers.Add(...)`, as shown above - the configuration
+section still exists for the parts that are practical to override from a file (`Enabled`,
+`Provider`, `Model`, `Endpoint`).
+
+A few behaviors worth knowing before relying on this feature:
+
+- **Tool calls execute automatically, with no confirmation step** - `IAiChatService` enables
+  `Microsoft.Extensions.AI`'s function-invocation middleware by default, the same way Claude
+  Desktop/Cursor auto-execute MCP tool calls. If your app needs a confirmation step before a tool
+  actually runs (for example because end users can add their own untrusted MCP servers), bypass
+  `IAiChatService` and build your own `ChatOptions` from `IMcpServerRegistry.Tools`/
+  `IAiChatClientFactory` directly instead.
+- **Tool name collisions**: if two connected servers expose a same-named tool, the one from
+  whichever server connected most recently wins - a warning is logged when this happens.
+- **A failed server connection is still tracked** - `IMcpServerRegistry.Servers` includes it with
+  `IsConnected = false` and `LastError` set, rather than disappearing; `AddServerAsync` also
+  rethrows the exception, so a caller doesn't have to poll `Servers` just to notice a failure.
+- **Runtime-mutable state does not persist itself** - like every other runtime-mutable feature in
+  this library (`ITrayIconService`, `IPeriodicServiceScheduler`), an `IMcpServerRegistry.AddServerAsync`/
+  `IAiChatClientFactory.UpdateProvider` call made from a settings UI is not written back to a
+  config file automatically; persist it yourself (see `SettingsStore` in the sample) if it should
+  survive a restart.
 
 ---
 

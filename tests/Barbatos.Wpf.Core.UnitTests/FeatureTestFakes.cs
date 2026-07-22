@@ -3,13 +3,17 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Runtime.CompilerServices;
 using Barbatos.Wpf.ApplicationModel;
 using Barbatos.Wpf.Devices;
+using Barbatos.Wpf.Mcp;
 using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
 using Barbatos.Wpf.PushNotifications;
 using Barbatos.Wpf.Startup;
+using Barbatos.Wpf.Storage;
 using Barbatos.Wpf.Tray;
+using Microsoft.Extensions.AI;
 
 namespace Barbatos.Wpf.Core.UnitTests;
 
@@ -216,4 +220,124 @@ public sealed class FakeDeviceIdentity : IDeviceIdentity
     public Task<string> GetInstanceIdAsync() => Task.FromResult(InstanceId);
 
     public Task<string> GetHardwareFingerprintAsync() => Task.FromResult(HardwareFingerprint);
+}
+
+/// <summary>In-memory <see cref="ISecureStorage"/> so <see cref="SecureStorageAiApiKeyProvider"/>'s own key-normalization logic can be tested without touching real DPAPI-backed storage.</summary>
+public sealed class FakeSecureStorage : ISecureStorage
+{
+    readonly Dictionary<string, string> _values = new();
+
+    public Task<string?> GetAsync(string key) => Task.FromResult(_values.GetValueOrDefault(key));
+
+    public Task SetAsync(string key, string value)
+    {
+        _values[key] = value;
+        return Task.CompletedTask;
+    }
+
+    public bool Remove(string key) => _values.Remove(key);
+
+    public void RemoveAll() => _values.Clear();
+}
+
+public sealed class FakeAiApiKeyProvider : IAiApiKeyProvider
+{
+    readonly Dictionary<string, string> _keys = new(StringComparer.OrdinalIgnoreCase);
+
+    public Task<string?> GetApiKeyAsync(string provider, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_keys.TryGetValue(provider, out var key) ? key : null);
+
+    public Task SetApiKeyAsync(string provider, string apiKey, CancellationToken cancellationToken = default)
+    {
+        _keys[provider] = apiKey;
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Only exposes <see cref="Tools"/> directly (set by the test) - used to test
+/// <see cref="AiChatService"/>'s own tool-merging logic in isolation, the same way
+/// <c>FakePushNotificationTransport</c> is used to test <c>PushNotificationService</c> without a
+/// real connection. <see cref="AddServerAsync"/>/<see cref="RemoveServerAsync"/> are not used by
+/// any test that relies on this fake (<see cref="McpServerStatus"/> can only be constructed by
+/// the real <c>McpServerRegistry</c> - there is no <c>InternalsVisibleTo</c> seam for it, same
+/// situation as <c>PeriodicServiceStatus</c>), so they throw rather than fake a value nothing
+/// observes.
+/// </summary>
+public sealed class FakeMcpServerRegistry : IMcpServerRegistry
+{
+    public List<AITool> ToolsList { get; } = new();
+
+    public IReadOnlyList<McpServerStatus> Servers => Array.Empty<McpServerStatus>();
+
+    public IReadOnlyList<AITool> Tools => ToolsList;
+
+    public event EventHandler? Changed;
+
+    public Task<McpServerStatus> AddServerAsync(McpServerDescriptor descriptor, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException($"{nameof(FakeMcpServerRegistry)} only exposes {nameof(Tools)} directly.");
+
+    public Task<bool> RemoveServerAsync(string name, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException($"{nameof(FakeMcpServerRegistry)} only exposes {nameof(Tools)} directly.");
+
+    public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+public sealed class FakeAiChatClientFactory : IAiChatClientFactory
+{
+    public IChatClient? Client { get; set; }
+
+    public bool Configured { get; set; } = true;
+
+    public event EventHandler? ConfigurationChanged;
+
+    public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken = default) => Task.FromResult(Configured);
+
+    public Task<IChatClient> GetChatClientAsync(CancellationToken cancellationToken = default) =>
+        Client is not null
+            ? Task.FromResult(Client)
+            : throw new InvalidOperationException("FakeAiChatClientFactory has no Client set.");
+
+    public void UpdateProvider(string provider, string model, string? endpoint = null)
+    {
+    }
+
+    public void SelectProvider(string key)
+    {
+    }
+
+    public Task RefreshApiKeyAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public void RaiseConfigurationChanged() => ConfigurationChanged?.Invoke(this, EventArgs.Empty);
+}
+
+/// <summary>Captures the last <see cref="ChatOptions"/> it was called with, so tests can assert
+/// on what <see cref="AiChatService"/> actually sent - never makes a real network call.</summary>
+public sealed class FakeChatClient : IChatClient
+{
+    public ChatOptions? LastOptions { get; private set; }
+
+    public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        LastOptions = options;
+        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "fake response")));
+    }
+
+    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        LastOptions = options;
+        await Task.CompletedTask;
+        yield return new ChatResponseUpdate(ChatRole.Assistant, "fake");
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+    public void Dispose()
+    {
+    }
 }

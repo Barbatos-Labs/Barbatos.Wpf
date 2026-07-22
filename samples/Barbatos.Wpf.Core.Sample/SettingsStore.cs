@@ -50,8 +50,14 @@ public sealed class SettingsStore
 
         writer.WriteStartObject("PeriodicServices");
         writer.WriteBoolean("Enabled", settings.PeriodicServicesEnabled);
-        writer.WriteStartObject("Intervals");
-        writer.WriteString("Heartbeat", settings.HeartbeatInterval.ToString("c"));
+        writer.WriteStartObject("Schedules");
+        writer.WriteStartObject("Heartbeat");
+        writer.WriteString("Frequency", "Custom");
+        writer.WriteString("Interval", settings.HeartbeatInterval.ToString("c"));
+        // A config override replaces the schedule wholesale, so the description has to be
+        // restated here too, or it would revert to blank after a restart.
+        writer.WriteString("Description", HeartbeatService.DescriptionText);
+        writer.WriteEndObject();
         writer.WriteEndObject();
         writer.WriteEndObject();
 

@@ -16,13 +16,13 @@ public class PeriodicServiceFeatureTests
         public FakePeriodicService(string name = "Fake", TimeSpan? interval = null, Action<FakePeriodicService>? onExecute = null)
         {
             Name = name;
-            Interval = interval ?? TimeSpan.FromMinutes(1);
+            Schedule = new PeriodicSchedule { Frequency = PeriodicFrequency.Custom, Interval = interval ?? TimeSpan.FromMinutes(1) };
             OnExecute = onExecute;
         }
 
         public string Name { get; }
 
-        public TimeSpan Interval { get; }
+        public PeriodicSchedule Schedule { get; set; }
 
         public Action<FakePeriodicService>? OnExecute { get; }
 
@@ -46,7 +46,7 @@ public class PeriodicServiceFeatureTests
     {
         public string Name => "Throwing";
 
-        public TimeSpan Interval => TimeSpan.FromMilliseconds(50);
+        public PeriodicSchedule Schedule => new() { Frequency = PeriodicFrequency.Custom, Interval = TimeSpan.FromMilliseconds(50) };
 
         public Task ExecuteAsync(IServiceProvider services, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("boom");
@@ -77,20 +77,21 @@ public class PeriodicServiceFeatureTests
     }
 
     [Fact]
-    public void ServicesUseTheirDefaultInterval()
+    public void ServicesUseTheirDefaultSchedule()
     {
         var scheduler = BuildScheduler(new FakePeriodicService(interval: TimeSpan.FromMinutes(7)));
 
-        Assert.Equal(TimeSpan.FromMinutes(7), Assert.Single(scheduler.Services).Interval);
+        Assert.Equal(TimeSpan.FromMinutes(7), Assert.Single(scheduler.Services).Schedule.Interval);
     }
 
     [Fact]
-    public void ConfigurationOverridesTheDefaultInterval()
+    public void ConfigurationOverridesTheDefaultSchedule()
     {
         var builder = WpfApp.CreateBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Barbatos:PeriodicServices:Intervals:Fake"] = "00:00:42",
+            ["Barbatos:PeriodicServices:Schedules:Fake:Frequency"] = "Custom",
+            ["Barbatos:PeriodicServices:Schedules:Fake:Interval"] = "00:00:42",
         });
         builder.Services.AddSingleton<IWpfPeriodicService>(new FakePeriodicService(interval: TimeSpan.FromMinutes(1)));
         builder.ConfigurePeriodicServices();
@@ -98,7 +99,7 @@ public class PeriodicServiceFeatureTests
 
         var scheduler = wpfApp.Services.GetRequiredService<IPeriodicServiceScheduler>();
 
-        Assert.Equal(TimeSpan.FromSeconds(42), Assert.Single(scheduler.Services).Interval);
+        Assert.Equal(TimeSpan.FromSeconds(42), Assert.Single(scheduler.Services).Schedule.Interval);
     }
 
     [Fact]
@@ -127,29 +128,42 @@ public class PeriodicServiceFeatureTests
     }
 
     [Fact]
-    public void UpdateIntervalChangesTheStatus()
+    public void DuplicateNameAtDIRegistrationFailsFast()
     {
-        var scheduler = BuildScheduler(new FakePeriodicService());
+        var builder = WpfApp.CreateBuilder();
+        builder.Services.AddSingleton<IWpfPeriodicService>(new FakePeriodicService());
+        builder.Services.AddSingleton<IWpfPeriodicService>(new FakePeriodicService());
+        builder.ConfigurePeriodicServices();
 
-        scheduler.UpdateInterval("Fake", TimeSpan.FromSeconds(9));
-
-        Assert.Equal(TimeSpan.FromSeconds(9), Assert.Single(scheduler.Services).Interval);
+        Assert.Throws<ArgumentException>(() => builder.Build());
     }
 
     [Fact]
-    public void UpdateIntervalThrowsForUnknownServices()
+    public void UpdateScheduleChangesTheStatus()
     {
         var scheduler = BuildScheduler(new FakePeriodicService());
 
-        Assert.Throws<ArgumentException>(() => scheduler.UpdateInterval("Unknown", TimeSpan.FromSeconds(1)));
+        scheduler.UpdateSchedule("Fake", new PeriodicSchedule { Frequency = PeriodicFrequency.Custom, Interval = TimeSpan.FromSeconds(9) });
+
+        Assert.Equal(TimeSpan.FromSeconds(9), Assert.Single(scheduler.Services).Schedule.Interval);
     }
 
     [Fact]
-    public void UpdateIntervalRejectsNonPositiveIntervals()
+    public void UpdateScheduleThrowsForUnknownServices()
     {
         var scheduler = BuildScheduler(new FakePeriodicService());
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => scheduler.UpdateInterval("Fake", TimeSpan.Zero));
+        Assert.Throws<ArgumentException>(() => scheduler.UpdateSchedule("Unknown",
+            new PeriodicSchedule { Frequency = PeriodicFrequency.Custom, Interval = TimeSpan.FromSeconds(1) }));
+    }
+
+    [Fact]
+    public void UpdateScheduleRejectsAnInvalidSchedule()
+    {
+        var scheduler = BuildScheduler(new FakePeriodicService());
+
+        Assert.Throws<InvalidOperationException>(() => scheduler.UpdateSchedule("Fake",
+            new PeriodicSchedule { Frequency = PeriodicFrequency.Custom, Interval = TimeSpan.Zero }));
     }
 
     [Fact]
@@ -168,7 +182,50 @@ public class PeriodicServiceFeatureTests
     }
 
     [Fact]
-    public void ServiceExecutesOnItsInterval()
+    public void RegisterAddsAndArmsAServiceAfterBuild()
+    {
+        var builder = WpfApp.CreateBuilder();
+        builder.ConfigurePeriodicServices();
+        var wpfApp = builder.Build();
+        var scheduler = wpfApp.Services.GetRequiredService<IPeriodicServiceScheduler>();
+
+        Assert.Empty(scheduler.Services);
+
+        scheduler.Register(new FakePeriodicService());
+
+        var status = Assert.Single(scheduler.Services);
+        Assert.Equal("Fake", status.Name);
+        // The scheduler is enabled by default, so a service registered afterwards is armed immediately.
+        Assert.NotNull(status.NextRunTime);
+    }
+
+    [Fact]
+    public void RegisterThrowsForDuplicateName()
+    {
+        var scheduler = BuildScheduler(new FakePeriodicService());
+
+        Assert.Throws<ArgumentException>(() => scheduler.Register(new FakePeriodicService()));
+    }
+
+    [Fact]
+    public void UnregisterStopsAndRemovesTheService()
+    {
+        var scheduler = BuildScheduler(new FakePeriodicService());
+
+        Assert.True(scheduler.Unregister("Fake"));
+        Assert.Empty(scheduler.Services);
+    }
+
+    [Fact]
+    public void UnregisterReturnsFalseForUnknownServices()
+    {
+        var scheduler = BuildScheduler(new FakePeriodicService());
+
+        Assert.False(scheduler.Unregister("Unknown"));
+    }
+
+    [Fact]
+    public void ServiceExecutesOnItsSchedule()
     {
         var frame = new DispatcherFrame();
         var service = new FakePeriodicService(interval: TimeSpan.FromMilliseconds(50), onExecute: s => frame.Continue = false);
@@ -198,6 +255,46 @@ public class PeriodicServiceFeatureTests
         Assert.NotNull(status.LastRunTime);
         Assert.NotNull(executed);
         Assert.Null(error);
+
+        scheduler.SetEnabled(false);
+    }
+
+    [Fact]
+    public void OnceScheduleCompletesAfterItsSingleRun()
+    {
+        var frame = new DispatcherFrame();
+        var service = new FakePeriodicService(onExecute: s => frame.Continue = false)
+        {
+            Schedule = new PeriodicSchedule { Frequency = PeriodicFrequency.Once },
+        };
+
+        var builder = WpfApp.CreateBuilder();
+        builder.Services.AddSingleton<IWpfPeriodicService>(service);
+        builder.ConfigurePeriodicServices();
+        var wpfApp = builder.Build();
+
+        var scheduler = wpfApp.Services.GetRequiredService<IPeriodicServiceScheduler>();
+
+        Dispatcher.PushFrame(frame);
+
+        var status = Assert.Single(scheduler.Services);
+        Assert.Equal(1, status.RunCount);
+        Assert.True(status.IsCompleted);
+        Assert.Null(status.NextRunTime);
+
+        // A completed Once schedule never ticks again - pump the dispatcher a while longer using
+        // a plain WPF timer (not the scheduler) and confirm nothing changed.
+        var secondFrame = new DispatcherFrame();
+        var waitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        waitTimer.Tick += (sender, args) =>
+        {
+            waitTimer.Stop();
+            secondFrame.Continue = false;
+        };
+        waitTimer.Start();
+        Dispatcher.PushFrame(secondFrame);
+
+        Assert.Equal(1, service.ExecuteCount);
 
         scheduler.SetEnabled(false);
     }

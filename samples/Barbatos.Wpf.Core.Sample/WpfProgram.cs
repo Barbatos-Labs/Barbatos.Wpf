@@ -5,6 +5,7 @@
 
 using Barbatos.Wpf.Hosting;
 using Barbatos.Wpf.LifecycleEvents;
+using Barbatos.Wpf.Mcp;
 using Barbatos.Wpf.Tray;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -94,6 +95,47 @@ public static class WpfProgram
             .AddAppAction("open", "Open", "Show the main window")
             .OnAppAction(action => LogLifecycleEvent($"App action activated ({action.Id})"))
             .UseVersionTracking());
+
+        // Seeds one MCP server that works with zero setup: NuGet's own MCP server, launched via
+        // `dotnet dnx` (.NET 10's tool-exec command, the .NET-tool equivalent of `npx`) - no
+        // Node.js/npm required, since building this repo already requires the .NET 10 SDK.
+        // Verified directly (`dotnet dnx NuGet.Mcp.Server --version 1.4.16 --yes`) rather than
+        // assumed - note the separate `--version` flag, not an `@version`-suffixed package id;
+        // the latter failed to resolve against a real dnx install even for a version that does
+        // exist on NuGet.org. Check https://www.nuget.org/packages/NuGet.Mcp.Server for a newer
+        // version before relying on this. The provider is left unconfigured (no API key baked
+        // in - BYOK) until the end user enters their own key in the "AI chat" section and clicks
+        // Save; Gemini is only the pre-selected default because it has the easiest free-tier key
+        // to get for trying the sample.
+        builder.ConfigureMcp(
+            options => options.Servers.Add(new McpServerDescriptor
+            {
+                Name = "NuGet",
+                TransportKind = McpTransportKind.Stdio,
+                Command = "dotnet",
+                Arguments = { "dnx", "NuGet.Mcp.Server", "--version", "1.4.16", "--yes" },
+            }),
+            configureProvider: options =>
+            {
+                // This sample's own suggested provider catalog - Barbatos.Wpf.Mcp has no fixed
+                // enum/list of providers (see AiProviderOptions's remarks for why), so which
+                // ones to offer, and their default models/endpoints, is entirely this app's
+                // call. MainViewModel.AiProviders reads this same list for its ComboBox.
+                options.Providers.Add(new AiProviderDescriptor { Key = "openai", Provider = "openai", Model = "gpt-5.2" });
+                // Google's own documented OpenAI-compatible endpoint for the Gemini API.
+                options.Providers.Add(new AiProviderDescriptor { Key = "gemini", Provider = "gemini", Model = "gemini-3.5-flash", Endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/" });
+                options.Providers.Add(new AiProviderDescriptor { Key = "anthropic", Provider = "anthropic", Model = "claude-opus-4-8" });
+                options.Providers.Add(new AiProviderDescriptor { Key = "custom", Provider = "custom" });
+
+                // Gemini is only the pre-selected default because it has the easiest free-tier
+                // key to get for trying the sample - the provider is otherwise left unconfigured
+                // (no API key baked in - BYOK) until the end user enters their own key in the
+                // "AI chat" section and clicks Save.
+                var initial = options.Providers.Single(p => p.Key == "gemini");
+                options.Provider = initial.Provider;
+                options.Model = initial.Model;
+                options.Endpoint = initial.Endpoint;
+            });
 
         builder.Services.AddSingleton<SettingsStore>();
         builder.Services.AddSingleton<IGreetingService, GreetingService>();

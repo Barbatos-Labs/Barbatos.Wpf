@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using Barbatos.Wpf.ApplicationModel.Communication;
 using Barbatos.Wpf.Devices;
 using Barbatos.Wpf.Dialogs;
+using Barbatos.Wpf.Mcp;
 using Barbatos.Wpf.Networking;
 using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
@@ -18,6 +19,8 @@ using Barbatos.Wpf.SingleInstance;
 using Barbatos.Wpf.Startup;
 using Barbatos.Wpf.Storage;
 using Barbatos.Wpf.Tray;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 
 namespace Barbatos.Wpf.Core.Sample;
 
@@ -39,14 +42,26 @@ public class MainViewModel : INotifyPropertyChanged
     readonly ISecureStorage _secureStorage;
     readonly IEmail _email;
     readonly IDialogService _dialogService;
+    readonly IAiChatService _aiChat;
+    readonly IAiChatClientFactory _aiChatClientFactory;
+    readonly IAiApiKeyProvider _aiApiKeyProvider;
+    readonly IMcpServerRegistry _mcpServerRegistry;
+    readonly IReadOnlyList<AiProviderDescriptor> _aiProviderCatalog;
     readonly SettingsStore _settingsStore;
 
     string _heartbeatIntervalSeconds;
+    string _heartbeatStatusText = string.Empty;
     string _secureStorageInput = string.Empty;
     string _secureStorageResult = string.Empty;
     string _displayInfoDescription;
     string _deviceIdentityDescription = "(not loaded - click \"Show device identity\")";
     string _pushNotificationStatusDescription = "Not connected.";
+    string _selectedAiProvider = "gemini";
+    string _aiModel = "gemini-3.5-flash";
+    string _aiApiKeyInput = string.Empty;
+    string _aiStatusDescription = "Not configured yet.";
+    string _aiChatInput = string.Empty;
+    bool _aiAwaitingReply;
 
     public MainViewModel(
         IGreetingService greetingService,
@@ -62,6 +77,11 @@ public class MainViewModel : INotifyPropertyChanged
         ISecureStorage secureStorage,
         IEmail email,
         IDialogService dialogService,
+        IAiChatService aiChat,
+        IAiChatClientFactory aiChatClientFactory,
+        IAiApiKeyProvider aiApiKeyProvider,
+        IMcpServerRegistry mcpServerRegistry,
+        IOptions<AiProviderOptions> aiProviderOptions,
         SettingsStore settingsStore)
     {
         Greeting = greetingService.GetGreeting();
@@ -86,7 +106,20 @@ public class MainViewModel : INotifyPropertyChanged
         _secureStorage = secureStorage;
         _email = email;
         _dialogService = dialogService;
+        _aiChat = aiChat;
+        _aiChatClientFactory = aiChatClientFactory;
+        _aiApiKeyProvider = aiApiKeyProvider;
+        _mcpServerRegistry = mcpServerRegistry;
         _settingsStore = settingsStore;
+        // The catalog WpfProgram.CreateWpfApp seeded via ConfigureMcp's configureProvider - this
+        // sample's own choice of which providers to suggest, not anything Barbatos.Wpf.Mcp
+        // prescribes (see AiProviderOptions.Providers's own remarks).
+        _aiProviderCatalog = [.. aiProviderOptions.Value.Providers];
+        AiProviders = _aiProviderCatalog.Select(p => p.Key!).ToList();
+
+        _mcpServerRegistry.Changed += (_, _) => OnPropertyChanged(nameof(McpServersDescription));
+        _aiChat.ConfigurationChanged += (_, _) => _ = RefreshAiStatusAsync();
+        _ = RefreshAiStatusAsync();
 
         _notifications.Activated += (sender, args) =>
             LogLifecycleEvent(args.Arguments is null
@@ -119,8 +152,17 @@ public class MainViewModel : INotifyPropertyChanged
         _preferences.Set("Sample.LaunchCount", LaunchCount);
 
         _heartbeatIntervalSeconds = (_periodicServices.Services
-            .FirstOrDefault(service => service.Name == "Heartbeat")?.Interval ?? TimeSpan.FromSeconds(5))
+            .FirstOrDefault(service => service.Name == "Heartbeat")?.Schedule.Interval ?? TimeSpan.FromSeconds(5))
             .TotalSeconds.ToString("0");
+        _heartbeatStatusText = BuildHeartbeatStatusText();
+
+        // Keeps the "next run"/description line live as the heartbeat ticks or is toggled.
+        _periodicServices.ServiceExecuted += (sender, args) =>
+        {
+            if (args.Service.Name == "Heartbeat")
+                HeartbeatStatusText = BuildHeartbeatStatusText();
+        };
+        _periodicServices.IsEnabledChanged += (sender, args) => HeartbeatStatusText = BuildHeartbeatStatusText();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -225,13 +267,40 @@ public class MainViewModel : INotifyPropertyChanged
             // Invalid input simply reverts to the current interval.
             if (double.TryParse(value, out var seconds) && seconds >= 1)
             {
-                _periodicServices.UpdateInterval("Heartbeat", TimeSpan.FromSeconds(seconds));
+                _periodicServices.UpdateSchedule("Heartbeat", new PeriodicSchedule
+                {
+                    Frequency = PeriodicFrequency.Custom,
+                    Interval = TimeSpan.FromSeconds(seconds),
+                    Description = HeartbeatService.DescriptionText,
+                });
                 _heartbeatIntervalSeconds = seconds.ToString("0");
+                HeartbeatStatusText = BuildHeartbeatStatusText();
                 PersistSettings();
             }
 
             OnPropertyChanged();
         }
+    }
+
+    /// <summary>
+    /// A read-only "next run / description" line for the Periodic section, demonstrating
+    /// <see cref="PeriodicServiceStatus.NextRunTime"/> and <see cref="PeriodicSchedule.Description"/>
+    /// - refreshed after every heartbeat tick and whenever the scheduler is toggled.
+    /// </summary>
+    public string HeartbeatStatusText
+    {
+        get => _heartbeatStatusText;
+        private set { _heartbeatStatusText = value; OnPropertyChanged(); }
+    }
+
+    string BuildHeartbeatStatusText()
+    {
+        var status = _periodicServices.Services.FirstOrDefault(service => service.Name == "Heartbeat");
+        if (status is null)
+            return "(not registered)";
+
+        var nextRun = status.NextRunTime is { } next ? next.LocalDateTime.ToString("T") : "-";
+        return $"{status.Schedule.Description} Next run: {nextRun}. Runs so far: {status.RunCount}.";
     }
 
     public bool NotificationsEnabled
@@ -440,6 +509,178 @@ public class MainViewModel : INotifyPropertyChanged
     {
         var allClosed = _dialogService.CloseAll();
         LogLifecycleEvent(allClosed ? "DialogService.CloseAll() - all dialogs closed" : "DialogService.CloseAll() - one or more dialogs vetoed closing");
+    }
+
+    /// <summary>
+    /// This sample's own suggested provider list, read from the <see cref="AiProviderDescriptor"/>
+    /// catalog <see cref="WpfProgram.CreateWpfApp"/> seeded via <c>ConfigureMcp</c>'s
+    /// <c>configureProvider</c> - Barbatos.Wpf.Mcp has no fixed enum of providers (see
+    /// <see cref="AiProviderOptions"/>'s remarks for why), so which ones to suggest, and under
+    /// what spelling, is entirely this app's call.
+    /// </summary>
+    public IReadOnlyList<string> AiProviders { get; }
+
+    /// <summary>
+    /// Which of <see cref="AiProviders"/> "Save AI settings" below applies to - the actual
+    /// provider only changes once that button is clicked (via
+    /// <see cref="IAiChatClientFactory.UpdateProvider"/>), not on every ComboBox selection.
+    /// </summary>
+    public string SelectedAiProvider
+    {
+        get => _selectedAiProvider;
+        set { _selectedAiProvider = value; OnPropertyChanged(); }
+    }
+
+    public string AiModel
+    {
+        get => _aiModel;
+        set { _aiModel = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// The end user's own API key for <see cref="SelectedAiProvider"/> - never persisted by this
+    /// property itself; "Save AI settings" below stores it via <see cref="IAiApiKeyProvider"/>
+    /// (DPAPI-encrypted) and immediately clears this field back out.
+    /// </summary>
+    public string AiApiKeyInput
+    {
+        get => _aiApiKeyInput;
+        set { _aiApiKeyInput = value; OnPropertyChanged(); }
+    }
+
+    public string AiStatusDescription
+    {
+        get => _aiStatusDescription;
+        private set { _aiStatusDescription = value; OnPropertyChanged(); }
+    }
+
+    public string McpServersDescription =>
+        _mcpServerRegistry.Servers.Count == 0
+            ? "(connecting to the seeded MCP server...)"
+            : string.Join(" | ", _mcpServerRegistry.Servers.Select(server => server.IsConnected
+                ? $"{server.Name}: connected, {server.Tools.Count} tool(s)"
+                : $"{server.Name}: {server.LastError}"));
+
+    /// <summary>
+    /// Applies <see cref="SelectedAiProvider"/>/<see cref="AiModel"/> and, if entered, saves
+    /// <see cref="AiApiKeyInput"/> - the only two places BYOK credentials touch this sample:
+    /// <see cref="IAiChatClientFactory.UpdateProvider"/> (no secret involved) and
+    /// <see cref="IAiApiKeyProvider.SetApiKeyAsync"/> (the end user's own key, DPAPI-encrypted,
+    /// never written to <see cref="SettingsStore"/> or any config file).
+    /// </summary>
+    public async void SaveAiSettings()
+    {
+        // The endpoint comes from this sample's own catalog entry for the selected provider
+        // (null for one with none set, e.g. "custom" - Barbatos.Wpf.Mcp then defaults that to
+        // the real OpenAI API). UpdateProvider (not the catalog-driven IAiChatClientFactory.
+        // SelectProvider convenience) is what's called here specifically so AiModel stays
+        // freely editable rather than always following the catalog's own suggested model.
+        var endpoint = _aiProviderCatalog.FirstOrDefault(p => string.Equals(p.Key, SelectedAiProvider, StringComparison.OrdinalIgnoreCase))?.Endpoint;
+        LogLifecycleEvent($"IAiChatClientFactory.UpdateProvider({SelectedAiProvider}, \"{AiModel}\")");
+        _aiChatClientFactory.UpdateProvider(SelectedAiProvider, AiModel, endpoint);
+
+        if (!string.IsNullOrWhiteSpace(AiApiKeyInput))
+        {
+            await _aiApiKeyProvider.SetApiKeyAsync(SelectedAiProvider, AiApiKeyInput);
+            AiApiKeyInput = string.Empty;
+            LogLifecycleEvent($"IAiApiKeyProvider.SetApiKeyAsync({SelectedAiProvider}, ...)");
+        }
+
+        await _aiChatClientFactory.RefreshApiKeyAsync();
+        await RefreshAiStatusAsync();
+    }
+
+    async Task RefreshAiStatusAsync()
+    {
+        var configured = await _aiChat.IsConfiguredAsync();
+        AiStatusDescription = configured
+            ? $"Ready - {SelectedAiProvider} ({AiModel})."
+            : "Not configured yet - pick a provider, enter a model name, paste your own API key, then click \"Save AI settings\".";
+    }
+
+    public string AiChatInput
+    {
+        get => _aiChatInput;
+        set { _aiChatInput = value; OnPropertyChanged(); }
+    }
+
+    public ObservableCollection<string> AiChatTranscript { get; } = new();
+
+    /// <summary>
+    /// Sends <see cref="AiChatInput"/> through <see cref="IAiChatService"/>, which automatically
+    /// merges every connected MCP server's tools into the request - nothing else in this sample
+    /// wires MCP tools in by hand.
+    /// </summary>
+    public async void SendAiChatMessage()
+    {
+        if (_aiAwaitingReply)
+            return;
+
+        var message = AiChatInput.Trim();
+        if (message.Length == 0)
+            return;
+
+        AiChatInput = string.Empty;
+        AiChatTranscript.Add($"You: {message}");
+
+        _aiAwaitingReply = true;
+        var replyIndex = -1;
+        try
+        {
+            LogLifecycleEvent("IAiChatService.GetStreamingResponseAsync(...)");
+
+            // The raw model has no clock or internet access - unlike Gemini's own consumer web
+            // app (which layers Google Search grounding on top), a plain API call only knows
+            // "now" if it's told. Local time covers "what time is it" for wherever this app
+            // happens to be running; UTC is included too so the model can compute any other
+            // timezone the user asks about from a fixed reference point.
+            var now = DateTimeOffset.Now;
+            var options = new ChatOptions
+            {
+                Instructions = $"Current date/time: {now:yyyy-MM-dd HH:mm} ({TimeZoneInfo.Local.DisplayName}), " +
+                                $"{now.ToUniversalTime():yyyy-MM-dd HH:mm} UTC.",
+            };
+
+            // Streamed token-by-token instead of awaiting the full reply - IAiChatService's own
+            // ConfigureAwait(false) calls are internal to the library and don't affect this loop:
+            // each await here still resumes on this window's own captured UI-thread context, so
+            // updating AiChatTranscript directly (no Dispatcher.Invoke) is safe.
+            var reply = "AI: ";
+            await foreach (var update in _aiChat.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, message)], options))
+            {
+                if (string.IsNullOrEmpty(update.Text))
+                    continue;
+
+                reply += update.Text;
+                if (replyIndex < 0)
+                {
+                    replyIndex = AiChatTranscript.Count;
+                    AiChatTranscript.Add(reply);
+                }
+                else
+                {
+                    AiChatTranscript[replyIndex] = reply;
+                }
+            }
+
+            if (replyIndex < 0)
+                AiChatTranscript.Add("AI: (empty response)");
+        }
+        catch (Exception ex)
+        {
+            // Expected until the end user saves their own provider/API key above, or if the
+            // seeded MCP server hasn't finished connecting yet - logged instead of thrown so the
+            // sample keeps running. Appended to the partial reply already streamed in, if any,
+            // rather than added as a separate line.
+            if (replyIndex >= 0)
+                AiChatTranscript[replyIndex] += $" (error: {ex.Message})";
+            else
+                AiChatTranscript.Add($"(error: {ex.Message})");
+        }
+        finally
+        {
+            _aiAwaitingReply = false;
+        }
     }
 
     void PersistSettings() =>

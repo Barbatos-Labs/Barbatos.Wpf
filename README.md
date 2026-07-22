@@ -16,7 +16,7 @@ independent NuGet packages rather than one monolith; install only what you need.
 
 | Package | Ports | Docs |
 | --- | --- | --- |
-| **Barbatos.Wpf.Core** | .NET MAUI's `MauiApp`/`MauiAppBuilder` hosting model and Essentials APIs (`AppInfo`, `Preferences`, `SecureStorage`, `Connectivity`, ...) - dependency injection, configuration, logging, and lifecycle events for WPF. | [README](src/Barbatos.Wpf.Core/README.md) · [API Reference](src/Barbatos.Wpf.Core/API-REFERENCE.md) |
+| **Barbatos.Wpf.Core** | .NET MAUI's `MauiApp`/`MauiAppBuilder` hosting model and Essentials APIs (`AppInfo`, `Preferences`, `SecureStorage`, `Connectivity`, ...) - dependency injection, configuration, logging, and lifecycle events for WPF. Also includes an MCP (Model Context Protocol) client + bring-your-own-key AI chat feature - the app's own end user supplies their Gemini/Claude/ChatGPT/other API key, the publisher never pays for usage. | [README](src/Barbatos.Wpf.Core/README.md) · [API Reference](src/Barbatos.Wpf.Core/API-REFERENCE.md) |
 | **Barbatos.Wpf.Aquarius** | Vue 3's Composition API - `ref`/`computed`/`watch`, lifecycle hooks, `v-model`/`v-show`/`v-if`/`v-on`, custom directives, `<Teleport>`, `<Transition>`, `provide`/`inject`, `<Suspense>` - built directly on CommunityToolkit.Mvvm. | [README](src/Barbatos.Wpf.Aquarius/README.md) · [API Reference](src/Barbatos.Wpf.Aquarius/API-REFERENCE.md) |
 
 Both packages share the same `Barbatos.Wpf` root C# namespace and target

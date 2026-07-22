@@ -4,6 +4,7 @@
 // All Rights Reserved.
 
 using System.Windows;
+using System.Windows.Input;
 
 namespace Barbatos.Wpf.Core.Sample;
 
@@ -66,4 +67,25 @@ public partial class MainWindow : Window
 
     void ShowDeviceIdentityButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).LoadDeviceIdentity();
+
+    // PasswordBox.Password is deliberately not a bindable DependencyProperty (a WPF security
+    // safeguard against the password lingering in binding/undo/logging machinery) - this is the
+    // standard workaround, reading it once on change instead.
+    void AiApiKeyPasswordBox_PasswordChanged(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).AiApiKeyInput = ((System.Windows.Controls.PasswordBox)sender).Password;
+
+    void SaveAiSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        ((MainViewModel)DataContext).SaveAiSettings();
+        AiApiKeyPasswordBox.Clear();
+    }
+
+    void SendAiChatMessageButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).SendAiChatMessage();
+
+    void AiChatInputTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+            ((MainViewModel)DataContext).SendAiChatMessage();
+    }
 }
