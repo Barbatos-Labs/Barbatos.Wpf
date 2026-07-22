@@ -154,7 +154,7 @@ internal enum Priority
     High,
 }
 
-/// <summary>A small object graph covering every primitive kind (plus one level of nesting) for <see cref="Barbatos.Wpf.Xaml.Expr"/> tests.</summary>
+/// <summary>A small object graph covering every primitive kind (plus one level of nesting) for <see cref="Barbatos.Wpf.Aquarius.Xaml.Expr"/> tests.</summary>
 internal sealed partial class ExprTestViewModel : ObservableObject
 {
     [ObservableProperty]
@@ -195,21 +195,21 @@ internal sealed class ExprTestOrder
 
 /// <summary>
 /// A real <c>ContentControl</c> subclass literally named "...View" so
-/// <see cref="Composition"/>'s default naming-convention resolver has something to
-/// match against - the resolver inspects the element's own <see cref="Type"/>, so a plain
-/// unnamed <c>ContentControl</c> can't stand in for this the way it can for every other test
-/// in this suite.
+/// <see cref="Setup"/>'s default naming-convention resolver has something to match
+/// against - the resolver inspects the element's own <see cref="Type"/>, so a plain unnamed
+/// <c>ContentControl</c> can't stand in for this the way it can for every other test in this
+/// suite.
 /// </summary>
-internal sealed class CompositionProbeView : System.Windows.Controls.ContentControl
+internal sealed class SetupProbeView : System.Windows.Controls.ContentControl
 {
 }
 
-/// <summary>Same-assembly convention target for <see cref="CompositionProbeView"/>.</summary>
-internal sealed class CompositionProbeViewModel
+/// <summary>Same-assembly convention target for <see cref="SetupProbeView"/>.</summary>
+internal sealed class SetupProbeViewModel
 {
 }
 
-/// <summary>A minimal <see cref="IServiceProvider"/> for proving <see cref="Composition.ServiceProvider"/> is consulted before the <see cref="Activator.CreateInstance(Type)"/> fallback.</summary>
+/// <summary>A minimal <see cref="IServiceProvider"/> for proving <see cref="Setup.ServiceProvider"/> is consulted before the <see cref="Activator.CreateInstance(Type)"/> fallback.</summary>
 internal sealed class FakeServiceProvider : IServiceProvider
 {
     private readonly Dictionary<Type, object> _registrations = [];

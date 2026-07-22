@@ -1,6 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
-using Barbatos.Wpf.Reactivity;
+using Barbatos.Wpf.Aquarius.Reactivity;
 
 namespace Barbatos.Wpf.Aquarius.Sample;
 

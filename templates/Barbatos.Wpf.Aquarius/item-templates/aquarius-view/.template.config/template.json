@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Barbatos Labs",
+  "classifications": [ "WPF", "Aquarius", "MVVM" ],
+  "identity": "Barbatos.Wpf.Aquarius.Templates.View",
+  "name": "Aquarius View + ViewModel",
+  "description": "A WPF UserControl (View) wired to its ViewModel via aq:Setup.Enable, plus the matching ViewModel - the closest Aquarius equivalent of scaffolding a new Vue single-file component.",
+  "shortName": "aq-view",
+  "tags": {
+    "language": "C#",
+    "type": "item"
+  },
+  "sourceName": "AquariusComponent",
+  "preferNameDirectory": false,
+  "symbols": {
+    "namespace": {
+      "type": "parameter",
+      "datatype": "text",
+      "replaces": "AquariusTemplateNamespace",
+      "defaultValue": "ChangeMe.Namespace",
+      "description": "Namespace for the generated View/ViewModel - pass --namespace YourApp.Feature. Defaults to an obviously-fake placeholder otherwise, so a forgotten override is easy to spot rather than silently landing in the wrong namespace."
+    }
+  }
+}

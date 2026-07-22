@@ -5,7 +5,7 @@
 
 using System.Windows.Threading;
 
-namespace Barbatos.Wpf.Reactivity;
+namespace Barbatos.Wpf.Aquarius.Reactivity;
 
 /// <summary>
 /// Schedules work to run after the current UI update pass - the Aquarius counterpart of

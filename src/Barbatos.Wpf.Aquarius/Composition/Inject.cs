@@ -6,7 +6,7 @@
 using System.Windows;
 using System.Windows.Markup;
 
-namespace Barbatos.Wpf.Composition;
+namespace Barbatos.Wpf.Aquarius.Composition;
 
 /// <summary>
 /// Reads a value registered by an ancestor's <see cref="Provide"/> - the Aquarius

@@ -6,9 +6,9 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
-using Barbatos.Wpf.Reactivity;
+using Barbatos.Wpf.Aquarius.Reactivity;
 
-namespace Barbatos.Wpf.Composition;
+namespace Barbatos.Wpf.Aquarius.Composition;
 
 /// <summary>
 /// Wires a <see cref="FrameworkElement"/>'s real lifecycle events to whichever

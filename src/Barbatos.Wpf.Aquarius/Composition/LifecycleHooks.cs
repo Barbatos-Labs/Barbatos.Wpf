@@ -3,7 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
-namespace Barbatos.Wpf.Composition;
+namespace Barbatos.Wpf.Aquarius.Composition;
 
 /// <summary>
 /// Vue's Composition API hooks (<c>onMounted</c>, <c>onUnmounted</c>, ...) run inside a
@@ -46,7 +46,7 @@ public interface IOnBeforeCreateAsync
 /// Mirrors Vue's <c>created</c>: fires immediately after <see cref="IOnBeforeCreate"/>,
 /// still before <see cref="IOnBeforeMount"/>. Vue itself does reactive-system setup work
 /// between the two - a ViewModel's own constructor (and, for
-/// <see cref="Barbatos.Wpf.Reactivity"/> types, its base class) already did the
+/// <see cref="Barbatos.Wpf.Aquarius.Reactivity"/> types, its base class) already did the
 /// equivalent work before either hook could fire here, so nothing observable happens
 /// between them in this port.
 /// </summary>
@@ -150,7 +150,7 @@ public interface IOnBeforeUpdate
 /// Mirrors Vue's <c>onUpdated</c>: fires once after one or more
 /// <see cref="System.ComponentModel.INotifyPropertyChanged.PropertyChanged"/> events from
 /// the bound <c>DataContext</c>, coalesced through
-/// <see cref="Barbatos.Wpf.Reactivity.NextTick"/> the same way Vue batches multiple
+/// <see cref="Barbatos.Wpf.Aquarius.Reactivity.NextTick"/> the same way Vue batches multiple
 /// synchronous mutations into a single asynchronous DOM update.
 /// </summary>
 public interface IOnUpdated

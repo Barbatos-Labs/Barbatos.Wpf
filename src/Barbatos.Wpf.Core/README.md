@@ -1,6 +1,6 @@
 # Barbatos.Wpf.Core
 
-![Barbatos.Wpf.Core logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/nuget.png?raw=true)
+![Barbatos.Wpf.Core logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/core-logo.svg?raw=true)
 
 ### *A MAUI-style application host and Essentials for WPF*
 

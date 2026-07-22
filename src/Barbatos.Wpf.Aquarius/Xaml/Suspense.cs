@@ -7,7 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Shows fallback content while something is loading - the Aquarius counterpart of Vue's

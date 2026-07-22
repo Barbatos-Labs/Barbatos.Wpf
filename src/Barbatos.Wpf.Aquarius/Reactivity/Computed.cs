@@ -6,7 +6,7 @@
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace Barbatos.Wpf.Reactivity;
+namespace Barbatos.Wpf.Aquarius.Reactivity;
 
 /// <summary>
 /// A reactive value derived from other observables - the Aquarius counterpart of Vue's

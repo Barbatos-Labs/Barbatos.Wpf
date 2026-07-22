@@ -6,7 +6,7 @@
 using System.Windows;
 using System.Windows.Controls;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Renders its content into a different part of the visual tree - the Aquarius

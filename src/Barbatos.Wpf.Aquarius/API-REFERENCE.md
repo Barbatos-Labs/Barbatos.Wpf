@@ -7,10 +7,10 @@ modeled after the official .NET API documentation.
 
 | Namespace | Description |
 |-----------|-------------|
-| **[`Barbatos.Wpf.Reactivity`](#barbatoswpfreactivity-namespace)** | `Ref<T>`, `Computed<T>`, `Watch`, `NextTick` - thin sugar over CommunityToolkit.Mvvm. |
-| **[`Barbatos.Wpf.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, `Composition` (ViewModel wiring), plus `Provide`/`Inject`. |
-| **[`Barbatos.Wpf.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
-| **[`Barbatos.Wpf.Animation`](#barbatoswpfanimation-namespace)** | `Transition`, `TransitionGroup`. |
+| **[`Barbatos.Wpf.Aquarius.Reactivity`](#barbatoswpfreactivity-namespace)** | `Ref<T>`, `Computed<T>`, `Watch`, `NextTick` - thin sugar over CommunityToolkit.Mvvm. |
+| **[`Barbatos.Wpf.Aquarius.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, `Setup` (ViewModel wiring), plus `Provide`/`Inject`. |
+| **[`Barbatos.Wpf.Aquarius.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
+| **[`Barbatos.Wpf.Aquarius.Animation`](#barbatoswpfanimation-namespace)** | `Transition`, `TransitionGroup`. |
 
 All four map onto the single `aq:` XAML namespace - see
 [Quick Start](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#quick-start)
@@ -18,7 +18,7 @@ in the README.
 
 ---
 
-## `Barbatos.Wpf.Reactivity` Namespace
+## `Barbatos.Wpf.Aquarius.Reactivity` Namespace
 
 ### `Ref<T>` Class
 
@@ -70,7 +70,7 @@ Both schedule via `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`.
 
 ---
 
-## `Barbatos.Wpf.Composition` Namespace
+## `Barbatos.Wpf.Aquarius.Composition` Namespace
 
 ### `Lifecycle` Static Class
 
@@ -105,7 +105,7 @@ an unhandled exception already reaches `IOnErrorCaptured` - no separate async er
 See [Lifecycle Hooks](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#lifecycle-hooks)
 in the README for exactly what triggers each one.
 
-### `Composition` Static Class
+### `Setup` Static Class
 
 - **`ViewModelProperty`** (`DependencyProperty`, `Type`) - `SetViewModel`/`GetViewModel`.
   Explicit ViewModel type override; wins over `EnableProperty`'s convention if both are set.
@@ -123,7 +123,7 @@ in the README for exactly what triggers each one.
   instead of silently no-op-ing when `Enable="True"` but `Resolver` returns `null`.
 
 Resolves and assigns `DataContext` once, at `FrameworkElement.Initialized` (not `Loaded`) -
-see [Composition](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#composition)
+see [Setup](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#setup)
 in the README for why that timing matters alongside `Lifecycle`.
 
 ### `Provide` Static Class
@@ -150,7 +150,7 @@ public class Inject : MarkupExtension
 
 ---
 
-## `Barbatos.Wpf.Xaml` Namespace
+## `Barbatos.Wpf.Aquarius.Xaml` Namespace
 
 ### `Directives` Static Class
 
@@ -377,7 +377,7 @@ See the [README](README.md#slots) for the full mechanism and a worked `Card` exa
 
 ---
 
-## `Barbatos.Wpf.Animation` Namespace
+## `Barbatos.Wpf.Aquarius.Animation` Namespace
 
 ### `Transition` Class
 

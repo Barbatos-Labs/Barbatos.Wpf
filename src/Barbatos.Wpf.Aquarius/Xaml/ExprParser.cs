@@ -3,7 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Recursive-descent parser for <see cref="Expr"/>'s grammar, lowest to highest precedence:

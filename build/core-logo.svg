@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <rect x="100" y="110" width="200" height="160" rx="14" fill="none" stroke="#2d3436" stroke-width="9"/>
+  <line x1="100" y1="152" x2="300" y2="152" stroke="#2d3436" stroke-width="9"/>
+  <circle cx="122" cy="131" r="6" fill="#0984e3"/>
+  <circle cx="144" cy="131" r="6" fill="#0984e3"/>
+  <circle cx="166" cy="131" r="6" fill="#0984e3"/>
+  <rect x="122" y="178" width="156" height="30" rx="8" fill="#2d3436"/>
+  <rect x="122" y="216" width="110" height="30" rx="8" fill="#0984e3"/>
+  <text x="200" y="330" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="600" fill="#2d3436">wpf</text>
+</svg>

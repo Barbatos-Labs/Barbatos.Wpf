@@ -3,7 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 // Not partial-class fragments of Expr - separate internal types colocated by filename
 // (ExprAst.cs/ExprLexer.cs/ExprParser.cs/ExprEvaluator.cs) purely for discoverability, unlike

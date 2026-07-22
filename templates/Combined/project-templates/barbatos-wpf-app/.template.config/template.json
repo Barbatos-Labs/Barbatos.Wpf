@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Barbatos Labs",
+  "classifications": [ "WPF", "Barbatos.Wpf", "Aquarius", "Core", "MVVM" ],
+  "identity": "Barbatos.Wpf.Templates.CombinedApp",
+  "name": "Barbatos.Wpf App (Aquarius + Core)",
+  "description": "A starter WPF app referencing both Barbatos.Wpf.Core (MAUI-style hosting/DI) and Barbatos.Wpf.Aquarius (Vue-style reactivity/Setup), with Setup.ServiceProvider wired to Core's DI container so Views resolve ViewModels through the same graph rather than the two packages merely coexisting.",
+  "shortName": "barbatos-wpf-app",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "BarbatosWpfApp",
+  "preferNameDirectory": true,
+  "symbols": {
+    "PackageVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "replaces": "2.2.0",
+      "defaultValue": "2.2.0",
+      "description": "Version of Barbatos.Wpf.Core/Barbatos.Wpf.Aquarius to reference - override with --PackageVersion if it has moved on from the default by the time you use this."
+    }
+  }
+}

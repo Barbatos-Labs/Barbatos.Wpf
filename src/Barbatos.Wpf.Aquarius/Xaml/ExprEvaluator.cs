@@ -5,7 +5,7 @@
 
 using System.Globalization;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Resolves the distinct set of identifiers an <see cref="ExprNode"/> tree references, and

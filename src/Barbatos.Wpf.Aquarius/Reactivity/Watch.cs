@@ -6,7 +6,7 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 
-namespace Barbatos.Wpf.Reactivity;
+namespace Barbatos.Wpf.Aquarius.Reactivity;
 
 /// <summary>
 /// When a watcher's callback runs relative to the change that triggered it - the

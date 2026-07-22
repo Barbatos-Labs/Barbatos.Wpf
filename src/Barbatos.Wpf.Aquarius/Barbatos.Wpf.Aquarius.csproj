@@ -10,11 +10,11 @@
          mislead NuGet search. -->
     <CommonTags>dotnet;wpf;windows;presentation;vue;vuejs;reactivity;mvvm;directives;teleport;animation;xaml</CommonTags>
     <Description>Barbatos.Wpf.Aquarius - Vue.js-inspired reactivity, lifecycle hooks, directives, Teleport, and Transitions for WPF</Description>
-    <RootNamespace>Barbatos.Wpf</RootNamespace>
+    <RootNamespace>Barbatos.Wpf.Aquarius</RootNamespace>
     <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply.
          IL2075 additionally covers Directives.Event's own use of reflection (Type.GetEvent) to wire
          up an arbitrary named event, which is inherently dynamic by design (see its XML docs).
-         IL2067 covers Composition's Activator.CreateInstance(Type)/Assembly.GetType(string)
+         IL2067 covers Setup's Activator.CreateInstance(Type)/Assembly.GetType(string)
          calls, similarly inherently dynamic (see its XML docs). -->
     <NoWarn>$(NoWarn);IL2026;IL3050;IL2075;IL2067</NoWarn>
   </PropertyGroup>

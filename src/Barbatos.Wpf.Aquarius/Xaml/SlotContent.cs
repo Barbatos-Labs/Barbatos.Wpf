@@ -7,7 +7,7 @@ using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Markup;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Projects a named slot's content out of the enclosing <see cref="SlotHost"/> - used inside

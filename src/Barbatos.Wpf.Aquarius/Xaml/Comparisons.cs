@@ -6,7 +6,7 @@
 using System.Globalization;
 using System.Windows.Data;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Ready-made converters for the handful of trivial inline conditions that come up

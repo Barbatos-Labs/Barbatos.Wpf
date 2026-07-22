@@ -5,7 +5,7 @@
 
 using System.Windows;
 
-namespace Barbatos.Wpf.Composition;
+namespace Barbatos.Wpf.Aquarius.Composition;
 
 /// <summary>
 /// Registers a value for <see cref="Inject"/> to find anywhere in this subtree - the

@@ -6,7 +6,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 internal enum TokenType
 {

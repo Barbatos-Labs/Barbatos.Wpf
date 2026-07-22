@@ -9,8 +9,8 @@ using System.Windows.Markup;
 // System.Windows/System.Windows.Controls/... onto one presentation xmlns - so consumers
 // only need one `xmlns:aq="http://schemas.barbatos.dev/aquarius"` to reach Ref<T>/Computed<T>,
 // Lifecycle.Enable, the Directives.* attached properties, and Teleport/TeleportHost together.
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Reactivity")]
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Composition")]
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Xaml")]
-[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Animation")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Reactivity")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Composition")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Xaml")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.dev/aquarius", "Barbatos.Wpf.Aquarius.Animation")]
 [assembly: XmlnsPrefix("http://schemas.barbatos.dev/aquarius", "aq")]

@@ -6,7 +6,7 @@
 using System.Diagnostics;
 using System.Reflection;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Reports whether the running application was built in Debug configuration - the XAML-first

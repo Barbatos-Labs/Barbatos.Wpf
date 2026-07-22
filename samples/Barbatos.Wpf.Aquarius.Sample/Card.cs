@@ -1,4 +1,4 @@
-using Barbatos.Wpf.Xaml;
+using Barbatos.Wpf.Aquarius.Xaml;
 
 namespace Barbatos.Wpf.Aquarius.Sample;
 

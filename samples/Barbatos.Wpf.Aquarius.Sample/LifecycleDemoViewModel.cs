@@ -1,4 +1,4 @@
-using Barbatos.Wpf.Composition;
+using Barbatos.Wpf.Aquarius.Composition;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -9,7 +9,7 @@ namespace Barbatos.Wpf.Aquarius.Sample;
 /// wants (see <see cref="Lifecycle"/>) - a ViewModel implements only the ones it needs,
 /// exactly like a Vue component only imports the hooks it uses. Also implements
 /// <see cref="IOnMountedAsync"/> to demonstrate loading data on mount paired with
-/// <see cref="Barbatos.Wpf.Xaml.Suspense"/> - see <see cref="LifecycleDemoView"/>.
+/// <see cref="Barbatos.Wpf.Aquarius.Xaml.Suspense"/> - see <see cref="LifecycleDemoView"/>.
 /// </summary>
 public sealed partial class LifecycleDemoViewModel : ObservableObject,
     IOnBeforeMount, IOnMounted, IOnUpdated, IOnUnmounted, IOnMountedAsync

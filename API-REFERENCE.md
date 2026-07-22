@@ -10,7 +10,7 @@ reference:
   `Barbatos.Wpf.Startup`, `Barbatos.Wpf.Notifications`, `Barbatos.Wpf.SingleInstance`,
   `Barbatos.Wpf.Dialogs`.
 - **[Barbatos.Wpf.Aquarius API Reference](src/Barbatos.Wpf.Aquarius/API-REFERENCE.md)** -
-  `Barbatos.Wpf.Reactivity`, `Barbatos.Wpf.Composition`, `Barbatos.Wpf.Xaml`,
-  `Barbatos.Wpf.Animation`.
+  `Barbatos.Wpf.Aquarius.Reactivity`, `Barbatos.Wpf.Aquarius.Composition`,
+  `Barbatos.Wpf.Aquarius.Xaml`, `Barbatos.Wpf.Aquarius.Animation`.
 
 See the [root README](README.md) for an overview of both packages.

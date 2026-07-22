@@ -8,7 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Markup;
 using System.Windows.Media.Animation;
 
-namespace Barbatos.Wpf.Animation;
+namespace Barbatos.Wpf.Aquarius.Animation;
 
 /// <summary>
 /// Plays an animation around mounting/unmounting its content - the Aquarius counterpart

@@ -22,10 +22,10 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <Using Include="Barbatos.Wpf.Reactivity" />
-    <Using Include="Barbatos.Wpf.Composition" />
-    <Using Include="Barbatos.Wpf.Xaml" />
-    <Using Include="Barbatos.Wpf.Animation" />
+    <Using Include="Barbatos.Wpf.Aquarius.Reactivity" />
+    <Using Include="Barbatos.Wpf.Aquarius.Composition" />
+    <Using Include="Barbatos.Wpf.Aquarius.Xaml" />
+    <Using Include="Barbatos.Wpf.Aquarius.Animation" />
   </ItemGroup>
 
 </Project>

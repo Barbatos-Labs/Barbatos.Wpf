@@ -6,7 +6,7 @@
 using System.ComponentModel;
 using System.Windows;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 public static partial class Directives
 {

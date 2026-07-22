@@ -1,6 +1,6 @@
 # Barbatos.Wpf.Aquarius
 
-![Barbatos.Wpf.Aquarius logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/nuget.png?raw=true)
+![Barbatos.Wpf.Aquarius logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquarius-logo.svg?raw=true)
 
 ### *Vue.js's reactivity, lifecycle hooks, directives, Teleport, and Transitions - for WPF*
 
@@ -23,7 +23,7 @@ CommunityToolkit.Mvvm.**
   * [Quick Start](#quick-start)
 * **[Reactivity](#reactivity)**
 * **[Lifecycle Hooks](#lifecycle-hooks)**
-* **[Composition](#composition)**
+* **[Setup](#setup)**
 * **[Directives](#directives)**
   * [Directives.Model (v-model)](#directivesmodel-v-model)
   * [Directives.Show (v-show)](#directivesshow-v-show)
@@ -92,19 +92,34 @@ Everything in this document lives behind a single XAML namespace:
         xmlns:aq="http://schemas.barbatos.dev/aquarius">
 ```
 
-That one `aq:` prefix reaches every namespace below (`Barbatos.Wpf.Reactivity`,
-`Barbatos.Wpf.Composition`, `Barbatos.Wpf.Xaml`, `Barbatos.Wpf.Animation`) - the same way
+That one `aq:` prefix reaches every namespace below (`Barbatos.Wpf.Aquarius.Reactivity`,
+`Barbatos.Wpf.Aquarius.Composition`, `Barbatos.Wpf.Aquarius.Xaml`, `Barbatos.Wpf.Aquarius.Animation`) - the same way
 WPF's own `.../presentation` xmlns quietly spans
 `System.Windows`, `System.Windows.Controls`, etc.
 
 Aquarius has no dependency on Barbatos.Wpf.Core and works in any WPF app - install it
 alongside Core for the hosting/DI story, or on its own.
 
+**Scaffolding a new View + ViewModel**: an installable `dotnet new` item template (see
+[`templates/`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md)
+in the repo) generates a matching `XyzView.xaml` (with `aq:Setup.Enable="True"` already
+set) / `XyzView.xaml.cs` / `XyzViewModel.cs` trio in one step - the closest Aquarius
+equivalent of scaffolding a new Vue single-file component:
+
+```powershell
+dotnet new install ./templates/Barbatos.Wpf.Aquarius/item-templates/aquarius-view   # once
+dotnet new aq-view -n Dashboard --namespace MyApp.Features.Dashboard
+```
+
+See the [root README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/README.md#templates)
+for the full template lineup (including a combined Aquarius + Core starter project) and
+Visual Studio 2022 / Rider-specific steps.
+
 ---
 
 ## Reactivity
 
-`Barbatos.Wpf.Reactivity` - `Ref<T>`, `Computed<T>`, `Watch`, `NextTick`.
+`Barbatos.Wpf.Aquarius.Reactivity` - `Ref<T>`, `Computed<T>`, `Watch`, `NextTick`.
 
 ```csharp
 public Ref<int> Count { get; } = new(0);
@@ -185,7 +200,7 @@ normalize away.
 
 ## Lifecycle Hooks
 
-`Barbatos.Wpf.Composition` - `Lifecycle.Enable` + eleven `IOnXxx` interfaces (plus eight
+`Barbatos.Wpf.Aquarius.Composition` - `Lifecycle.Enable` + eleven `IOnXxx` interfaces (plus eight
 more `IOnXxxAsync` counterparts - see [below](#async-hooks)).
 
 Vue's Composition API hooks run inside a component's `setup()`; the WPF/MVVM analogue of
@@ -312,9 +327,9 @@ failure anywhere):
 
 ---
 
-## Composition
+## Setup
 
-`Barbatos.Wpf.Composition.Composition` - resolves and assigns a View's `DataContext` from a
+`Barbatos.Wpf.Aquarius.Composition.Setup` - resolves and assigns a View's `DataContext` from a
 Type, so a View never needs a code-behind constructor line like `DataContext = new
 XyzViewModel(...)`. The closest Aquarius counterpart to how a Vue single-file component's
 own `<script>`/`<script setup>` block is simply *there*, with no separate wiring step to
@@ -324,10 +339,10 @@ Two ways to opt in, both set on the View's own XAML root:
 
 ```xml
 <!-- 1. Say the exact type - always wins, works for any naming/assembly layout -->
-<UserControl aq:Composition.ViewModel="{x:Type vm:SomeViewModel}" ... />
+<UserControl aq:Setup.ViewModel="{x:Type vm:SomeViewModel}" ... />
 
 <!-- 2. Just say "figure it out" - guesses "XyzView" -> "XyzViewModel" by name -->
-<UserControl aq:Composition.Enable="True" ... />
+<UserControl aq:Setup.Enable="True" ... />
 ```
 
 - **The naming convention** strips a trailing `"View"` from the View's own type name and
@@ -337,10 +352,10 @@ Two ways to opt in, both set on the View's own XAML root:
   living in a separate assembly from its View is found too (as long as that assembly is
   already loaded by the time this runs - reference the type once anywhere, or use the
   explicit `ViewModel` override, to guarantee it). Results are cached per View type, not
-  recomputed per instance. Replace `Composition.Resolver` (a `Func<Type, Type?>`) to use a
+  recomputed per instance. Replace `Setup.Resolver` (a `Func<Type, Type?>`) to use a
   different convention app-wide - a different suffix, a `Views`/`ViewModels` namespace
   swap, whatever this app's own layout calls for.
-- **Where the instance comes from**: `Composition.ServiceProvider` first if set - so
+- **Where the instance comes from**: `Setup.ServiceProvider` first if set - so
   constructor-injected dependencies resolve the same way any other DI-registered service
   would - falling back to `Activator.CreateInstance(Type)`, which requires a public
   parameterless constructor:
@@ -348,7 +363,7 @@ Two ways to opt in, both set on the View's own XAML root:
   ```csharp
   // Once at startup - works with Barbatos.Wpf.Core's WpfAppBuilder.Services, or any other
   // Microsoft.Extensions.DependencyInjection IServiceProvider:
-  Composition.ServiceProvider = host.Services;
+  Setup.ServiceProvider = host.Services;
   ```
 
   A ViewModel with required constructor arguments and no DI configured needs either a
@@ -356,11 +371,11 @@ Two ways to opt in, both set on the View's own XAML root:
   setting `DataContext` by hand.
 - **Explicit wins over convention** when both `ViewModel` and `Enable` are set on the same
   element.
-- **`Composition.ThrowOnUnresolved`** (default `false`) - when `Enable="True"` but the
-  naming convention can't find a match, the default is to silently leave `DataContext`
-  alone, so this feature can be adopted incrementally without an existing View that doesn't
-  yet follow the convention suddenly failing at runtime. Set this to `true` during app
-  startup to fail fast with a clear exception instead - the same opt-into-strict shape as
+- **`Setup.ThrowOnUnresolved`** (default `false`) - when `Enable="True"` but the naming
+  convention can't find a match, the default is to silently leave `DataContext` alone, so
+  this feature can be adopted incrementally without an existing View that doesn't yet
+  follow the convention suddenly failing at runtime. Set this to `true` during app startup
+  to fail fast with a clear exception instead - the same opt-into-strict shape as
   [`Expr.ThrowOnUnresolvedIdentifiers`](#expr---conditional-expressions).
 - **Resolves at `Initialized`, not `Loaded`** - specifically so [Lifecycle](#lifecycle-hooks)
   hooks (which check at `Initialized` as a best effort, then guaranteed at `Loaded`) always
@@ -371,7 +386,7 @@ Two ways to opt in, both set on the View's own XAML root:
 
 ## Directives
 
-`Barbatos.Wpf.Xaml` - attached properties and small controls for the things WPF doesn't
+`Barbatos.Wpf.Aquarius.Xaml` - attached properties and small controls for the things WPF doesn't
 already do natively.
 
 ### Directives.Model (v-model)
@@ -682,7 +697,7 @@ Not ported - each already has a direct, better-established WPF equivalent:
 
 ## Teleport
 
-`Barbatos.Wpf.Xaml` - `TeleportHost` + `Teleport`.
+`Barbatos.Wpf.Aquarius.Xaml` - `TeleportHost` + `Teleport`.
 
 ```xml
 <Grid aq:TeleportHost.RegisterHost="Overlay" Panel.ZIndex="100" />
@@ -830,7 +845,7 @@ Three things matter for this to work correctly - all visible in the wiring above
 
 ## Transition / TransitionGroup
 
-`Barbatos.Wpf.Animation` - `Transition`, `TransitionGroup`.
+`Barbatos.Wpf.Aquarius.Animation` - `Transition`, `TransitionGroup`.
 
 Vue ships zero default animations - `<Transition>` only orchestrates *when* your own CSS
 classes/JS hooks run. This port keeps that philosophy: no canned animations ship here,
@@ -882,7 +897,7 @@ Left for a dedicated follow-up rather than rushed here.
 
 ## Provide / Inject
 
-`Barbatos.Wpf.Composition` - `Provide`, `Inject`.
+`Barbatos.Wpf.Aquarius.Composition` - `Provide`, `Inject`.
 
 ```xml
 <Grid aq:Provide.Key="ThemeColor" aq:Provide.Value="{Binding AccentBrush}">
@@ -934,7 +949,7 @@ DI container, a different scoping model.
 
 ## Suspense
 
-`Barbatos.Wpf.Xaml` - `Suspense`.
+`Barbatos.Wpf.Aquarius.Xaml` - `Suspense`.
 
 ```xml
 <aq:Suspense IsPending="{Binding IsLoading}">
@@ -958,7 +973,7 @@ in, one of two contents out.
 
 ## Slots
 
-`Barbatos.Wpf.Xaml` - `Slot`, `SlotHost`, `SlotContent`, `SlotProvided`.
+`Barbatos.Wpf.Aquarius.Xaml` - `Slot`, `SlotHost`, `SlotContent`, `SlotProvided`.
 
 A real port of Vue's `<slot>`/`<slot name="x">` outlets: free-form slot names chosen at the
 use site, not pre-declared as a `DependencyProperty` per name by the component author.

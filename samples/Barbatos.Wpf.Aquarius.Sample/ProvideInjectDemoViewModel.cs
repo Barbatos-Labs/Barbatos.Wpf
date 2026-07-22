@@ -1,5 +1,5 @@
 using System.Windows.Media;
-using Barbatos.Wpf.Reactivity;
+using Barbatos.Wpf.Aquarius.Reactivity;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 

@@ -5,7 +5,7 @@
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace Barbatos.Wpf.Reactivity;
+namespace Barbatos.Wpf.Aquarius.Reactivity;
 
 /// <summary>
 /// A single reactive value - the Aquarius counterpart of Vue's <c>ref()</c>.

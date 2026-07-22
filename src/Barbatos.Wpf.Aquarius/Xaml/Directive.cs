@@ -5,7 +5,7 @@
 
 using System.Windows;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// The value/argument/modifiers a <see cref="Directive"/> hook is invoked with - the

@@ -5,7 +5,7 @@
 
 using System.Windows.Markup;
 
-namespace Barbatos.Wpf.Xaml;
+namespace Barbatos.Wpf.Aquarius.Xaml;
 
 /// <summary>
 /// Wraps a piece of content with a free-form name, for use inside a <see cref="SlotHost"/>'s

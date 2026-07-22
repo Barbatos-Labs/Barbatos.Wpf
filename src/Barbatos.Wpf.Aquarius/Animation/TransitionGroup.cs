@@ -8,7 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media.Animation;
 
-namespace Barbatos.Wpf.Animation;
+namespace Barbatos.Wpf.Aquarius.Animation;
 
 /// <summary>
 /// Plays an animation as items are added to an <see cref="ItemsControl"/> - the Aquarius

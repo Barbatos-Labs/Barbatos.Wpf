@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Barbatos.Wpf.Aquarius.Sample;
 
 /// <summary>
-/// DataContext for <see cref="SlotsDemoView"/> - free-form named (<see cref="Barbatos.Wpf.Xaml.Slot"/>)
+/// DataContext for <see cref="SlotsDemoView"/> - free-form named (<see cref="Barbatos.Wpf.Aquarius.Xaml.Slot"/>)
 /// and list-scoped (<c>ItemsControl.ItemTemplate</c>) slots, fully self-contained.
 /// </summary>
 public sealed partial class SlotsDemoViewModel : ObservableObject
