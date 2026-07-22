@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 
 namespace Barbatos.Wpf.Aquarius.UnitTests;
 
@@ -276,6 +277,102 @@ public class IfControlTests
 
             window.Close();
             StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
+    public void ManySynchronousConditionFlipsBeforeAPumpCoalesceIntoAtMostOneMountUnmountPair()
+    {
+        // The performance question behind this test: if Condition is bound to a
+        // fast-changing value and flips many times before WPF's dispatcher gets a chance to
+        // run (all within the same synchronous callstack - e.g. a hot loop, or several
+        // property-changed notifications processed back to back), does each flip cost a
+        // real Unloaded/Loaded pass, or does WPF coalesce down to the net transition once
+        // it actually runs layout? Verified here: it coalesces - Loaded/Unloaded (and so
+        // every Lifecycle hook driven by them) only reflect the tree's state at the moment
+        // the dispatcher processes it, not one pass per intermediate Content assignment.
+        // So a "hot loop" flipping Condition many times per tick is not, by itself, a
+        // performance problem - see If's own remarks for when it actually is one.
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel();
+            var child = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(child, true);
+            var ifControl = new If { Condition = true, Child = child };
+
+            var window = new Window { Content = ifControl, Width = 200, Height = 100 };
+            window.Show();
+            StaThread.PumpDispatcher();
+            vm.Calls.Clear();
+
+            for (var i = 0; i < 100; i++)
+                ifControl.Condition = !ifControl.Condition;
+
+            // Deliberately no PumpDispatcher() inside the loop above.
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(1, vm.Calls.Count(c => c == "OnMounted"));
+            Assert.Equal(1, vm.Calls.Count(c => c == "OnUnmounted"));
+
+            window.Close();
+            StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
+    public void TimerDrivenTogglesFarApartEachProduceTheirOwnFullMountUnmountCycle()
+    {
+        // The other half of the performance picture, alongside the coalescing test above:
+        // a *periodic* source (a DispatcherTimer, same default priority - Background - any
+        // "realtime" feed driving a bound value would use) gets none of that coalescing,
+        // because Background is lower priority than the Loaded-priority connectivity work
+        // a Content swap queues - the timer literally cannot tick again until that drains.
+        // So 5 timer ticks/second is 5 real, full mount-or-unmount sequences per second, not
+        // a free ride like 100 synchronous flips in one callstack is.
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel();
+            var child = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(child, true);
+            var ifControl = new If { Condition = true, Child = child };
+
+            var window = new Window { Content = ifControl, Width = 200, Height = 100 };
+            window.Show();
+            StaThread.PumpDispatcher();
+            vm.Calls.Clear();
+
+            const int ticks = 5;
+            var ticksSeen = 0;
+            var timer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(50),
+            };
+
+            timer.Tick += (_, _) =>
+            {
+                ifControl.Condition = !ifControl.Condition;
+                ticksSeen++;
+                if (ticksSeen >= ticks)
+                {
+                    timer.Stop();
+
+                    // Queued at Background (lower than Loaded) so this last tick's own
+                    // pending Unloaded/Loaded connectivity work drains before shutdown,
+                    // rather than being cut off mid-flight.
+                    Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => Dispatcher.CurrentDispatcher.InvokeShutdown()));
+                }
+            };
+            timer.Start();
+
+            Dispatcher.Run(); // a real nested message loop, so the timer actually fires on schedule
+
+            // 5 alternating flips from True: false, true, false, true, false - 2 mounts, 3 unmounts.
+            Assert.Equal(2, vm.Calls.Count(c => c == "OnMounted"));
+            Assert.Equal(3, vm.Calls.Count(c => c == "OnUnmounted"));
+            Assert.Equal(19, vm.Calls.Count); // fully uncoalesced: (3+5)*2 + 3, no shortcuts taken
+
+            // No PumpDispatcher()/window.Close() here - Dispatcher.Run() already shut this
+            // thread's dispatcher down, so invoking on it again would throw.
         });
     }
 }

@@ -45,8 +45,17 @@ public partial class App : WpfApplication
     {
         base.OnStartup(e);
 
+        // Resolve the (singleton) MainViewModel and await its slow startup query *before*
+        // closing the splash screen / showing MainWindow below - the window never appears
+        // with that data still loading, because the splash screen covers the wait instead of
+        // an in-window spinner. MainWindow's own constructor resolves the same MainViewModel
+        // instance later (it's a singleton too), so nothing needs to be passed through by hand.
+        var mainViewModel = Services.GetRequiredService<MainViewModel>();
+        await mainViewModel.LoadWorkspaceSummaryAsync();
+
         // Waits out any remaining SplashScreenOptions.MinimumDisplayDuration, then closes the
-        // splash screen shown for GetSplashScreenOptions() above.
+        // splash screen shown for GetSplashScreenOptions() above - a no-op wait here, since the
+        // query above already took longer than MinimumDisplayDuration.
         await CloseSplashScreenAsync();
 
         // Double-clicking the tray icon re-opens the main window.

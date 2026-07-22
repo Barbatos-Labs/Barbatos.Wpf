@@ -167,8 +167,19 @@ public abstract class WpfApplication : Application, IWpfPlatformApplication
         if (IWpfPlatformApplication.Current == this)
             IWpfPlatformApplication.Current = null;
 
-        _appHost?.Dispose();
+        // _appHost is cleared *before* disposing it, not after: disposing it disposes the
+        // service provider, which cascades into disposing every registered singleton -
+        // including, for example, ITrayIconPlatform, whose own Dispose() tears down a native
+        // window and can synchronously reenter this Application's OnDeactivated (and
+        // potentially other) override while that cascade is still running. Every event
+        // forwarder below reads the _appHost field directly, so clearing it first turns any
+        // such reentrant call into a harmless no-op instead of reaching a service provider
+        // that has already started (but not finished) disposing - which throws
+        // ObjectDisposedException, same as calling GetService after Dispose has fully
+        // returned does.
+        var appHost = _appHost;
         _appHost = null;
+        appHost?.Dispose();
     }
 
     /// <inheritdoc />

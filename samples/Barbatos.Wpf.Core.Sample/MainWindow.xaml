@@ -53,6 +53,15 @@
                 <LineBreak />
                 <Run Text="{Binding InstallInfoDescription, Mode=OneWay}" />
             </TextBlock>
+
+            <!-- Populated by App.OnStartup's MainViewModel.LoadWorkspaceSummaryAsync() call,
+                 awaited before the splash screen closes - already here the moment this window
+                 appears, never an empty flash followed by a pop-in. See "SplashScreen" in the
+                 root README.md. -->
+            <TextBlock Margin="0,8,0,0"
+                       Text="{Binding WorkspaceSummary}"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
         </StackPanel>
 
         <TabControl Grid.Row="1">

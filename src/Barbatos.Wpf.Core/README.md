@@ -845,6 +845,50 @@ logos and related links are each individually clickable (opens their `LinkUrl`/`
 > slow work to an async continuation, awaited before `CloseSplashScreenAsync()`, if you need the
 > splash to stay responsive/animated while it happens.
 
+### Loading important data before the main window ever appears
+
+A slow query for something the main window needs (a workspace summary, a license check, ...)
+often ends up wired to `MainWindow`'s own `Loaded` event or its ViewModel's mount hook — which
+means the window pops up empty first, then that content flashes in a moment later. The splash
+screen is already sitting there for exactly this: resolve the ViewModel and await its slow work
+*before* closing the splash and showing the window, instead of after:
+
+```csharp
+protected override async void OnStartup(StartupEventArgs e)
+{
+    base.OnStartup(e);
+
+    // MainViewModel is registered as a singleton, so MainWindow's own constructor resolves
+    // this exact same, already-loaded instance below - nothing to pass through by hand.
+    var mainViewModel = Services.GetRequiredService<MainViewModel>();
+    await mainViewModel.LoadWorkspaceSummaryAsync();
+
+    await CloseSplashScreenAsync(); // a no-op wait - the query above already took longer
+                                    // than MinimumDisplayDuration, so nothing left to wait out
+
+    MainWindow = Services.GetRequiredService<MainWindow>();
+    MainWindow.Show();
+}
+```
+
+`samples/Barbatos.Wpf.Core.Sample` demonstrates this end to end: `MainViewModel.LoadWorkspaceSummaryAsync()`
+simulates a slow query (a 3-second delay standing in for a real database read/license check/cache
+warm-up) and sets `WorkspaceSummary`, which `MainWindow.xaml`'s header displays - already there
+the instant the window appears, never an empty flash followed by a pop-in.
+
+This is a straightforward reordering, not a new API - the only two things that make it work are
+already true of any DI-registered ViewModel: it must be a **singleton** (a scoped/transient
+registration would hand `MainWindow`'s constructor a second, still-unloaded instance instead of
+the one already awaited above), and the slow work has to be something you can genuinely `await`
+(if your "slow work" is synchronous, an `IWpfInitializeService` - covered by the splash the same
+way, since it also runs before `CreateWpfApp()` - is the better fit; see "Hosting" above).
+
+Weigh this against just showing the window immediately and letting that one section show its
+own loading state instead (a spinner, a skeleton) - blocking the *entire* app's startup on one
+query is the right call when nothing else in the window is meaningfully usable without it, but
+if most of the window works fine without that data, an in-place loading indicator for just that
+section keeps the rest of the app interactive sooner.
+
 ### Full customization
 
 For full control over the UI instead of the built-in layout, override `CreateSplashScreen()`

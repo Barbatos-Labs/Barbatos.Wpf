@@ -204,7 +204,40 @@ internal sealed class DialogService : IDialogService
         _trackedWindows.Remove(window);
 
         if (ReferenceEquals(_activeWindow, window))
+        {
             _activeWindow = null;
+
+            // Closing an owned window is supposed to hand activation back to its owner, but
+            // (like ActivateWindow()'s own Topmost-toggle already works around) Windows'
+            // foreground-lock rules can let some other process - e.g. a debugger-attached IDE -
+            // steal it instead. If some other tracked window had already picked up activation
+            // natively, it would have fired its own Activated and updated _activeWindow away
+            // from this one before this handler ever ran - so still finding it here means that
+            // never happened, and the owner needs a manual nudge back to the foreground.
+            //
+            // NOTE: manual testing against a live Rider debug session showed this - and every
+            // timing variant tried (delayed, repeated, held-Topmost) - reliably wins the
+            // *first* time a dialog closes in a given app run, but can still lose to Rider
+            // reclaiming the foreground on later closes. That looks like Rider itself
+            // repeatedly reasserting itself during an active debug session rather than a
+            // one-shot race this process can out-wait, so it isn't fixable purely from here;
+            // this still fixes the original gap (nothing was attempted at all before) and the
+            // common case.
+            //
+            // Deliberately not reusing ActivateWindow() here: its Show() fallback is only safe
+            // for reopening a possibly-hidden *tracked* dialog. This Closed can fire reentrantly
+            // while the owner is cascading its own close down to this window (WPF itself closes
+            // owned windows once their owner closes) - i.e. with the owner's own WmDestroy still
+            // on the call stack - and WPF forbids Show()/Close() on a window while it is itself
+            // mid-close. Activate()/Topmost/Focus() carry no such restriction.
+            if (window.Owner is { IsLoaded: true } owner)
+            {
+                owner.Topmost = true;
+                owner.Activate();
+                owner.Topmost = false;
+                owner.Focus();
+            }
+        }
 
         UntrackDialog(window);
     }

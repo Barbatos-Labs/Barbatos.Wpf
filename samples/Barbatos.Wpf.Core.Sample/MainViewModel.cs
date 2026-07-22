@@ -56,6 +56,7 @@ public class MainViewModel : INotifyPropertyChanged
     string _displayInfoDescription;
     string _deviceIdentityDescription = "(not loaded - click \"Show device identity\")";
     string _pushNotificationStatusDescription = "Not connected.";
+    string _workspaceSummary = "(not loaded yet)";
     string _selectedAiProvider = "gemini";
     string _aiModel = "gemini-3.5-flash";
     string _aiApiKeyInput = string.Empty;
@@ -207,6 +208,32 @@ public class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public void RefreshDisplayInfo() =>
         DisplayInfoDescription = _greetingService.GetDisplayInfoDescription();
+
+    /// <summary>
+    /// Stands in for a real app's important-but-slow startup query (a database read, a
+    /// license check, warming a cache, ...). Loaded once from <see cref="App.OnStartup"/>
+    /// and awaited *before* the splash screen closes and <see cref="MainWindow"/> is shown -
+    /// see "SplashScreen" in the root README.md - so this text is already here the moment
+    /// the window appears instead of popping in a moment later.
+    /// </summary>
+    public string WorkspaceSummary
+    {
+        get => _workspaceSummary;
+        private set { _workspaceSummary = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Simulates a slow startup query - swap the delay below for whatever your own app's real
+    /// important-but-slow startup work is. Called once, from <see cref="App.OnStartup"/>,
+    /// awaited before the splash screen closes.
+    /// </summary>
+    public async Task LoadWorkspaceSummaryAsync()
+    {
+        LogLifecycleEvent("MainViewModel.LoadWorkspaceSummaryAsync() - simulating a slow startup query...");
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        WorkspaceSummary = "Workspace ready - 128 open items across 6 boards.";
+        LogLifecycleEvent("MainViewModel.LoadWorkspaceSummaryAsync() - done, MainWindow can show now.");
+    }
 
     public int LaunchCount { get; }
 

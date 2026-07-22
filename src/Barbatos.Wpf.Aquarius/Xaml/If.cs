@@ -56,6 +56,30 @@ namespace Barbatos.Wpf.Aquarius.Xaml;
 /// equivalent to "grouped flat siblings" - a <c>Switch</c>/<c>Case</c> control would be the
 /// natural escape hatch if that becomes painful, deliberately not built here since it
 /// wasn't asked for.
+/// <para>
+/// <b>Performance: prefer <see cref="Directives.ShowProperty"/> for content that toggles
+/// often - including "realtime" data (a feed, a sensor reading, anything updating several
+/// times a second).</b> Many synchronous <see cref="Condition"/> flips that all happen
+/// before WPF's dispatcher next runs layout (e.g. several updates processed back to back in
+/// the same callstack) cost nothing extra - only the net transition by the time layout
+/// actually runs fires <c>Unloaded</c>/<c>Loaded</c>, verified in
+/// <c>IfControlTests.ManySynchronousConditionFlipsBeforeAPumpCoalesceIntoAtMostOneMountUnmountPair</c>.
+/// That coalescing is the exception, not the rule, though: it only happens because those
+/// flips share one callstack. A periodic source - a <c>DispatcherTimer</c> tick, a message
+/// from a live feed, anything arriving as its own separate dispatcher operation - gets none
+/// of it, because <c>DispatcherTimer</c>'s default priority (<c>Background</c>) is lower
+/// than the <c>Loaded</c>-priority connectivity work a <see cref="Condition"/> change
+/// queues, so that work always drains before the next tick can even fire. Verified directly:
+/// 5 timer ticks a second produced 5 full, uncoalesced mount-or-unmount sequences, not one
+/// net transition (<c>IfControlTests.TimerDrivenTogglesFarApartEachProduceTheirOwnFullMountUnmountCycle</c>).
+/// Each full cycle measured at roughly 0.7ms for a trivial child with no-op hooks, and more
+/// for a visually complex subtree or hooks that do real work, since every hook re-runs from
+/// scratch on every remount (see <see cref="Composition.Lifecycle"/>) - so a "realtime"
+/// value driving <see cref="Condition"/> is exactly the case to avoid, matching Vue's own
+/// documented advice for <c>v-if</c> vs <c>v-show</c>: reach for <c>Show</c> when the
+/// condition changes frequently, and save <see cref="If"/> for content that changes rarely
+/// (a tab's content, a logged-in/logged-out split, ...).
+/// </para>
 /// </remarks>
 [ContentProperty(nameof(Child))]
 public class If : ContentControl

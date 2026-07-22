@@ -467,6 +467,45 @@ content model has no equivalent to "grouped flat siblings" - a `Switch`/`Case` c
 would be the natural escape hatch if that becomes painful, deliberately not built here
 since it wasn't asked for.
 
+#### Performance: `If` vs `Directives.Show`
+
+Same tradeoff Vue itself documents for `v-if` vs `v-show`: `If` has near-zero cost while its
+`Condition` stays put, but a real cost each time it actually toggles (a genuine detach +
+reattach); `Directives.Show` is the opposite (always mounted, so a toggle is just a
+`Visibility` flip). Two things worth knowing before picking one:
+
+- **Many synchronous `Condition` flips that happen before WPF's dispatcher next runs layout
+  cost nothing extra.** WPF's own `Loaded`/`Unloaded` are deferred, not synchronous with the
+  `Content` assignment - only the net transition by the time layout actually runs fires
+  them, however many times `Condition` flipped on the way there. Verified directly: 100
+  back-to-back flips in the same callstack, pumped once, produced exactly one mount and one
+  unmount - not 100 (`IfControlTests.ManySynchronousConditionFlipsBeforeAPumpCoalesceIntoAtMostOneMountUnmountPair`).
+  So a property that recomputes `Condition` several times in a row within the same
+  operation is not, by itself, a performance concern.
+- **That coalescing is the exception, not the rule - a periodic/"realtime" source gets none
+  of it.** It only happens because those flips share one callstack; a `DispatcherTimer` tick,
+  a message from a live feed, a sensor reading - anything arriving as its own separate
+  dispatcher operation - pays the full cost **every single time**, because
+  `DispatcherTimer`'s default priority (`Background`) is lower than the `Loaded`-priority
+  connectivity work a `Condition` change queues, so that work always drains before the next
+  tick can even fire; there's no window for two ticks to land in the same pass the way 100
+  synchronous flips do. Verified directly with a real `DispatcherTimer`: 5 ticks/second
+  produced 5 full, uncoalesced mount-or-unmount sequences, not one net transition
+  (`IfControlTests.TimerDrivenTogglesFarApartEachProduceTheirOwnFullMountUnmountCycle`). Each
+  full cycle is a genuine `Unloaded` then `Loaded`, so every [Lifecycle](#lifecycle-hooks)
+  hook the child implements re-runs from scratch every time (measured at roughly 0.7ms per
+  cycle for a trivial child with no-op hooks - a visually heavier subtree, or hooks doing
+  real work like loading data or subscribing to something, cost more per toggle, not less).
+  **This is exactly what "realtime" means here**: if `Condition` is driven by a value that
+  updates several times a second - a live feed, a timer, anything with that shape - switch
+  that element to `Directives.Show` instead. It only ever flips `Visibility`, so the hooks
+  simply don't re-fire at all (see the [`"KeepAlive"`](#keepalive) note above).
+
+In short: `If` for content that changes rarely (a tab's content, a logged-in/logged-out
+split, ...), `Directives.Show` for content that toggles often - and "often" specifically
+includes anything realtime/periodic, even at a modest few-times-a-second rate, since that
+shape never benefits from the same-callstack coalescing above.
+
 ### Expr - conditional expressions
 
 ```xml

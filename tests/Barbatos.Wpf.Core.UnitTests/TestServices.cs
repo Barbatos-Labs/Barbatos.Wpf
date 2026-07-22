@@ -3,6 +3,8 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Barbatos.Wpf.Core.UnitTests;
 
 // Service stubs mirroring the ones used by .NET MAUI's hosting unit tests.
@@ -111,4 +113,33 @@ public sealed class DisposableService : IDisposable
     public bool IsDisposed { get; private set; }
 
     public void Dispose() => IsDisposed = true;
+}
+
+/// <summary>
+/// Mirrors <c>ITrayIconPlatform</c>'s real shutdown hazard: its <see cref="Dispose"/> reaches
+/// back into the very <see cref="IServiceProvider"/> that is disposing it (the way tearing
+/// down its native window can reenter WPF's <c>Application</c> and, from there, code that
+/// resolves <c>ILifecycleEventService</c> off <see cref="IServiceProvider"/> again) - without
+/// needing any actual window or WPF <c>Application</c> to prove the underlying container
+/// behavior this depends on.
+/// </summary>
+public sealed class ReentrantDisposeService : IDisposable
+{
+    private readonly IServiceProvider _services;
+
+    public ReentrantDisposeService(IServiceProvider services) => _services = services;
+
+    public Exception? CaughtDuringDispose { get; private set; }
+
+    public void Dispose()
+    {
+        try
+        {
+            _services.GetService<IFooService>();
+        }
+        catch (Exception ex)
+        {
+            CaughtDuringDispose = ex;
+        }
+    }
 }
