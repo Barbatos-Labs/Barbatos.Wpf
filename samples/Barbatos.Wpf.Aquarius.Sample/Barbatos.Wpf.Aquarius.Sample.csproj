@@ -1,13 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <OutputType>WinExe</OutputType>
-        <TargetFramework>net10.0-windows</TargetFramework>
-        <Nullable>enable</Nullable>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <UseWPF>true</UseWPF>
-    </PropertyGroup>
-
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
@@ -27,6 +19,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Barbatos.Wpf.Aquarius\Barbatos.Wpf.Aquarius.csproj" />
+    <!-- Core and Aquarius are otherwise fully independent packages - this reference exists only
+         so this sample can demonstrate combining Barbatos.Wpf.Apsu (Core's Pinia-style store
+         module) with Aquarius's own Composition API, see ApsuInteropDemoView. -->
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.Core\Barbatos.Wpf.Core.csproj" />
   </ItemGroup>
 
 </Project>

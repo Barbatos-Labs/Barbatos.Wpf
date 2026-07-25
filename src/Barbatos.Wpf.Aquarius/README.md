@@ -2,11 +2,11 @@
 
 ![Barbatos.Wpf.Aquarius logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquarius-logo.svg?raw=true)
 
-### *Vue.js's reactivity, lifecycle hooks, directives, Teleport, and Transitions - for WPF*
+### *Reactivity, lifecycle hooks, directives, Teleport, and Transitions - for WPF*
 
-**Bring Vue 3's Composition-API ergonomics (`ref`/`computed`/`watch`, lifecycle hooks,
-`v-model`/`v-show`/`v-if`/`v-on`, custom directives, `<Teleport>`, `<Transition>`,
-`provide`/`inject`, `<Suspense>`) to plain desktop WPF, built directly on top of
+**Reactive state (`Ref<T>`/`Computed<T>`/`Watch`), lifecycle hooks, XAML directives for
+two-way binding/visibility/events, custom directives, `Teleport`, `Transition`,
+`Provide`/`Inject`, `Suspense` - for plain desktop WPF, built directly on top of
 CommunityToolkit.Mvvm.**
 
 [![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.Aquarius.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Aquarius)
@@ -56,26 +56,28 @@ CommunityToolkit.Mvvm.**
 
 #### What is Barbatos.Wpf.Aquarius?
 
-Aquarius ports Vue 3's Composition API - the parts of it that make Vue pleasant to write
-in - onto plain WPF/XAML, using the same shape MAUI-style porting already established in
-[Barbatos.Wpf.Core](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Core/README.md):
-name things after their Vue counterpart, document the mapping and any honest divergence,
-and never reinvent something WPF already does natively.
+Aquarius adds composition-style reactive state and a set of XAML directives to plain WPF:
+reactive values and computed properties that keep bindings in sync automatically, lifecycle
+hooks for a ViewModel's mount/unmount, two-way binding and event-wiring directives that cut
+down on XAML boilerplate, transitions/teleport for content that needs to move or animate, and
+a loading-state control for async content.
 
-That last point matters: Aquarius is deliberately **not** a rewrite of WPF's binding
-engine, layout system, or MVVM story. Vue's reactivity is already what
+Aquarius is deliberately **not** a rewrite of WPF's binding engine, layout system, or MVVM
+story - it's thin sugar on top of what's already there. Reactivity is built directly on
 [CommunityToolkit.Mvvm](https://learn.microsoft.com/dotnet/communitytoolkit/mvvm/)'s
-`ObservableObject`/`[ObservableProperty]` gives you - `Ref<T>`/`Computed<T>` below are thin
-sugar directly on top of it, not a competing system. Likewise `v-bind`, `v-for`, and
-`v-html` aren't ported at all: `{Binding}`, `ItemsControl`+`DataTemplate`, and (nothing -
-there's no safe WPF equivalent, and none is needed) already cover them - see
-[Already native](#already-native-v-bind-v-for-v-html).
+`ObservableObject`/`[ObservableProperty]`: `Ref<T>`/`Computed<T>` below just wrap it, not a
+competing system. Things WPF already does natively aren't reintroduced either - `{Binding}`,
+`ItemsControl`+`DataTemplate`, and (nothing - there's no safe WPF equivalent, and none is
+needed) already cover them, see [Already native](#already-native-v-bind-v-for-v-html).
 
 > **Prerequisites**
 >
-> The rest of this document assumes basic familiarity with C#, XAML, WPF's dependency
-> property system, and - loosely - Vue 3's Composition API (so the "here's the Vue
-> equivalent" framing throughout actually lands).
+> The rest of this document assumes basic familiarity with C#, XAML, and WPF's dependency
+> property system.
+>
+> **Familiar with Vue's Composition API?** Several names and shapes below are deliberately
+> similar (`Ref`/`Computed`/`Watch`, lifecycle hooks, directives) - a head start if you've
+> used it before, though nothing here requires that background.
 
 ### Quick Start
 
@@ -138,14 +140,13 @@ public MainViewModel()
 <TextBlock Text="{Binding Doubled.Value}" />
 ```
 
-- **`Ref<T>`** - one reactive value, mirroring `const count = ref(0)`. Built directly on
-  `ObservableObject`, so it already works in bindings, `Watch`, and `Computed<T>` like any
-  other observable. Read/write through `.Value` explicitly (deliberately no implicit
-  conversion) - the same way Vue script code (outside a template) has to use `.value` too.
-- **`Computed<T>`** - a derived value, mirroring `computed(() => ...)`. Because C# has no
-  reactive-proxy interception, `Computed<T>.From(getter, ...dependencies)` takes its
-  dependencies explicitly - the one deliberate divergence from Vue's own API. It's also
-  **writable**, mirroring Vue's `computed({ get, set })` form:
+- **`Ref<T>`** - one reactive value. Built directly on `ObservableObject`, so it already
+  works in bindings, `Watch`, and `Computed<T>` like any other observable. Read/write through
+  `.Value` explicitly - deliberately no implicit conversion, so it's always clear in code
+  when a value is reactive versus plain.
+- **`Computed<T>`** - a derived value. Because C# has no reactive-proxy interception,
+  `Computed<T>.From(getter, ...dependencies)` takes its dependencies explicitly rather than
+  auto-tracking them. It's also **writable**:
 
   ```csharp
   public Computed<string> FullName { get; }
@@ -156,26 +157,21 @@ public MainViewModel()
       this); // the setter mutates a dependency; Value then updates the normal way
   ```
 
-  Assigning to a `Computed<T>` created without a setter throws `InvalidOperationException`,
-  mirroring Vue's runtime warning for the same mistake.
-- **`Watch`** - `Watch.On(source, (newValue, oldValue) => ...)` mirrors `watch()`;
-  `Watch.Effect(effect, ...dependencies)` mirrors `watchEffect()` (runs immediately, then
-  again on any dependency change). Both return an `IDisposable` "stop" handle. Options,
-  all mirroring Vue's own `watch` options:
+  Assigning to a `Computed<T>` created without a setter throws `InvalidOperationException`.
+- **`Watch`** - `Watch.On(source, (newValue, oldValue) => ...)` reacts to a single `Ref<T>`
+  changing; `Watch.Effect(effect, ...dependencies)` runs immediately, then again on any
+  dependency change. Both return an `IDisposable` "stop" handle. Options:
   - `immediate: true` - also runs once immediately.
   - `once: true` - stops itself after the first triggered run.
   - `deep: true` (`Watch.On` only) - if the watched value also implements
     `INotifyCollectionChanged` (e.g. an `ObservableCollection<T>`), also reacts to
-    Add/Remove/Reset, not just wholesale replacement of `.Value`. A narrower stand-in for
-    Vue's recursive `deep` - there's no reactive-proxy equivalent for an arbitrary nested
-    object graph - but it covers the single most common real "deep" need.
+    Add/Remove/Reset, not just wholesale replacement of `.Value` - covering the single most
+    common "watch nested changes" need without a full recursive change-tracking system.
   - `flush: WatchFlush.Post` - coalesces rapid-fire changes through `NextTick` into one
-    callback, mirroring Vue's default `flush: 'post'` batching (the default here,
-    `WatchFlush.Sync`, is immediate/synchronous instead, since that was Aquarius's
-    original behavior and changing the default would be a silent breaking change).
-  - The callback can take a 3rd `onCleanup` parameter (mirrors Vue's `onWatcherCleanup`):
-    calling it registers an action that runs right before the *next* invocation (or on
-    `Dispose`) - the standard way to cancel stale async work before starting new work:
+    callback (the default here, `WatchFlush.Sync`, is immediate/synchronous instead).
+  - The callback can take a 3rd `onCleanup` parameter: calling it registers an action that
+    runs right before the *next* invocation (or on `Dispose`) - the standard way to cancel
+    stale async work before starting new work:
 
     ```csharp
     Watch.On<int>(userId, (id, _, onCleanup) =>
@@ -186,15 +182,13 @@ public MainViewModel()
     });
     ```
 - **`NextTick`** - `NextTick.Run(callback)` / `await NextTick.RunAsync()` schedule work via
-  `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`, mirroring Vue's
-  microtask-based "after the DOM updates" queue. This is also the primitive
+  `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`, i.e. after the current batch
+  of UI updates has been processed. This is also the primitive
   [Lifecycle](#lifecycle-hooks)'s `IOnUpdated` batching and `Watch`'s `flush: Post` are
   built on.
 
-`toRef`/`toRefs`/`unref`-style normalization helpers are intentionally not ported: Vue
-needs them because a value can silently be a plain value, a ref, or a getter; a C#
-`Ref<T>` is always a concrete, statically-typed `Ref<T>`, so there's no ambiguity to
-normalize away.
+A C# `Ref<T>` is always a concrete, statically-typed `Ref<T>` - there's no plain-value/ref/
+getter ambiguity to normalize away, so there's no `toRef`/`toRefs`/`unref`-style helper here.
 
 ---
 
@@ -203,9 +197,8 @@ normalize away.
 `Barbatos.Wpf.Aquarius.Composition` - `Lifecycle.Enable` + eleven `IOnXxx` interfaces (plus eight
 more `IOnXxxAsync` counterparts - see [below](#async-hooks)).
 
-Vue's Composition API hooks run inside a component's `setup()`; the WPF/MVVM analogue of
-`setup()` is the ViewModel. Each hook is its own tiny interface, so a ViewModel opts into
-exactly the ones it needs - the same way a Vue component only imports the hooks it uses:
+Each hook is its own tiny interface, so a ViewModel opts into exactly the ones it needs by
+implementing only the ones it cares about:
 
 ```xml
 <UserControl aq:Lifecycle.Enable="True" ... />
@@ -222,19 +215,19 @@ public sealed partial class MyViewModel : ObservableObject, IOnMounted, IOnUnmou
 No code-behind needed: the element's `DataContext` is checked against every hook
 interface with a plain `is` pattern.
 
-| Interface | Fires on... | Vue equivalent |
-| --- | --- | --- |
-| `IOnBeforeCreate` | Same first opportunity as `IOnBeforeMount` below, one step before it | `beforeCreate` |
-| `IOnCreated` | Immediately after `IOnBeforeCreate` - nothing observable happens between them in this port | `created` |
-| `IOnBeforeMount` | `Initialized` (or, if `DataContext` wasn't bound yet at that point - the common case when it's set by the parent - as a guaranteed fallback right before `IOnMounted`) | `onBeforeMount` |
-| `IOnMounted` | `Loaded` | `onMounted` |
-| `IOnBeforeUpdate` | The first `PropertyChanged` from `DataContext` in a new update batch (synchronous) | `onBeforeUpdate` |
-| `IOnUpdated` | Once per batch, coalesced through `NextTick` | `onUpdated` |
-| `IOnBeforeUnmount` | `Unloaded`, before `IOnUnmounted` | `onBeforeUnmount` |
-| `IOnUnmounted` | `Unloaded` | `onUnmounted` |
-| `IOnActivated` | Mount (only if actually visible at that point), `IsVisible` flipping back to `true` while still mounted, and (additionally) a `Window` regaining focus | `onActivated` (`<KeepAlive>`) |
-| `IOnDeactivated` | Unmount, `IsVisible` flipping to `false` while still mounted, and (additionally) a `Window` losing focus | `onDeactivated` (`<KeepAlive>`) |
-| `IOnErrorCaptured` | An unhandled exception reaches the dispatcher while mounted | `onErrorCaptured` |
+| Interface | Fires on... |
+| --- | --- |
+| `IOnBeforeCreate` | Same first opportunity as `IOnBeforeMount` below, one step before it |
+| `IOnCreated` | Immediately after `IOnBeforeCreate` - nothing observable happens between them in this port |
+| `IOnBeforeMount` | `Initialized` (or, if `DataContext` wasn't bound yet at that point - the common case when it's set by the parent - as a guaranteed fallback right before `IOnMounted`) |
+| `IOnMounted` | `Loaded` |
+| `IOnBeforeUpdate` | The first `PropertyChanged` from `DataContext` in a new update batch (synchronous) |
+| `IOnUpdated` | Once per batch, coalesced through `NextTick` |
+| `IOnBeforeUnmount` | `Unloaded`, before `IOnUnmounted` |
+| `IOnUnmounted` | `Unloaded` |
+| `IOnActivated` | Mount (only if actually visible at that point), `IsVisible` flipping back to `true` while still mounted, and (additionally) a `Window` regaining focus - see ["KeepAlive"](#keepalive) |
+| `IOnDeactivated` | Unmount, `IsVisible` flipping to `false` while still mounted, and (additionally) a `Window` losing focus - see ["KeepAlive"](#keepalive) |
+| `IOnErrorCaptured` | An unhandled exception reaches the dispatcher while mounted |
 
 Notes:
 
@@ -246,16 +239,15 @@ Notes:
   object": if the same ViewModel instance is remounted (e.g. behind an `<aq:If>` that
   toggles back), `IOnBeforeCreate`/`IOnCreated`/`IOnBeforeMount` all fire again too - none
   of them are "only the first time this object is ever seen."
-- WPF raises one `Unloaded` event where Vue has two distinct moments -
-  `IOnBeforeUnmount`/`IOnUnmounted` both fire from it, back to back.
+- WPF raises a single `Unloaded` event covering the whole teardown -
+  `IOnBeforeUnmount`/`IOnUnmounted` both fire from it, back to back, rather than at two
+  genuinely distinct moments.
 - `IOnUpdated`'s batching is real, not just a name: several synchronous property changes
-  in a row produce exactly one `IOnUpdated` call, the same way Vue batches multiple
-  mutations into one asynchronous DOM update.
-- `IOnErrorCaptured` follows WPF's own `Handled` convention rather than Vue's: return
-  `true` to mark the exception handled (suppresses the app's unhandled-exception
-  behavior), `false` to let it keep propagating - the inverse of Vue's `false` = stop
-  propagating, chosen so it behaves the way every other "did you handle this" callback in
-  WPF already does.
+  in a row produce exactly one `IOnUpdated` call.
+- `IOnErrorCaptured` follows WPF's own `Handled` convention: return `true` to mark the
+  exception handled (suppresses the app's unhandled-exception behavior), `false` to let it
+  keep propagating - the same polarity every other "did you handle this" callback in WPF
+  already uses.
 - `IOnActivated`/`IOnDeactivated` are what makes ["KeepAlive"](#keepalive) work below -
   see that section for why there's no separate `KeepAlive` control, and why it matters
   that mount only reports activated when the element is genuinely visible (content that
@@ -264,8 +256,7 @@ Notes:
 
 `If` ([below](#if-v-if)) genuinely detaches/reattaches its content from the visual tree,
 so a `Lifecycle.Enable`'d child behind an `<aq:If>` really does receive
-`IOnUnmounted`/`IOnMounted` calls as the condition toggles - the same way Vue actually
-destroys and recreates a `v-if` subtree.
+`IOnUnmounted`/`IOnMounted` calls as the condition toggles, not just a visibility flip.
 
 ### Async hooks
 
@@ -308,8 +299,7 @@ failure anywhere):
 
 - **Fires at the same point as its sync counterpart, in the same call order - but is never
   awaited.** A slow `OnMountedAsync` does not delay `OnActivated`, a later remount, or
-  anything else - Vue itself does not wait for an async lifecycle callback to resolve
-  before continuing either.
+  anything else.
 - **Returns `Task`, not `ValueTask`.** Each hook fires at most once per mount/unmount/etc.,
   never in a tight loop, so there's no allocation worth saving - `ValueTask` would only add
   sharp edges (can't be awaited twice, can't be inspected once it's already been awaited)
@@ -331,9 +321,7 @@ failure anywhere):
 
 `Barbatos.Wpf.Aquarius.Composition.Setup` - resolves and assigns a View's `DataContext` from a
 Type, so a View never needs a code-behind constructor line like `DataContext = new
-XyzViewModel(...)`. The closest Aquarius counterpart to how a Vue single-file component's
-own `<script>`/`<script setup>` block is simply *there*, with no separate wiring step to
-remember.
+XyzViewModel(...)`.
 
 Two ways to opt in, both set on the View's own XAML root:
 
@@ -402,10 +390,8 @@ attached property and re-applies it, as `TwoWay`/`UpdateSourceTrigger=PropertyCh
 to the right real property for the element type: `TextBox.Text`,
 `ToggleButton.IsChecked` (`CheckBox`/`RadioButton`), `Selector.SelectedItem`
 (`ComboBox`/`ListBox`), `RangeBase.Value` (`Slider`). `PasswordBox` throws - `Password`
-is deliberately not a `DependencyProperty` for security reasons, the same limitation
-Vue's own `v-model` has for `<input type="password">`. Any other element type throws too,
-matching Vue's dev-time warning for an invalid `v-model` target rather than silently
-doing nothing.
+is deliberately not a `DependencyProperty` for security reasons. Any other element type
+throws too, rather than silently doing nothing.
 
 ### Directives.Show (v-show)
 
@@ -413,8 +399,8 @@ doing nothing.
 <Border aq:Directives.Show="{Binding IsOpen}">...</Border>
 ```
 
-`false` maps to `Visibility.Collapsed` (no layout space, state preserved) - matching the
-`display: none` semantics `v-show` relies on. The element stays mounted the whole time.
+`false` maps to `Visibility.Collapsed` (no layout space, state preserved). The element
+stays mounted the whole time.
 
 ### If (v-if / v-else / v-else-if)
 
@@ -425,8 +411,7 @@ doing nothing.
 ```
 
 Unlike `Directives.Show`, `Condition` going `false` genuinely detaches the content from
-the visual tree rather than just hiding it - the same "destroy" Vue performs for `v-if`.
-The child is kept in `If.Child` (the XAML content property) so it reattaches unchanged
+the visual tree rather than just hiding it. The child is kept in `If.Child` (the XAML content property) so it reattaches unchanged
 once `Condition` is `true` again. See the [Lifecycle](#lifecycle-hooks) note above for
 what this means for a `Lifecycle.Enable`'d child.
 
@@ -462,14 +447,14 @@ This is correct "for free": each nested `If` keeps its own content current indep
 whether its branch is currently attached, and jumping straight from branch A to the final
 fallback (skipping B) never touches B's content or mounts B's `DataContext` at all - only
 the outer `If`'s own `Condition` changing ever attaches/detaches the nested one. It does
-read visibly worse than Vue's flat sibling `v-else-if` past 3-4 branches, since WPF's
+read visibly worse than a flat if/else-if chain past 3-4 branches, since WPF's
 content model has no equivalent to "grouped flat siblings" - a `Switch`/`Case` control
 would be the natural escape hatch if that becomes painful, deliberately not built here
 since it wasn't asked for.
 
 #### Performance: `If` vs `Directives.Show`
 
-Same tradeoff Vue itself documents for `v-if` vs `v-show`: `If` has near-zero cost while its
+The tradeoff: `If` has near-zero cost while its
 `Condition` stays put, but a real cost each time it actually toggles (a genuine detach +
 reattach); `Directives.Show` is the opposite (always mounted, so a toggle is just a
 `Visibility` flip). Two things worth knowing before picking one:
@@ -565,8 +550,7 @@ appears.
 for - `If.Condition`/`Directives.Show` - are booleans; use `StringFormat` or multiple
 `Run`s to build display text instead), `RelativeSource` identifiers (see above), method
 calls, and indexers. For anything beyond this grammar, a `Computed<T>` in the ViewModel
-remains the right answer, same as Vue's own guidance to move non-trivial template
-expressions into a computed property.
+remains the right answer - non-trivial logic belongs in code, not a XAML string.
 
 **Typos are the real risk of a grammar living inside a XAML string**: no XAML editor can
 syntax-highlight, IntelliSense, or rename-refactor an identifier that only this parser
@@ -599,14 +583,13 @@ directly from C# (a synchronous, non-reactive counterpart to the markup extensio
 ```
 
 Wires up **any** public .NET event by name via reflection - it works for events WPF gives
-no built-in `Command` for (`Border.MouseLeftButtonDown`, `TextBox.TextChanged`, ...), the
-same way `v-on` isn't limited to a fixed event list in Vue. The command runs with
+no built-in `Command` for (`Border.MouseLeftButtonDown`, `TextBox.TextChanged`, ...), not
+just a fixed list. The command runs with
 `Directives.CommandParameter` if set, otherwise the raised `EventArgs` itself.
 Automatically unhooked on `Unloaded`.
 
-**Modifiers** (`Directives.Modifiers`, comma-separated), a curated subset of Vue's real
-`v-on` modifier list, each a no-op unless the raised `EventArgs` is actually the matching
-type:
+**Modifiers** (`Directives.Modifiers`, comma-separated), each a no-op unless the raised
+`EventArgs` is actually the matching type:
 
 | Modifier | Effect |
 | --- | --- |
@@ -614,7 +597,7 @@ type:
 | `once` | Unhooks after this single invocation. |
 | `self` | Only invokes if `OriginalSource` is the element itself, not a descendant the event bubbled up from. |
 | `left` / `right` / `middle` | Only invokes for that `MouseButtonEventArgs.ChangedButton`. |
-| `enter` / `tab` / `esc` / `space` / `up` / `down` / `left` / `right` / `delete` | Only invokes for that `KeyEventArgs.Key` (`delete` matches both Delete and Backspace, matching Vue's own alias; `left`/`right` mean arrow keys here, resolved by `KeyEventArgs` vs. `MouseButtonEventArgs` - exactly how Vue itself reuses these same names for both mouse and keyboard). |
+| `enter` / `tab` / `esc` / `space` / `up` / `down` / `left` / `right` / `delete` | Only invokes for that `KeyEventArgs.Key` (`delete` matches both Delete and Backspace; `left`/`right` mean arrow keys here, resolved by `KeyEventArgs` vs. `MouseButtonEventArgs` - the same modifier name means something different depending on which event type actually fired). |
 
 ```xml
 <TextBox aq:Directives.Event="KeyDown"
@@ -644,23 +627,21 @@ public sealed class FocusDirective : Directive
 <TextBox aq:Directives.Use="{StaticResource AutoFocus}" />
 ```
 
-The Aquarius counterpart of a Vue 3 custom directive object
-(`{ mounted(el, binding) { ... } }`) - this is literally the canonical Vue docs example,
-`v-focus`. `Directive` exposes `Mounted`/`Updated`/`Unmounted`, each receiving a
-`DirectiveBinding` with `Value`/`OldValue` (from `Directives.UseValue`, if bound),
-`Argument` (from `Directives.Argument`), and `Modifiers` (from `Directives.Modifiers`,
-shared with [Directives.Event](#directivesevent-v-on) above) - mirroring the `binding`
-object every Vue custom directive hook receives. Vue's
-`v-my-directive:arg.mod1.mod2="value"` has no XAML equivalent syntax, so each piece is
-its own sibling attached property instead of special syntax. v1 supports one directive
-per element through `Directives.Use`; composing several is possible by writing a
-directive that itself dispatches to others.
+A reusable piece of element behavior, attached declaratively via `Directives.Use` instead of
+writing a one-off event handler each time. `Directive` exposes
+`Mounted`/`Updated`/`Unmounted`, each receiving a `DirectiveBinding` with `Value`/`OldValue`
+(from `Directives.UseValue`, if bound), `Argument` (from `Directives.Argument`), and
+`Modifiers` (from `Directives.Modifiers`, shared with
+[Directives.Event](#directivesevent-v-on) above). There's no compact
+`directive:arg.mod1.mod2="value"` markup syntax - each piece is its own sibling attached
+property instead. v1 supports one directive per element through `Directives.Use`; composing
+several is possible by writing a directive that itself dispatches to others.
 
 ### Directives.Class / Directives.Style (a lighter DataTrigger)
 
 `If`/`Directives.Show` are deliberately minimal (structural mount/unmount or visibility
-only) - reaching for a full `DataTrigger` just to toggle a handful of properties based on
-data is exactly what Vue's `:class`/`:style` **object binding** exists to avoid:
+only) - `Directives.Class`/`Directives.Style` exist for the more common case: toggling a
+handful of properties based on data, without reaching for a full `DataTrigger`:
 
 ```xml
 <Border aq:Directives.Class="{Binding ActiveClasses}">...</Border>
@@ -689,14 +670,12 @@ against the element's own type (an unresolvable name throws) and set directly.
 <aq:If Condition="{Binding Items.Count, Converter={x:Static aq:Comparisons.IsNull}}">
 ```
 
-Vue templates can write a boolean expression inline (`v-if="count > 0"`); WPF bindings
-are plain property paths with no expression language. Vue's own guidance is to move
-anything beyond a trivial check into a computed property anyway, so requiring a bound
-property/converter here isn't a step down from Vue's best practice - it's the same one.
+WPF bindings are plain property paths with no expression language, so even a trivial check
+like "is this collection empty" needs either a bound boolean property or a converter.
 `Comparisons.Not`, `.IsNull`, `.IsEqualTo` (reads `ConverterParameter` as the comparand)
-just remove the ceremony of hand-writing a whole `IValueConverter` class for the three
-most common trivial cases; for anything less trivial, a `Computed<T>` in the ViewModel is
-still the right answer, same as in Vue.
+remove the ceremony of hand-writing a whole `IValueConverter` class for the three most
+common trivial cases; for anything less trivial, a `Computed<T>` in the ViewModel is still
+the right answer.
 
 ### Build configuration (Debug-only content)
 
@@ -710,7 +689,7 @@ to `.cs` files (including code-behind), never to `.xaml` markup itself, since XA
 the markup compiler instead. The traditional WPF answer is to declare the element in XAML and
 toggle it from code-behind wrapped in `#if DEBUG`; `BuildConfiguration.IsDebug` lets the same
 check happen directly in markup instead, composed with `Directives.Show`/`If`/`Suspense` like
-any other boolean - the XAML-first counterpart of Vue/Vite's `import.meta.env.DEV`.
+any other boolean.
 
 It deliberately does not read Barbatos.Wpf.Aquarius's own build configuration - this library
 can ship as a Release NuGet package while the application consuming it is still built Debug, or
@@ -746,12 +725,11 @@ Not ported - each already has a direct, better-established WPF equivalent:
 </aq:Teleport>
 ```
 
-The Aquarius counterpart of Vue's `<Teleport to="#target">`. While mounted and enabled,
-`Teleport.Content` is detached from it and added to the `Panel.Children` of whichever
-`Panel` registered itself via `TeleportHost.RegisterHost` under `To` - commonly an
-overlay `Grid` pinned at a window's root, so content declared deep inside some nested
-layout (and subject to its clipping/z-order) can still render pinned above everything
-else. `Disabled` (mirroring Vue's `:disabled`) keeps the content local instead. Because
+While mounted and enabled, `Teleport.Content` is detached from it and added to the
+`Panel.Children` of whichever `Panel` registered itself via `TeleportHost.RegisterHost`
+under `To` - commonly an overlay `Grid` pinned at a window's root, so content declared deep
+inside some nested layout (and subject to its clipping/z-order) can still render pinned
+above everything else. `Disabled` keeps the content local instead. Because
 the moved element keeps its object identity, its own bindings/`DataContext`/
 `Lifecycle.Enable` hooks keep working after the move - it's still "the same component,"
 just rendered elsewhere. A `Teleport` that mounts before its target host does still finds
@@ -886,9 +864,8 @@ Three things matter for this to work correctly - all visible in the wiring above
 
 `Barbatos.Wpf.Aquarius.Animation` - `Transition`, `TransitionGroup`.
 
-Vue ships zero default animations - `<Transition>` only orchestrates *when* your own CSS
-classes/JS hooks run. This port keeps that philosophy: no canned animations ship here,
-callers supply their own `Storyboard` resources.
+No canned animations ship here - `Transition` only orchestrates *when* your own `Storyboard`
+resources run; callers supply the actual animations.
 
 ```xml
 <aq:Transition Show="{Binding IsOpen}">
@@ -907,9 +884,8 @@ Merges what `If` does (structural mount/unmount) with animation timing: `Show` g
 `Show` going `true` restores the content immediately (so `Loaded` fires, same
 [Lifecycle](#lifecycle-hooks) synergy `If` documents) and then plays `Enter`. A
 re-toggle mid-`Leave` stops the in-flight animation cleanly rather than letting two
-animations fight. Vue does not play the enter animation on a component's very first
-render unless the `appear` prop is set; this mirrors that - the initial content is
-displayed directly, `Enter` only plays on a later `false`→`true` toggle. Storyboards are
+animations fight. The initial content is displayed directly rather than animated in -
+`Enter` only plays on a later `false`→`true` toggle, not on first render. Storyboards are
 cloned before each play, so sharing one `Enter`/`Leave` resource across multiple
 `Transition`s (the normal case) doesn't cross-trigger their `Completed` handlers.
 
@@ -917,13 +893,13 @@ cloned before each play, so sharing one `Enter`/`Leave` resource across multiple
 <ListBox ItemsSource="{Binding Items}" aq:TransitionGroup.Enter="{StaticResource FadeIn}" />
 ```
 
-`TransitionGroup` ports the **enter** side only: every newly-generated item container in
-an `ItemsControl` gets a one-time `Loaded` hook that plays `Enter`. Vue's real
-`<TransitionGroup>` also animates items *leaving* the list and, more remarkably, computes
-each surviving item's position delta and animates the reflow (FLIP) when the list
-reorders - both require intercepting removal/reflow *before* the panel applies it, which
-for a plain `ItemsControl`/`Panel` means owning a custom panel, a materially bigger and
-riskier problem than enter (virtualization/container-recycling interactions especially).
+`TransitionGroup` covers the **enter** side only: every newly-generated item container in
+an `ItemsControl` gets a one-time `Loaded` hook that plays `Enter`. Animating items
+*leaving* the list, or animating the reflow when the list reorders (each surviving item
+sliding to its new position), both require intercepting removal/reflow *before* the panel
+applies it - which for a plain `ItemsControl`/`Panel` means owning a custom panel, a
+materially bigger and riskier problem than enter (virtualization/container-recycling
+interactions especially).
 Left for a dedicated follow-up rather than rushed here.
 
 > **Note:** a *virtualizing* panel (the default for `ListBox`/`ListView`) can satisfy a
@@ -944,9 +920,8 @@ Left for a dedicated follow-up rather than rushed here.
 </Grid>
 ```
 
-Vue's `provide`/`inject` run in component `setup()` (i.e. in Aquarius, the ViewModel) and
-walk the *component* tree; ViewModels intentionally don't hold a reference to their View,
-so a literal port isn't honest here. This leans on WPF's own closest analog instead:
+A ViewModel intentionally doesn't hold a reference to its View, so this can't walk a
+component tree the way some frameworks do - it leans on WPF's own closest analog instead:
 `FrameworkElement.Resources` plus `FindResource`, which already walks up the logical tree
 and merges resource dictionaries at each level - `Provide.Value` is just stored into
 `Resources` under `Provide.Key`, so it composes with WPF's existing lookup/
@@ -961,9 +936,8 @@ walking the tree itself. For the rare case of needing an injected value from C# 
 (e.g. a View handing it to its own `DataContext`), use
 `Inject.Get<T>(element, key, fallback)`.
 
-Like a DOM `id`, a string key can collide with an unrelated resource sharing the same
-name. For collision-proofing - Vue's own recommendation is a `Symbol` - use a dedicated
-`object` sentinel instead of a string:
+A string key can collide with an unrelated resource sharing the same name. For
+collision-proofing, use a dedicated `object` sentinel instead of a string:
 
 ```csharp
 public static class Keys { public static readonly object ThemeColor = new(); }
@@ -975,8 +949,7 @@ public static class Keys { public static readonly object ThemeColor = new(); }
 
 Reactivity crosses the boundary for free: if the provided value is a `Ref<T>` or an
 `ObservableObject`, nothing extra is needed - bindings against it (or code reading
-`.Value`) already see live updates after injection, the same guarantee Vue gives an
-injected ref.
+`.Value`) already see live updates after injection.
 
 `Provide`/`Inject` is for values scoped to a *visual subtree* (e.g. "everything inside
 this Menu shares a MenuContext") - a ViewModel that needs a value for its whole lifetime
@@ -999,14 +972,12 @@ DI container, a different scoping model.
 </aq:Suspense>
 ```
 
-Vue's real `<Suspense>` auto-detects async `setup()`/async components anywhere down the
-tree it wraps, aggregating them into one pending/resolved state. C# has no equivalent
-hook to detect "this ViewModel is mid-load" automatically, so this is a deliberately
-narrower, explicit port: the ViewModel already knows when it's loading (an
-`IsLoading`/`Ref<bool>` property it sets around an async call) - `IsPending` just wires
-that straight to which content shows. No nested-Suspense boundary handling, no automatic
-dependency aggregation, no `pending`/`resolve`/`fallback` events - one explicit boolean
-in, one of two contents out.
+C# has no hook to detect "this ViewModel is mid-load" automatically, so this is
+deliberately explicit rather than automatic: the ViewModel already knows when it's loading
+(an `IsLoading`/`Ref<bool>` property it sets around an async call) - `IsPending` just wires
+that straight to which content shows. No nested-boundary handling, no automatic dependency
+aggregation, no `pending`/`resolve`/`fallback` events - one explicit boolean in, one of two
+contents out.
 
 ---
 
@@ -1014,10 +985,10 @@ in, one of two contents out.
 
 `Barbatos.Wpf.Aquarius.Xaml` - `Slot`, `SlotHost`, `SlotContent`, `SlotProvided`.
 
-A real port of Vue's `<slot>`/`<slot name="x">` outlets: free-form slot names chosen at the
-use site, not pre-declared as a `DependencyProperty` per name by the component author.
-(WPF's `ContentControl.Content`/`ItemsControl.ItemTemplate` already cover Vue's default
-slot and list-repeated scoped slots respectively - see
+Free-form named content placeholders: slot names chosen at the use site, not pre-declared
+as a `DependencyProperty` per name by the component author. (WPF's
+`ContentControl.Content`/`ItemsControl.ItemTemplate` already cover the
+single-default-content and list-repeated cases respectively - see
 [Patterns that are already native](#patterns-that-are-already-native) below for those; this
 section is specifically for the free-form *named* slots case, which had no native WPF
 equivalent at all.)
@@ -1054,8 +1025,7 @@ A component author derives from `SlotHost` and writes their own `ControlTemplate
 </Style>
 ```
 
-Consumers write a flat mix of `Slot`-wrapped (named) and plain (implicit default) children -
-Vue's own docs' 3-slot Card example, translated 1:1:
+Consumers write a flat mix of `Slot`-wrapped (named) and plain (implicit default) children:
 
 ```xml
 <local:Card>
@@ -1072,12 +1042,11 @@ Vue's own docs' 3-slot Card example, translated 1:1:
 ```
 
 Named-slot content and the bare default-slot `TextBlock` sit flatly together, distinguished
-only by the `aq:Slot` wrapper - exactly Vue's own rule ("all top-level non-`<template>`
-nodes are implicitly the default slot").
+only by the `aq:Slot` wrapper - any element not wrapped in a `Slot` is implicitly part of
+the default slot.
 
-**Fallback + "was this provided" (Vue's `$slots.header`)** is two mechanisms:
-- `SlotProvided` composed with [`If`](#if-v-if--v-else--v-else-if) (shown above) - the
-  faithful mirror of Vue's own `v-if="$slots.header"` Conditional Slots example, skipping
+**Fallback, and checking "was this provided"** is two mechanisms:
+- `SlotProvided` composed with [`If`](#if-v-if--v-else--v-else-if) (shown above) - skips
   the wrapper `Border` entirely rather than just showing blank content in its place.
 - `SlotContent.Fallback` - a convenience for a simple/primitive substitute value:
   `{aq:SlotContent footer, Fallback='No contact info'}`.
@@ -1095,7 +1064,7 @@ has toward its elements) - replace the `Slot` object instead.
 non-repeated slot with zero new syntax: a component author already holds a direct reference
 to a slot's content object and can set `.DataContext` on it directly - ordinary WPF, picked
 up by the consumer's own `{Binding}`s through normal inheritance. The *repeated/list* case
-(Vue's actual "FancyList" example) stays out of scope here, deliberately - a slot holds one
+stays out of scope here, deliberately - a slot holds one
 already-realized element instance, which cannot be reused N times the way a `DataTemplate`
 can; that's precisely why `ItemsControl.ItemTemplate` exists, and is already documented
 separately below.
@@ -1109,16 +1078,17 @@ content already have throughout this library. Two items claiming the same slot n
 
 ## Patterns that are already native
 
-Two more concepts from Vue's docs turned out to already exist in WPF - once that was
-recognized, no new API was the right answer.
+Two more patterns turned out to already exist natively in WPF - once that was recognized,
+no new API was the right answer.
 
 ### "KeepAlive"
 
-Vue's `<KeepAlive>` caches component instances across dynamic-component switching so
-inactive state isn't lost, with `onActivated`/`onDeactivated` firing on cache-in/
-cache-out, and no unmount/remount at all. Only one native WPF pattern actually delivers
-that - the others look plausible but were confirmed, by actually running it, to
-genuinely destroy and recreate content instead:
+Keeping an inactive view's state alive across a "switch between views" UI - rather than
+destroying and recreating it every time - is a common need with no single obvious WPF
+answer. Only one native pattern actually delivers that without ever unmounting/remounting
+at all (`IOnActivated`/`IOnDeactivated` firing on switch instead) - the others look
+plausible but were confirmed, by actually running it, to genuinely destroy and recreate
+content instead:
 
 | Pattern | Actually keep-alive? |
 | --- | --- |
@@ -1133,16 +1103,17 @@ in the test project for the exact hook sequences each pattern produces.
 
 ### Scoped slots for lists
 
-| Vue | WPF equivalent (already exists) |
+| Concept | WPF equivalent (already exists) |
 | --- | --- |
-| Default slot (nothing named) | `ContentControl.Content` |
-| Scoped slots for a repeated list (Vue's own "FancyList" example) | `ItemsControl.ItemTemplate`/`DataTemplate` - the template runs with whatever object is set as its `DataContext`, which *is* the "props passed to the slot" |
+| A single default content area | `ContentControl.Content` |
+| A per-item template for a repeated list, where the list owner supplies data and the consumer supplies the template | `ItemsControl.ItemTemplate`/`DataTemplate` - the template runs with whatever object is set as its `DataContext`, which *is* the data passed to the template |
 
-For free-form *named* slots (`header`/`footer`/anything a consumer chooses), see the new
-[Slots](#slots) section above instead - that's a real port now, not just a native mapping.
+For free-form *named* slots (`header`/`footer`/anything a consumer chooses), see the
+[Slots](#slots) section above instead - that's real Aquarius API, not just a native WPF
+mapping.
 
-Vue's own canonical scoped-slot example, a `FancyList` that encapsulates fetching/paging
-logic but lets the consumer supply the per-item template, ports directly:
+A `FancyList` that encapsulates fetching/paging logic but lets the consumer supply the
+per-item template - a common pattern this WPF mapping covers directly:
 
 ```xml
 <local:FancyList ItemsSource="{Binding Posts}">

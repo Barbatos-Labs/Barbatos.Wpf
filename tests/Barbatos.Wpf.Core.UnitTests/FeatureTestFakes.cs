@@ -45,6 +45,8 @@ public sealed class FakeTrayIconPlatform : ITrayIconPlatform
 
     public string? LastToolTip { get; private set; }
 
+    public List<(string Title, string Text, TrayIconBalloonIcon Icon)> BalloonTips { get; } = new();
+
     public event EventHandler? Clicked;
 
     public event EventHandler? DoubleClicked;
@@ -58,6 +60,9 @@ public sealed class FakeTrayIconPlatform : ITrayIconPlatform
     public void Hide() => HideCount++;
 
     public void SetToolTip(string toolTip) => LastToolTip = toolTip;
+
+    public void ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon) =>
+        BalloonTips.Add((title, text, icon));
 
     public void RaiseClicked() => Clicked?.Invoke(this, EventArgs.Empty);
 

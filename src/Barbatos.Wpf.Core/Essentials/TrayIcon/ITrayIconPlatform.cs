@@ -19,6 +19,8 @@ public interface ITrayIconPlatform
 
     void SetToolTip(string toolTip);
 
+    void ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon);
+
     event EventHandler? Clicked;
 
     event EventHandler? DoubleClicked;
@@ -46,6 +48,12 @@ internal sealed class Win32TrayIconPlatform : ITrayIconPlatform, IDisposable
 
     // NOTIFYICONDATA.szTip holds 128 WCHARs including the null terminator.
     const int MaxToolTipLength = 127;
+
+    // NOTIFYICONDATA.szInfoTitle holds 64 WCHARs including the null terminator.
+    const int MaxBalloonTitleLength = 63;
+
+    // NOTIFYICONDATA.szInfo holds 256 WCHARs including the null terminator.
+    const int MaxBalloonTextLength = 255;
 
     readonly int _taskbarRestartMessage;
 
@@ -81,7 +89,7 @@ internal sealed class Win32TrayIconPlatform : ITrayIconPlatform, IDisposable
         if (_icon == IntPtr.Zero)
         {
             (_icon, _iconIsOwned) = LoadIcon(options);
-            _toolTip = Truncate(options.ToolTip ?? System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? string.Empty);
+            _toolTip = Truncate(options.ToolTip ?? System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? string.Empty, MaxToolTipLength);
             _menuItems = options.MenuItems.ToArray();
             _menuItemIcons = LoadMenuItemIcons(_menuItems);
         }
@@ -102,10 +110,37 @@ internal sealed class Win32TrayIconPlatform : ITrayIconPlatform, IDisposable
 
     public void SetToolTip(string toolTip)
     {
-        _toolTip = Truncate(toolTip);
+        _toolTip = Truncate(toolTip, MaxToolTipLength);
 
         if (_added)
             UpdateShellIcon(add: false);
+    }
+
+    public void ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon)
+    {
+        _ = title ?? throw new ArgumentNullException(nameof(title));
+        _ = text ?? throw new ArgumentNullException(nameof(text));
+
+        // Nothing to anchor the balloon to if the icon was never added (or was since removed).
+        if (!_added || _hwndSource is null)
+            return;
+
+        // Per the Shell_NotifyIcon guidelines' "Check the User Status" step: ask the shell
+        // whether this is a bad moment for notification UI - the user is locked/away, in
+        // "quiet time" (the first hour after a fresh login), or a full-screen app/presentation
+        // is running - and skip if so (the shell would otherwise just discard the balloon
+        // unshown). A failed query (non-zero HRESULT) fails open rather than silently
+        // swallowing every balloon over one unexpected API failure.
+        if (NativeMethods.SHQueryUserNotificationState(out var state) == 0 && state != NativeMethods.QUNS_ACCEPTS_NOTIFICATIONS)
+            return;
+
+        var data = CreateData();
+        data.uFlags = NativeMethods.NIF_INFO;
+        data.szInfoTitle = Truncate(title, MaxBalloonTitleLength);
+        data.szInfo = Truncate(text, MaxBalloonTextLength);
+        data.dwInfoFlags = (int)icon;
+
+        NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_MODIFY, ref data);
     }
 
     void EnsureWindow()
@@ -269,9 +304,8 @@ internal sealed class Win32TrayIconPlatform : ITrayIconPlatform, IDisposable
         return (NativeMethods.LoadIcon(IntPtr.Zero, new IntPtr(32512)), false);
     }
 
-    // NOTIFYICONDATA.szTip is limited to 127 characters plus a null terminator.
-    static string Truncate(string text) =>
-        text.Length <= MaxToolTipLength ? text : text[..MaxToolTipLength];
+    static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength];
 
     static IntPtr[] LoadMenuItemIcons(IReadOnlyList<TrayMenuItem> items)
     {
@@ -363,6 +397,12 @@ internal sealed class Win32TrayIconPlatform : ITrayIconPlatform, IDisposable
         internal const int NIF_MESSAGE = 0x00000001;
         internal const int NIF_ICON = 0x00000002;
         internal const int NIF_TIP = 0x00000004;
+        internal const int NIF_INFO = 0x00000010;
+
+        // The only QUERY_USER_NOTIFICATION_STATE value meaning "go ahead and show it"; every
+        // other value (locked/away, full-screen app, presentation mode, quiet time, ...) means
+        // skip - see SHQueryUserNotificationState's own remarks on learn.microsoft.com.
+        internal const int QUNS_ACCEPTS_NOTIFICATIONS = 5;
 
         internal const int MF_STRING = 0x00000000;
         internal const int MF_GRAYED = 0x00000001;
@@ -451,6 +491,9 @@ internal sealed class Win32TrayIconPlatform : ITrayIconPlatform, IDisposable
         [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool Shell_NotifyIcon(int dwMessage, ref NOTIFYICONDATA lpData);
+
+        [DllImport("shell32.dll")]
+        internal static extern int SHQueryUserNotificationState(out int pquns);
 
         [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern uint ExtractIconEx(string lpszFile, int nIconIndex, IntPtr[]? phiconLarge, IntPtr[]? phiconSmall, uint nIcons);

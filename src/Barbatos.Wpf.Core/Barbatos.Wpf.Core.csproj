@@ -6,15 +6,21 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <UseWPF>true</UseWPF>
     <CommonTags>$(CommonTags)</CommonTags>
-    <Description>Bring .NET MAUI's hosting model and Essentials APIs (AppInfo, Preferences, SecureStorage, Connectivity, Notifications, Tray Icon, and more) to plain desktop WPF - dependency injection, configuration, logging, and lifecycle events included.</Description>
+    <Description>An application host for WPF - dependency injection, configuration, logging, and lifecycle events - plus a broad set of ready-made platform services: AppInfo, Preferences, SecureStorage, Connectivity, Notifications, Tray Icon, and more.</Description>
     <RootNamespace>Barbatos.Wpf</RootNamespace>
     <PackageIconSourceFile>core-logo.png</PackageIconSourceFile>
-    <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply. -->
-    <NoWarn>$(NoWarn);IL2026;IL3050</NoWarn>
+    <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply.
+         IL2075/IL2060 come from Barbatos.Wpf.Apsu's action-interceptor reflection (unwrapping a
+         Task<T>'s Result, MakeGenericMethod over a runtime Type) - Castle DynamicProxy, which that
+         same feature depends on, already does its own non-trim-safe runtime codegen, so these add
+         nothing new to warn about. -->
+    <NoWarn>$(NoWarn);IL2026;IL3050;IL2075;IL2060</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Anthropic" />
+    <PackageReference Include="Castle.Core" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />

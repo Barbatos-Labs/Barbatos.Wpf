@@ -10,7 +10,7 @@
     <!-- The Barbatos.Wpf.Core-specific baseline; Barbatos.Wpf.Aquarius fully overrides this
          with its own list instead of appending, since these words don't describe it and would
          mislead NuGet search - see Barbatos.Wpf.Aquarius.csproj. -->
-    <CommonTags>dotnet;maui;wpf;windows;desktop;presentation;hosting;dependencyinjection;essentials;notifications;trayicon;splashscreen</CommonTags>
+    <CommonTags>dotnet;wpf;windows;desktop;presentation;hosting;dependencyinjection;essentials;notifications;trayicon;splashscreen</CommonTags>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <Copyright>(c) 2026 Barbatos Labs | Pham The Hung and Barbatos.Wpf. All rights reserved.</Copyright>

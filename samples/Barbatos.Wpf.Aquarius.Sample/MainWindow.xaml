@@ -84,6 +84,10 @@
             <TabItem Header="Expr">
                 <local:ExprDemoView DataContext="{Binding ExprDemo}" />
             </TabItem>
+
+            <TabItem Header="Apsu + Aquarius">
+                <local:ApsuInteropDemoView DataContext="{Binding ApsuInteropDemo}" />
+            </TabItem>
         </TabControl>
 
         <GroupBox Grid.Row="1"

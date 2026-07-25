@@ -53,6 +53,17 @@ internal sealed class TrayIconService : ITrayIconService
         _platform.SetToolTip(toolTip);
     }
 
+    public void ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon = TrayIconBalloonIcon.None)
+    {
+        _ = title ?? throw new ArgumentNullException(nameof(title));
+        _ = text ?? throw new ArgumentNullException(nameof(text));
+
+        if (!IsVisible)
+            return;
+
+        _platform.ShowBalloonTip(title, text, icon);
+    }
+
     /// <summary>
     /// Applies the configured options during application construction.
     /// </summary>

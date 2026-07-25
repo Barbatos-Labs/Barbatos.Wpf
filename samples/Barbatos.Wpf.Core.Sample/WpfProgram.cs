@@ -3,6 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using Barbatos.Wpf.Apsu;
 using Barbatos.Wpf.Hosting;
 using Barbatos.Wpf.LifecycleEvents;
 using Barbatos.Wpf.Mcp;
@@ -35,6 +36,24 @@ public static class WpfProgram
             .OnActivated((app, args) => LogLifecycleEvent("Application.OnActivated"))
             .OnDeactivated((app, args) => LogLifecycleEvent("Application.OnDeactivated"))
             .OnExit((app, args) => LogLifecycleEvent("Application.OnExit"))
+            .OnDispatcherUnhandledException((app, args) =>
+            {
+                // Barbatos.Wpf.Core's own WpfApplication already subscribes to
+                // Application.DispatcherUnhandledException and forwards it here - the idiomatic
+                // place to observe it, rather than a second direct subscription in App.xaml.cs.
+                // Routed through the same SampleActivityLog a store action's own error goes
+                // through (see CounterStore.SimulateError), so both share one policy.
+                var activityLog = IWpfPlatformApplication.Current?.Services.GetService<SampleActivityLog>();
+                activityLog?.Log($"[Interceptor] DispatcherUnhandledException failed: {args.Exception.Message}");
+                LogLifecycleEvent($"Application.OnDispatcherUnhandledException: {args.Exception.Message}");
+
+                // Marked handled so an exception that reaches here (e.g. CounterStore.SimulateError,
+                // deliberately uncaught) is logged and then swallowed instead of taking down the
+                // whole sample app - a demo button crashing the process it's demonstrating is a
+                // poor experience. A real app should weigh this per exception instead of blanket
+                // swallowing everything that reaches its own last resort.
+                args.Handled = true;
+            })
             .OnWindowCreated(window => LogLifecycleEvent($"Window.Created ({window.Title})"))
             .OnWindowLoaded((window, args) => LogLifecycleEvent($"Window.Loaded ({window.Title})"))
             .OnWindowActivated((window, args) => LogLifecycleEvent($"Window.Activated ({window.Title})"))
@@ -51,6 +70,14 @@ public static class WpfProgram
                 {
                     args.Cancel = true;
                     window.Hide();
+
+                    // A hidden window looks identical to a closed app otherwise - this balloon
+                    // is what tells the user the app is still running, the same way e.g. Discord
+                    // does the moment you close it to the tray.
+                    trayIcon.ShowBalloonTip(
+                        "Barbatos.Wpf.Core Sample",
+                        "Still running in the system tray. Double-click the icon to reopen.");
+                    LogLifecycleEvent("TrayIconService.ShowBalloonTip(...) - minimized to tray");
                 }
             })
             .OnWindowClosed((window, args) => LogLifecycleEvent($"Window.Closed ({window.Title})"))));
@@ -137,6 +164,16 @@ public static class WpfProgram
                 options.Endpoint = initial.Endpoint;
             });
 
+        // The shared sink SampleActionLoggingInterceptor and the OnDispatcherUnhandledException
+        // hook above both report into - DI-constructed (it has no dependencies of its own).
+        builder.Services.AddSingleton<SampleActivityLog>();
+
+        // Registered before AddStore<CounterStore>() so every [Action]-marked method on every
+        // store gets logged automatically, with zero per-store wiring - see CounterStore.Increment.
+        // DI-constructed - no `new` needed, since SampleActionLoggingInterceptor's own constructor
+        // needs nothing but the SampleActivityLog registered just above.
+        builder.Services.AddSingleton<IStoreActionInterceptor, SampleActionLoggingInterceptor>();
+        builder.Services.AddStore<CounterStore>();
         builder.Services.AddSingleton<SettingsStore>();
         builder.Services.AddSingleton<IGreetingService, GreetingService>();
         builder.Services.AddSingleton<MainViewModel>();

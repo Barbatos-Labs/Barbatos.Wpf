@@ -284,6 +284,42 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="Store">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="Pinia-style store (Barbatos.Wpf.Apsu)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
+                        <TextBlock Style="{StaticResource SettingDescription}"
+                                   Text="CounterStore derives from StoreBase and is registered with builder.Services.AddStore&lt;CounterStore&gt;() in WpfProgram - resolved here through the same constructor injection as every other service on this page." />
+
+                        <Grid Style="{StaticResource SettingRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Count, StringFormat='Count: {0}'}" Style="{StaticResource SettingTitle}" />
+                                <TextBlock Text="{Binding DoubleCountLabel}" Style="{StaticResource SettingDescription}" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Padding="10,2"
+                                    Content="Increment"
+                                    Click="IncrementCounterButton_Click" />
+                        </Grid>
+
+                        <Separator Margin="0,8,0,4" />
+
+                        <TextBlock Text="Action interceptors (IStoreActionInterceptor)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
+                        <TextBlock Style="{StaticResource SettingDescription}"
+                                   Text="SampleActionLoggingInterceptor wraps every [Action]-marked method on every store automatically (registered once in WpfProgram) - watch the Logs tab after clicking Increment above. The button below deliberately throws, uncaught, to show the same interceptor also observes the error before it propagates all the way to the OnDispatcherUnhandledException lifecycle hook, which logs it and keeps the app running instead of crashing." />
+                        <Button Margin="0,8,0,0"
+                                Padding="10,2"
+                                HorizontalAlignment="Left"
+                                Content="Simulate an uncaught error"
+                                Click="SimulateCounterErrorButton_Click" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem Header="AI Chat + MCP">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>

@@ -1,0 +1,64 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.ApsuInteropDemoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Margin="12">
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,12"
+                   FontStyle="Italic"
+                   Text="Barbatos.Wpf.Apsu (Pinia-style stores, from Barbatos.Wpf.Core) + Aquarius's Ref/Watch, combined - UserStore/OrderStore are DI-resolved 'global' state backed by real calls to jsonplaceholder.typicode.com, UserIdInput is ordinary Aquarius view-local state (a JSONPlaceholder user id, 1-10)." />
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBox Width="60"
+                     VerticalAlignment="Center"
+                     Text="{Binding UserIdInput.Value, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Content="Select user"
+                    Margin="8,0,0,0"
+                    Command="{Binding SelectUserCommand}" />
+            <Button Content="Select invalid user id (should be blocked)"
+                    Margin="8,0,0,0"
+                    Command="{Binding SelectInvalidUserCommand}" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding UserStore.SelectedUserId, StringFormat='UserStore.SelectedUserId: {0}'}" />
+        <TextBlock Margin="0,2,0,0" Text="{Binding UserStore.UserName, StringFormat='UserStore.UserName: {0}'}" />
+        <TextBlock Margin="0,2,0,0" Text="{Binding UserStore.CompanyName, StringFormat='UserStore.CompanyName: {0}'}" />
+        <TextBlock Margin="0,2,0,8"
+                   TextWrapping="Wrap"
+                   FontStyle="Italic"
+                   Text="Selecting a user above changes UserStore.SelectedUserId, which OrderStore is watching (no direct call needed) and auto-refreshes its own OrderCount from (GET /posts?userId=..., a real network call)." />
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <Button Content="Refresh orders"
+                    Margin="0,0,8,0"
+                    Command="{Binding RefreshOrdersCommand}" />
+            <Button Content="Checkout"
+                    Margin="0,0,8,0"
+                    Command="{Binding CheckoutCommand}" />
+            <Button Content="Reset all"
+                    Command="{Binding ResetAllCommand}" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding OrderStore.OrderCount, StringFormat='OrderStore.OrderCount: {0}'}" />
+        <TextBlock Margin="0,2,0,0"
+                   TextWrapping="Wrap"
+                   FontStyle="Italic"
+                   Text="Checkout calls OrderStore.CheckoutAsync() (POST /posts), which explicitly calls back into UserStore.RefreshProfileAsync() (GET /users/{id}) afterward - the two cross-store patterns from the attached Pinia research, side by side, both now real HTTP round-trips instead of Task.Delay." />
+        <TextBlock Margin="0,8,0,0"
+                   FontWeight="SemiBold"
+                   Text="{Binding OrderStore.Summary, StringFormat='OrderStore getter (combines both stores): {0}'}" />
+
+        <TextBlock Margin="0,12,0,0"
+                   TextWrapping="Wrap"
+                   FontStyle="Italic"
+                   Text="Watch the activity log below - every action above runs through 3 global interceptors (logging, a slow-call timing warning, an audit trail - all 3 wrap every action on both stores) plus up to 2 local ones stacked on top, depending on the action:" />
+        <TextBlock Margin="0,4,0,0"
+                   TextWrapping="Wrap"
+                   Text="• Click 'Checkout' immediately (before selecting a user or refreshing orders): OrderStore.OrderCount is still 0, so NonEmptyCartGuardInterceptor blocks it - nothing runs, not even the 3 global interceptors' own 'finished' lines, and UserStore.RefreshProfileAsync (which Checkout would have called) never fires either - no network calls happen at all." />
+        <TextBlock Margin="0,2,0,0"
+                   TextWrapping="Wrap"
+                   Text="• Click 'Checkout' twice quickly once there are orders: the 2nd click is blocked by CheckoutCooldownInterceptor instead (3s cooldown - state-based, not argument-based)." />
+        <TextBlock Margin="0,2,0,0"
+                   TextWrapping="Wrap"
+                   Text="• Click 'Select invalid user id (99)': UserIdValidationInterceptor blocks it (argument-based - reads the out-of-range id directly) - SelectedUserId stays unchanged, OrderStore's watch never even fires, and no network call happens." />
+    </StackPanel>
+</UserControl>

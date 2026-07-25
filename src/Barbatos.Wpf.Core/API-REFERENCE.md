@@ -23,14 +23,15 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.PushNotifications`](#barbatoswpfpushnotifications-namespace)** | The realtime push-notification client optional feature (SignalR). |
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
 | **[`Barbatos.Wpf.Dialogs`](#barbatoswpfdialogs-namespace)** | The dialog service: owner assignment, duplicate-open prevention, and graceful bulk-close for child windows. |
+| **[`Barbatos.Wpf.Apsu`](#barbatoswpfapsu-namespace)** | State management: stores, getters, plugins, and a middleware-style action interceptor chain. |
 | **[`Barbatos.Wpf.Mcp`](#barbatoswpfmcp-namespace)** | The MCP (Model Context Protocol) client + bring-your-own-key AI chat optional feature. |
 
 ---
 
 ## `Barbatos.Wpf.Hosting` Namespace
 
-The WPF counterpart of `Microsoft.Maui.Hosting`: the application host, its builder, and the
-extension methods that wire up Essentials and every optional desktop feature.
+The application host, its builder, and the extension methods that wire up Essentials and
+every optional desktop feature.
 
 ### Classes
 
@@ -54,8 +55,8 @@ extension methods that wire up Essentials and every optional desktop feature.
 
 | Interface | Description |
 |-----------|-------------|
-| `IWpfInitializeService` | Runs once during `WpfAppBuilder.Build()`. WPF counterpart of `IMauiInitializeService`. |
-| `IWpfInitializeScopedService` | Runs once per window scope. WPF counterpart of `IMauiInitializeScopedService`. |
+| `IWpfInitializeService` | Runs once during `WpfAppBuilder.Build()`. |
+| `IWpfInitializeScopedService` | Runs once per window scope. |
 | `IWpfPlatformApplication` | Exposes the running `WpfApp` from `System.Windows.Application`. |
 | `IEssentialsBuilder` | Configures app actions and version tracking from `ConfigureEssentials`. |
 | [`IWpfPeriodicService`](#iwpfperiodicservice-interface) | A service executed on a recurring schedule. |
@@ -83,8 +84,7 @@ values) from the `Barbatos:{Feature}` configuration section — see
 
 ### `WpfApp` Class
 
-A built application: configured services and configuration, the WPF counterpart of .NET
-MAUI's `MauiApp`.
+A built application: configured services and configuration.
 
 ```csharp
 public sealed class WpfApp : IDisposable, IAsyncDisposable
@@ -105,8 +105,7 @@ public sealed class WpfApp : IDisposable, IAsyncDisposable
 
 ### `WpfAppBuilder` Class
 
-Builds a `WpfApp`. Implements `IHostApplicationBuilder`, the WPF counterpart of .NET MAUI's
-`MauiAppBuilder`.
+Builds a `WpfApp`. Implements `IHostApplicationBuilder`.
 
 ```csharp
 public sealed class WpfAppBuilder : IHostApplicationBuilder
@@ -129,8 +128,7 @@ public sealed class WpfAppBuilder : IHostApplicationBuilder
 
 ### `WpfHostEnvironment` Class
 
-The WPF `IHostEnvironment` implementation, the WPF counterpart of .NET MAUI's
-`MauiHostEnvironment` (and analogous to ASP.NET Core's `HostingEnvironment`).
+The WPF `IHostEnvironment` implementation (analogous to ASP.NET Core's `HostingEnvironment`).
 
 ```csharp
 public class WpfHostEnvironment : IHostEnvironment
@@ -229,10 +227,10 @@ combinations `Workdays` (Monday-Friday), `Weekend` (Saturday-Sunday), and `All`.
 
 ### `WpfApplication` splash screen support
 
-Has no .NET MAUI counterpart to port: MAUI's splash screen is a build-time-only asset
-pipeline with no cross-platform C# runtime logic, and does not apply at all to unpackaged
-Windows apps. See [SplashScreen](README.md#splashscreen) in the README for the full behavior
-description.
+This is fresh work, not a port: on Windows, a splash screen for a packaged app is just a
+build-time asset pipeline with no runtime C# logic at all, and it doesn't apply to unpackaged
+apps in the first place. See [SplashScreen](README.md#splashscreen) in the README for the
+full behavior description.
 
 - **`WpfApplication.GetSplashScreenOptions()`** (`protected virtual SplashScreenOptions?`) —
   override to configure the built-in `SplashWindow`. Returns `null` (the default) for no splash
@@ -268,7 +266,7 @@ description.
 
 ## `Barbatos.Wpf.LifecycleEvents` Namespace
 
-The lifecycle event system, ported from .NET MAUI's `Microsoft.Maui.LifecycleEvents`.
+The lifecycle event system: application and window events surfaced as typed delegates.
 
 ### Classes / Interfaces
 
@@ -291,14 +289,13 @@ The lifecycle event system, ported from .NET MAUI's `Microsoft.Maui.LifecycleEve
 #### Remarks
 
 Every window gets its own DI service scope; `IWpfInitializeScopedService` implementations
-run once per scope, mirroring .NET MAUI's per-window scoping model.
+run once per scope.
 
 ---
 
 ## `Barbatos.Wpf.Dispatching` Namespace
 
-Dispatcher abstractions backed by the WPF `Dispatcher`, the WPF counterpart of .NET MAUI's
-`Microsoft.Maui.Dispatching`.
+Dispatcher abstractions backed by the WPF `Dispatcher`.
 
 ### Interfaces
 
@@ -322,7 +319,7 @@ Dispatcher abstractions backed by the WPF `Dispatcher`, the WPF counterpart of .
 ## `Barbatos.Wpf.ApplicationModel` Namespace
 
 App info, publisher info, version tracking, app actions, the launcher, and the shared
-Essentials exception types. WPF counterpart of .NET MAUI's `Microsoft.Maui.ApplicationModel`.
+Essentials exception types.
 
 ### Classes / Interfaces
 
@@ -340,10 +337,10 @@ Essentials exception types. WPF counterpart of .NET MAUI's `Microsoft.Maui.Appli
 | `AppActionEventArgs` | `AppAction` — raised by `AppActions.OnAppAction`. |
 | [`Launcher`](#launcher--ilauncher) / `ILauncher` | Opens URIs and files via the system shell. |
 | `OpenFileRequest` | `Title`, `FullPath` — used with `Launcher.OpenAsync(OpenFileRequest)`. |
-| [`Permissions`](#permissions) | Static generic API: `CheckStatusAsync<TPermission>()`, `RequestAsync<TPermission>()`, `ShouldShowRationale<TPermission>()`. No DI interface, same as .NET MAUI. |
+| [`Permissions`](#permissions) | Static generic API: `CheckStatusAsync<TPermission>()`, `RequestAsync<TPermission>()`, `ShouldShowRationale<TPermission>()`. No DI interface. |
 | `PermissionStatus` | `Unknown`, `Denied`, `Disabled`, `Granted`, `Restricted`, `Limited`. |
 | `Permissions.BasePermission` | Abstract base for every permission type; `Permissions.BasePlatformPermission` is the WPF platform base (`CheckStatusAsync`, `RequestAsync`, `EnsureDeclared`, `ShouldShowRationale`). |
-| `Permissions.Battery` / `Bluetooth` / `CalendarRead` / `CalendarWrite` / `Camera` / `ContactsRead` / `ContactsWrite` / `Flashlight` / `LaunchApp` / `LocationWhenInUse` / `LocationAlways` / `Maps` / `Media` / `Microphone` / `NearbyWifiDevices` / `NetworkState` / `Phone` / `Photos` / `PhotosAddOnly` / `PostNotifications` / `Reminders` / `Sensors` / `Sms` / `Speech` / `StorageRead` / `StorageWrite` / `Vibrate` | Nested marker permission types, matching .NET MAUI's set 1:1 — see [Permissions](#permissions). |
+| `Permissions.Battery` / `Bluetooth` / `CalendarRead` / `CalendarWrite` / `Camera` / `ContactsRead` / `ContactsWrite` / `Flashlight` / `LaunchApp` / `LocationWhenInUse` / `LocationAlways` / `Maps` / `Media` / `Microphone` / `NearbyWifiDevices` / `NetworkState` / `Phone` / `Photos` / `PhotosAddOnly` / `PostNotifications` / `Reminders` / `Sensors` / `Sms` / `Speech` / `StorageRead` / `StorageWrite` / `Vibrate` | Nested marker permission types — see [Permissions](#permissions). |
 | `PermissionException` | Thrown for APIs requiring a permission (`UnauthorizedAccessException` subclass). |
 | `FeatureNotSupportedException` | Thrown by a feature unsupported on this platform (`NotSupportedException` subclass) — used by `Contacts`, `Geolocation`, and six of the `Permissions` types. |
 | `FeatureNotEnabledException` | Thrown by a feature that exists but is not currently enabled (`InvalidOperationException` subclass). |
@@ -358,8 +355,8 @@ needs a different value (or, for `AppGuid`, has no standard property at all). Se
 [Configuring AppInfo and PublisherInfo](README.md#configuring-appinfo-and-publisherinfo) in
 the README for the full property table and fallback chain.
 
-`AppInfo.InstallDate` (`DateTime?`) and `AppInfo.InstallLocation` (`string?`) have no .NET
-MAUI counterpart. They read the Windows "Programs and Features" uninstall registry entry
+`AppInfo.InstallDate` (`DateTime?`) and `AppInfo.InstallLocation` (`string?`) read the
+Windows "Programs and Features" uninstall registry entry
 (`...\Uninstall\{AppGuid}` or `{AppGuid}_is1`) for `AppGuid`, searching `HKEY_LOCAL_MACHINE`
 and `HKEY_CURRENT_USER` in both the 64-bit and 32-bit registry view. Both are `null` when
 `AppGuid` isn't a real GUID, or no matching entry is found (e.g. running unpublished). See
@@ -388,8 +385,7 @@ README for the full rationale and privacy/compliance notes (not legal advice).
 
 ### `VersionTracking` / `IVersionTracking`
 
-Ported near-verbatim from .NET MAUI — pure C#, built entirely on `IPreferences` + `IAppInfo`,
-no platform-specific code.
+Pure C#, built entirely on `IPreferences` + `IAppInfo`, no platform-specific code.
 
 - **`Track()`** — call once (typically via `ConfigureEssentials(e => e.UseVersionTracking())`) to snapshot the current version/build into history.
 - **`IsFirstLaunchEver`**, **`IsFirstLaunchForCurrentVersion`**, **`IsFirstLaunchForCurrentBuild`** (`bool`)
@@ -425,12 +421,11 @@ await Launcher.OpenAsync(new OpenFileRequest("Open report", @"C:\Reports\q1.pdf"
 
 ### `Permissions`
 
-The WPF counterpart of .NET MAUI's `Permissions` API — a static, generic, DI-free surface,
-ported as-is (there is no `IPermissions` service to register). See
+A static, generic, DI-free surface — there is no `IPermissions` service to register. See
 [Permissions](README.md#permissions) in the README for the full design rationale.
 
 - **`CheckStatusAsync<TPermission>()`**, **`RequestAsync<TPermission>()`** → `Task<PermissionStatus>`
-- **`ShouldShowRationale<TPermission>()`** → `bool` — always `false` on WPF (Android-only in MAUI)
+- **`ShouldShowRationale<TPermission>()`** → `bool` — always `false` on WPF (a concept specific to Android's runtime permission model)
 - `TPermission` is any nested `Permissions.*` type (`Permissions.Camera`, `Permissions.Microphone`, ...), each `: Permissions.BasePlatformPermission, new()`
 
 ```csharp
@@ -440,11 +435,11 @@ if (status != PermissionStatus.Granted)
 ```
 
 Most permission types report `PermissionStatus.Granted` unconditionally (no manifest/capability
-concept for an unpackaged app — matching .NET MAUI's own Windows behavior for those same
-types). `ContactsRead`, `ContactsWrite`, `LocationWhenInUse`, `LocationAlways`, `Microphone`,
-and `Sensors` throw `FeatureNotSupportedException` instead, since MAUI backs those six with
-real WinRT device-access contracts this library opts out of (same reasoning as
-[`Contacts`/`Geolocation`](#barbatoswpfapplicationmodelcommunication-namespace)).
+concept for an unpackaged app, and Windows itself doesn't gate these behind a runtime consent
+prompt outside a packaged/store app). `ContactsRead`, `ContactsWrite`, `LocationWhenInUse`,
+`LocationAlways`, `Microphone`, and `Sensors` throw `FeatureNotSupportedException` instead,
+since a real check for these six needs WinRT device-access contracts this library opts out of
+(same reasoning as [`Contacts`/`Geolocation`](#barbatoswpfapplicationmodelcommunication-namespace)).
 
 ---
 
@@ -459,7 +454,7 @@ Email composition and contacts.
 | `Email` / `IEmail` | `IsComposeSupported`, `ComposeAsync(EmailMessage?)` — backed by Simple MAPI (`MAPISendMail`). |
 | `EmailMessage` | `Subject`, `Body`, `BodyFormat`, `To`, `Cc`, `Bcc`, `Attachments`. |
 | `EmailBodyFormat` | `PlainText`, `Html` (HTML throws — Simple MAPI is plain-text only). |
-| `EmailAttachment` | `FullPath` — a simplified counterpart of MAUI's `EmailAttachment` (no `FileBase` dependency). |
+| `EmailAttachment` | `FullPath` — the file to attach, referenced by path. |
 | `Contacts` / `IContacts` | `PickContactAsync()`, `GetAllAsync(CancellationToken)` — both throw `FeatureNotSupportedException` on Windows (see the README's [Contacts and Geolocation](README.md#contacts-and-geolocation) note). |
 | `Contact` | `Id`, `NamePrefix`, `GivenName`, `MiddleName`, `FamilyName`, `NameSuffix`, `DisplayName`, `Emails`, `Phones`. |
 | `ContactEmail` / `ContactPhone` | `Type` and value fields for a contact's email/phone entries. |
@@ -480,7 +475,7 @@ Device info and device display.
 ### `DeviceDisplay` / `IDeviceDisplay`
 
 - **`KeepScreenOn`** (`bool`, settable) — via `SetThreadExecutionState(ES_DISPLAY_REQUIRED)`.
-- **`MainDisplayInfo`** (`DisplayInfo`) — `Width`, `Height`, `Density`, `Orientation`, `Rotation`, `RefreshRate`; computed against the active WPF window using the same Win32 monitor-info P/Invoke block MAUI uses.
+- **`MainDisplayInfo`** (`DisplayInfo`) — `Width`, `Height`, `Density`, `Orientation`, `Rotation`, `RefreshRate`; computed against the active WPF window via a Win32 monitor-info P/Invoke block.
 - **`MainDisplayInfoChanged`** (`event EventHandler<DisplayInfoChangedEventArgs>`) — backed by `Microsoft.Win32.SystemEvents.DisplaySettingsChanged`; the listener starts on first subscription and stops when the last handler is removed.
 
 ---
@@ -498,9 +493,9 @@ Every member throws `FeatureNotSupportedException` on Windows — see
 - **`LocationChanged`**, **`ListeningFailed`** events
 
 `Location`, `GeolocationRequest`, `GeolocationAccuracy`, `GeolocationListeningRequest`,
-`GeolocationError`, `DistanceUnits`, and `AltitudeReferenceSystem` retain their full
-MAUI-shaped type surface. `Location.CalculateDistance(...)` (haversine distance) is fully
-functional independent of the throwing platform implementation.
+`GeolocationError`, `DistanceUnits`, and `AltitudeReferenceSystem` retain their full type
+surface so calling code compiles unchanged. `Location.CalculateDistance(...)` (haversine
+distance) is fully functional independent of the throwing platform implementation.
 
 ---
 
@@ -511,7 +506,7 @@ functional independent of the throwing platform implementation.
 Backed by `System.Net.NetworkInformation` instead of WinRT's `NetworkInformation` API.
 
 - **`NetworkAccess`** (`NetworkAccess`: `Unknown`, `None`, `Local`, `ConstrainedInternet`, `Internet`)
-- **`ConnectionProfiles`** (`IEnumerable<ConnectionProfile>`: `Unknown`, `Bluetooth`, `Cellular`, `Ethernet`, `WiFi`) — the static `Connectivity.ConnectionProfiles` facade applies `.Distinct()`; the injected `IConnectivity.ConnectionProfiles` does not (matching .NET MAUI's own asymmetric design).
+- **`ConnectionProfiles`** (`IEnumerable<ConnectionProfile>`: `Unknown`, `Bluetooth`, `Cellular`, `Ethernet`, `WiFi`) — the static `Connectivity.ConnectionProfiles` facade applies `.Distinct()`; the injected `IConnectivity.ConnectionProfiles` does not.
 - **`ConnectivityChanged`** (`event EventHandler<ConnectivityChangedEventArgs>`)
 
 ---
@@ -525,9 +520,8 @@ Backed by `System.Net.NetworkInformation` instead of WinRT's `NetworkInformation
 
 ### `Preferences` / `IPreferences`
 
-Stores key/value pairs in a local JSON file under `FileSystem.AppDataDirectory\..\Settings\preferences.dat`
-(the same unpackaged strategy .NET MAUI itself uses for non-MSIX apps), guarded by a lock
-around file I/O.
+Stores key/value pairs in a local JSON file under `FileSystem.AppDataDirectory\..\Settings\preferences.dat`,
+guarded by a lock around file I/O.
 
 - **`ContainsKey`**, **`Remove`**, **`Clear`** (optionally scoped to a `sharedName`)
 - **`Get<T>`/`Set<T>`** overloads for `string`, `bool`, `int`, `double`, `float`, `long`, `DateTime`, `DateTimeOffset`
@@ -551,7 +545,15 @@ Stores encrypted key/value pairs in a local file under
 
 - **`IsVisible`** (`bool`), **`SetVisible(bool)`**
 - **`SetToolTip(string)`**
+- **`ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon = None)`** — shows a
+  balloon notification above the tray icon (e.g. to tell the user the app is still running
+  after the main window was hidden); a no-op while `IsVisible` is `false`.
 - **`Clicked`**, **`DoubleClicked`** events
+
+### `TrayIconBalloonIcon`
+
+`None` | `Info` | `Warning` | `Error` — the OS icon shown alongside a balloon raised via
+`ShowBalloonTip`.
 
 ### `TrayIconOptions`
 
@@ -835,6 +837,323 @@ MAUI's page-based navigation model has no equivalent of WPF's multi-window/owner
   `Closing` veto. When enabled, this service closes a window's owned dialogs itself first,
   ahead of WPF's own cascade, so each one gets a real, respected veto — and if any refuse, the
   window's own close is cancelled too.
+
+---
+
+## `Barbatos.Wpf.Apsu` Namespace
+
+State management: stores, getters, plugins, and a middleware-style action interceptor chain
+(design inspired by Vue's [Pinia](https://pinia.vuejs.org/) - see
+[State management](README.md#state-management-barbatoswpfapsu) in the README for the full
+behavior description, including the interceptor composition/ordering rules and the "call
+`next` first" constraint).
+
+### Classes / Interfaces
+
+| Type | Description |
+|------|-------------|
+| [`StoreBase`](#storebase-class) | Abstract base for a store: state as `ObservableObject` properties, plus `StateChanged`, `Patch`, `Reset`. |
+| [`Getter<T>`](#gettert-class) | A lazily-computed, cached derived value, invalidated when any dependency store changes. |
+| [`IStorePlugin`](#istoreplugin-interface) | Extends every store with cross-cutting behavior, applied once per store right after construction. |
+| [`IStoreRegistry`](#istoreregistry-interface) | Exposes every store resolved so far, for cross-cutting introspection. |
+| [`ActionAttribute`](#actionattribute-class) | Marks a `public virtual` method as an interceptable action. |
+| [`IStoreActionInterceptor`](#istoreactioninterceptor-interface) | Middleware-style wrapper around `ActionAttribute`-marked action calls. |
+| [`StoreActionContext`](#storeactioncontext-class) | Which store/action an interceptor call wraps, and the arguments it was called with. |
+| [`StoreActionDelegate`](#storeactiondelegate-delegate) | `Task<object?> StoreActionDelegate()` — continues to the next interceptor, or the action itself. |
+| [`StoreServiceCollectionExtensions`](#storeservicecollectionextensions-class) | `AddStore<TStore>(configureInterceptors)` / `AddStoreInterceptor<TStore, TInterceptor>()` extension methods. |
+| [`StoreInterceptorBuilder<TStore>`](#storeinterceptorbuildertstore-class) | Fluent `Add(...)` surface for registering a store's local interceptors from inside `AddStore`. |
+| [`InterceptorHandle`](#interceptorhandle-class) | Returned by the ejectable `AddStoreInterceptor` overloads; `Eject()` removes the interceptor at runtime. |
+
+---
+
+### `StoreBase` Class
+
+Abstract base for a store. State lives as ordinary properties set via
+`ObservableObject.SetProperty`.
+
+```csharp
+public abstract class StoreBase : ObservableObject
+```
+
+#### Events
+- **`StateChanged`** (`event EventHandler?`) — fires once per property set outside `Patch`, or
+  once per `Patch` call no matter how many properties it touched.
+
+#### Methods
+- **`Patch(Action<StoreBase> mutate)`** — applies `mutate` to this store, batching every property
+  change it makes into a single `StateChanged` notification fired once `mutate` returns. Each
+  property still raises `PropertyChanged` individually as it's set — only `StateChanged` is
+  batched. Throws `ArgumentNullException` for a `null` `mutate`. A nested `Patch` call (an action
+  that calls `Patch`, itself invoked from inside another `Patch`) lets the outermost call be the
+  one that fires `StateChanged`.
+- **`Reset()`** (`virtual`) — restores initial state. **Must be overridden** — the default throws
+  `NotSupportedException` naming the store type, so a forgotten override fails loudly instead of
+  silently doing nothing.
+
+---
+
+### `Getter<T>` Class
+
+A lazily-computed, cached derived value.
+
+```csharp
+public sealed class Getter<T>
+```
+
+#### Constructor
+- **`Getter(Func<T> compute, params StoreBase[] dependencies)`** — `compute` typically closes
+  over the same stores listed in `dependencies` (e.g. `() => Store.Count * 2`); `dependencies`
+  exists purely to tell this type when to invalidate its cache, not to make the store(s)
+  reachable. Throws `ArgumentNullException` for a `null` `compute` or `dependencies`.
+
+#### Properties
+- **`Value`** (`T`) — recomputes only if invalidated (by any `dependencies` entry raising
+  `StateChanged`) since the last access; otherwise returns the cached value.
+
+---
+
+### `IStorePlugin` Interface
+
+Extends every store with cross-cutting behavior.
+
+```csharp
+public interface IStorePlugin
+{
+    void Apply(StoreBase store);
+}
+```
+
+Register with `services.AddSingleton<IStorePlugin, TPlugin>()`. Every registered plugin's
+`Apply` runs once per store created via `AddStore<TStore>()`, in plugin-registration order,
+right after that store's own constructor has already run.
+
+---
+
+### `IStoreRegistry` Interface
+
+Tracks every store created through `AddStore<TStore>()`, for cross-cutting introspection. This
+is not what makes a store a singleton or caches it — the DI container already does both; this
+registry exists purely so something can ask "which stores actually exist right now".
+
+```csharp
+public interface IStoreRegistry
+{
+    IReadOnlyList<StoreBase> Stores { get; }
+}
+```
+
+- **`Stores`** — every store actually resolved so far. A store type registered but never
+  injected/resolved anywhere does not appear here yet.
+
+Resolved automatically once any store is registered via `AddStore<TStore>()`; there is normally
+no need to depend on it directly.
+
+---
+
+### `ActionAttribute` Class
+
+Marks a `public virtual` method on a `StoreBase`-derived store as an action that every
+applicable `IStoreActionInterceptor` wraps.
+
+```csharp
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class ActionAttribute : Attribute
+```
+
+Only takes effect when at least one interceptor applies to the store; the method must be
+`virtual` and the store must not be `sealed` (interception generates a runtime subclass that
+overrides every attributed method). Supports synchronous return values and `Task`/`Task<TResult>`
+— a `ValueTask`/`ValueTask<TResult>`-returning method is *not* recognized as asynchronous by the
+interceptor chain (it isn't a `Task`), so it's treated as synchronous, and the still-unfinished
+`ValueTask` itself becomes the chain's "result" rather than something the chain awaits — use
+`Task` instead if the method needs interception.
+
+---
+
+### `IStoreActionInterceptor` Interface
+
+Wraps `ActionAttribute`-marked action calls, shaped as ASP.NET Core-style middleware: a chain
+of interceptors that can run code before and after the action, retry it, or short-circuit it
+entirely.
+
+```csharp
+public interface IStoreActionInterceptor
+{
+    Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next);
+}
+```
+
+#### Methods
+- **`InterceptAsync(StoreActionContext context, StoreActionDelegate next)`** — called for every
+  intercepted action. Call `next` to continue the chain (its result becomes the action's return
+  value), or don't call it at all to short-circuit the action entirely. Wrap it in `try`/`catch`
+  to observe or translate an error; wrap it in timing code to measure it; call it more than once
+  to retry.
+
+#### Remarks
+
+Register a **global** interceptor (every store) with
+`services.AddSingleton<IStoreActionInterceptor, TInterceptor>()`, or a **local** one (one store
+type only) with `StoreServiceCollectionExtensions.AddStoreInterceptor`. Both compose into a
+single chain per store — every global interceptor runs, in registration order, outside every
+local one, closest to the actual action call.
+
+`InterceptAsync` is genuinely awaitable for a `Task`/`Task<TResult>`-returning action. For a
+*synchronous* action, the chain still runs through this same `async` shape, but the proxy blocks
+on the chain's result (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a
+synchronous caller — safe only if every interceptor in that chain does purely synchronous work;
+an interceptor that genuinely suspends while wrapping a synchronous action risks the classic WPF
+sync-over-async deadlock.
+
+> [!IMPORTANT]
+> Call `next` as your first meaningful step if you're going to call it at all — never `await`
+> anything genuinely asynchronous before calling it. Castle DynamicProxy's underlying
+> `IInvocation.Proceed()` (what `next` eventually calls, at the innermost interceptor) is not
+> safe to reach from a continuation that already crossed a real `await` suspension relative to
+> `InterceptAsync`'s own synchronous call — doing so hangs the action forever rather than
+> throwing. Awaiting real asynchronous work is fully supported *after* `next` returns
+> (post-processing, e.g. flushing a log) — only work ordered before it is unsafe.
+
+---
+
+### `StoreActionContext` Class
+
+Identifies which store and which action an `IStoreActionInterceptor` call is currently wrapping,
+and what it was called with.
+
+```csharp
+public sealed class StoreActionContext
+{
+    public StoreActionContext(StoreBase store, string actionName, IReadOnlyList<object?> arguments);
+
+    public StoreBase Store { get; }
+    public string ActionName { get; }
+    public IReadOnlyList<object?> Arguments { get; }
+}
+```
+
+- **`Arguments`** — the arguments `ActionName` was called with, in declaration order (empty for a
+  parameterless action) — enough to decide whether to call `next` at all (e.g. reject an
+  out-of-range argument by short-circuiting), not just to observe or log the call.
+
+Constructed internally by the interceptor pipeline (from Castle DynamicProxy's own
+`IInvocation.Arguments`) and handed to `InterceptAsync` — application code reads it, it does not
+normally construct one itself.
+
+---
+
+### `StoreActionDelegate` Delegate
+
+```csharp
+public delegate Task<object?> StoreActionDelegate();
+```
+
+Continues an intercepted action call to the next interceptor in the chain, or to the action
+itself if this is the last one. Returns the eventual (boxed) result — `null` for a
+`void`/`Task`-returning action.
+
+---
+
+### `StoreServiceCollectionExtensions` Class
+
+Registers `StoreBase`-derived stores with the dependency injection container — the
+`defineStore()`/`useStore()` counterpart.
+
+```csharp
+public static class StoreServiceCollectionExtensions
+```
+
+#### Methods
+
+- **`AddStore<TStore>(this IServiceCollection, Action<StoreInterceptorBuilder<TStore>>? configureInterceptors = null)`**
+  (`where TStore : StoreBase`) — registers `TStore` as a singleton, created lazily on first
+  resolution and cached for the container's lifetime thereafter. Bootstraps `IStoreRegistry` the
+  first time it's called (no separate "enable stores" gate to call first). `configureInterceptors`
+  (default: `null`) receives a [`StoreInterceptorBuilder<TStore>`](#storeinterceptorbuildertstore-class)
+  for registering `TStore`'s own local interceptors in the same call, chaining as many `Add(...)`
+  calls as needed instead of a separate `AddStoreInterceptor<TStore>(...)` call per interceptor
+  plus a trailing `AddStore<TStore>()`.
+- **`AddStoreInterceptor<TStore, TInterceptor>(this IServiceCollection)`** (`where TStore :
+  StoreBase` `where TInterceptor : class, IStoreActionInterceptor`) — registers `TInterceptor` as
+  a **local** interceptor via keyed DI (`AddKeyedSingleton`, keyed by `typeof(TStore)`). Call
+  more than once for the same `TStore` to register several local interceptors; they run in
+  registration order, innermost relative to every global interceptor.
+- **`AddStoreInterceptor<TStore>(this IServiceCollection, IStoreActionInterceptor interceptor)`**
+  — the same, for an already-constructed interceptor instance instead of a type DI resolves.
+- **`AddStoreInterceptor<TStore>(this IServiceCollection, Func<IServiceProvider, IStoreActionInterceptor> factory)`**
+  — the same, but built by `factory` the first time `TStore` is resolved — for an interceptor
+  whose constructor needs a value the container can't supply on its own (a duration, a
+  threshold, ...) alongside one or more services it can; `factory` receives the same
+  `IServiceProvider` the store itself resolves from.
+- **`AddStoreInterceptor(this IServiceCollection, IStoreActionInterceptor interceptor, out InterceptorHandle handle)`**
+  — registers a **global** interceptor the same way as the plain overload above, but wraps it so
+  it can be removed later via `handle` — see [`InterceptorHandle`](#interceptorhandle-class).
+- **`AddStoreInterceptor<TStore>(this IServiceCollection, IStoreActionInterceptor interceptor, out InterceptorHandle handle)`**
+  — the same, for a **local** interceptor.
+
+#### Remarks
+
+`AddStore<TStore>()` builds a Castle DynamicProxy class proxy around `TStore` only when at least
+one `IStoreActionInterceptor` (global or local) applies to it — a store with none registered gets
+a plain `ActivatorUtilities`-created instance, no proxy involved. Building the proxy requires
+`TStore` to be **non-`sealed`** with **exactly one public constructor**; violating either throws
+a descriptive `InvalidOperationException` at first resolution.
+
+---
+
+### `StoreInterceptorBuilder<TStore>` Class
+
+Fluent surface for registering `TStore`'s own local interceptors from inside `AddStore<TStore>`'s
+`configureInterceptors` callback. Never constructed directly — `AddStore` hands you one.
+
+```csharp
+public sealed class StoreInterceptorBuilder<TStore> where TStore : StoreBase
+```
+
+#### Methods
+
+- **`Add<TInterceptor>()`** (`where TInterceptor : class, IStoreActionInterceptor`) →
+  `StoreInterceptorBuilder<TStore>` — adds `TInterceptor`, DI-constructed the first time `TStore`
+  is resolved. No `new` needed as long as its constructor needs nothing but other registered
+  services.
+- **`Add(IStoreActionInterceptor interceptor)`** → `StoreInterceptorBuilder<TStore>` — adds an
+  already-constructed interceptor instance.
+- **`Add(Func<IServiceProvider, IStoreActionInterceptor> factory)`** →
+  `StoreInterceptorBuilder<TStore>` — adds an interceptor built by `factory` the first time
+  `TStore` is resolved, for one whose constructor needs a value the container can't supply on its
+  own (a threshold, a duration, ...) alongside one or more services it can. `factory` receives the
+  same `IServiceProvider` the store itself resolves from.
+
+Each `Add` overload returns the same builder, so calls chain freely and in any mix -
+`i => i.Add<A>().Add(instance).Add(sp => new C(...))` registers all three as local interceptors
+for `TStore`, in that order.
+
+---
+
+### `InterceptorHandle` Class
+
+A handle to one registered `IStoreActionInterceptor`, returned by the `out InterceptorHandle`
+overloads of `StoreServiceCollectionExtensions`'s `AddStoreInterceptor` methods — the
+[`axios.interceptors.request.eject(id)`](https://axios.rest/pages/advanced/interceptors.html)
+counterpart.
+
+```csharp
+public sealed class InterceptorHandle
+```
+
+#### Properties
+
+- **`IsEjected`** (`bool`) — whether `Eject()` has been called on this handle.
+
+#### Methods
+
+- **`Eject()`** — removes the associated interceptor from every chain it applies to, from that
+  point on. Idempotent. Does not shrink or rebuild the chain — the interceptor's slot stays in
+  place but becomes a transparent pass-through straight to the next interceptor (or the action
+  itself), as if it had never been registered. A call already in flight when `Eject()` runs
+  keeps using the interceptor, since its own pipeline was already built by the time `Eject()`
+  ran; every call that starts afterward skips it. There is no corresponding "re-attach" —
+  construct a new interceptor and register it again if the behavior needs to come back.
 
 ---
 

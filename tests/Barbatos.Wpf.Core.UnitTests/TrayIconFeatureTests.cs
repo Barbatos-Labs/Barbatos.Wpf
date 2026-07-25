@@ -138,6 +138,52 @@ public class TrayIconFeatureTests
     }
 
     [Fact]
+    public void ShowBalloonTipIsForwardedToThePlatformWhenVisible()
+    {
+        var platform = new FakeTrayIconPlatform();
+        var service = BuildService(platform);
+
+        service.SetVisible(true);
+        service.ShowBalloonTip("Title", "Text", TrayIconBalloonIcon.Warning);
+
+        var balloon = Assert.Single(platform.BalloonTips);
+        Assert.Equal(("Title", "Text", TrayIconBalloonIcon.Warning), balloon);
+    }
+
+    [Fact]
+    public void ShowBalloonTipDefaultsToNoIcon()
+    {
+        var platform = new FakeTrayIconPlatform();
+        var service = BuildService(platform);
+
+        service.SetVisible(true);
+        service.ShowBalloonTip("Title", "Text");
+
+        Assert.Equal(TrayIconBalloonIcon.None, Assert.Single(platform.BalloonTips).Icon);
+    }
+
+    [Fact]
+    public void ShowBalloonTipIsANoOpWhenNotVisible()
+    {
+        var platform = new FakeTrayIconPlatform();
+        var service = BuildService(platform);
+
+        service.ShowBalloonTip("Title", "Text");
+
+        Assert.Empty(platform.BalloonTips);
+    }
+
+    [Fact]
+    public void ShowBalloonTipThrowsForNullArguments()
+    {
+        var platform = new FakeTrayIconPlatform();
+        var service = BuildService(platform);
+
+        Assert.Throws<ArgumentNullException>(() => service.ShowBalloonTip(null!, "Text"));
+        Assert.Throws<ArgumentNullException>(() => service.ShowBalloonTip("Title", null!));
+    }
+
+    [Fact]
     public void ClickEventsAreForwarded()
     {
         var platform = new FakeTrayIconPlatform();

@@ -68,6 +68,14 @@ public partial class MainWindow : Window
     void ShowDeviceIdentityButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).LoadDeviceIdentity();
 
+    void IncrementCounterButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).IncrementCounter();
+
+    // Deliberately not wrapped in try/catch here - see CounterStore.SimulateError and
+    // WpfProgram's OnDispatcherUnhandledException lifecycle hook for what happens to it.
+    void SimulateCounterErrorButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).SimulateCounterError();
+
     // PasswordBox.Password is deliberately not a bindable DependencyProperty (a WPF security
     // safeguard against the password lingering in binding/undo/logging machinery) - this is the
     // standard workaround, reading it once on change instead.

@@ -2,11 +2,12 @@
 
 ![Barbatos.Wpf.Core logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/core-logo.svg?raw=true)
 
-### *A MAUI-style application host and Essentials for WPF*
+### *A modern application host and ready-made platform services for WPF*
 
-**Bring .NET MAUI's `MauiApp`/`MauiAppBuilder` hosting model and Essentials APIs
-(`AppInfo`, `Preferences`, `SecureStorage`, `Connectivity`, ...) to WPF, with dependency
-injection, configuration, logging, and lifecycle events built in.**
+**`WpfApp`/`WpfAppBuilder` give plain desktop WPF a real application host - dependency
+injection, configuration, logging, and lifecycle events - plus a broad set of ready-made
+platform services (`AppInfo`, `Preferences`, `SecureStorage`, `Connectivity`, ...)
+registered in the same container.**
 
 [![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.Core.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Core)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.Core.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Core)
@@ -21,7 +22,7 @@ injection, configuration, logging, and lifecycle events built in.**
   * [Introduction](#introduction)
   * [Quick Start](#quick-start)
 * **[Hosting](#hosting)**
-  * [App composition](#app-composition-the-mauiprogram-pattern)
+  * [App composition](#app-composition-the-wpfprogram-pattern)
   * [Lifecycle events](#lifecycle-events)
   * [Dispatching](#dispatching)
   * [Configuring the hosting environment](#configuring-the-hosting-environment)
@@ -43,6 +44,13 @@ injection, configuration, logging, and lifecycle events built in.**
   * [Showing it conditionally](#showing-it-conditionally)
   * [Avoiding flicker: minimum display duration](#avoiding-flicker-minimum-display-duration)
 * **[Periodic services](#periodic-services)**
+* **[State management (Barbatos.Wpf.Apsu)](#state-management-barbatoswpfapsu)**
+  * [Stores](#stores)
+  * [Getters](#getters)
+  * [Actions and action interceptors](#actions-and-action-interceptors)
+    * [Removing an interceptor at runtime](#removing-an-interceptor-at-runtime)
+  * [Plugins](#plugins)
+  * [Registry](#registry)
 * **[AI chat + MCP (Barbatos.Wpf.Mcp)](#ai-chat--mcp-barbatoswpfmcp)**
   * [Providers](#providers)
   * [Configuration](#configuration)
@@ -59,16 +67,17 @@ injection, configuration, logging, and lifecycle events built in.**
 
 #### What is Barbatos.Wpf.Core?
 
-Barbatos.Wpf.Core is a WPF library that ports .NET MAUI's Hosting and Essentials building
-blocks to plain desktop WPF, with the same programming model and, wherever a Windows
-equivalent exists, the same code shape MAUI itself uses internally.
-
 Traditional WPF apps wire up `Application_Startup`, a hand-rolled DI container, and ad hoc
 static helpers for things like app info, preferences, or connectivity. **Barbatos.Wpf.Core**
-gives you `WpfApp`/`WpfAppBuilder` (mirroring `MauiApp`/`MauiAppBuilder`) — a real
-`IHostApplicationBuilder` with dependency injection, configuration, logging, and lifecycle
-events — plus a dozen ported Essentials modules (`AppInfo`, `Preferences`, `SecureStorage`,
-`Connectivity`, `Launcher`, ...) registered in the same container.
+gives you `WpfApp`/`WpfAppBuilder` — a real `IHostApplicationBuilder` with dependency
+injection, configuration, logging, and lifecycle events — plus a dozen ready-made platform
+services (`AppInfo`, `Preferences`, `SecureStorage`, `Connectivity`, `Launcher`, ...)
+registered in the same container.
+
+> **Familiar from .NET MAUI?** The hosting model and Essentials-style services below are
+> deliberately shaped like MAUI's own `MauiApp`/`MauiAppBuilder` and Essentials APIs wherever
+> a Windows equivalent exists - a head start if you've used them before, though nothing here
+> requires that background.
 
 > **Prerequisites**
 >
@@ -83,9 +92,8 @@ Add the package via NuGet:
 dotnet add package Barbatos.Wpf.Core
 ```
 
-Unlike .NET MAUI Essentials, this library ships as a single package — Hosting and every
-Essentials module described below are part of `Barbatos.Wpf.Core`, there is nothing else to
-install.
+This library ships as a single package — Hosting and every module described below are part
+of `Barbatos.Wpf.Core`, there is nothing else to install.
 
 > [!IMPORTANT]
 > **Your app's `<TargetFramework>` must include the Windows SDK version suffix** —
@@ -106,7 +114,7 @@ install.
 
 ## Hosting
 
-### App composition (the `MauiProgram` pattern)
+### App composition (the `WpfProgram` pattern)
 
 #### 1. Derive your `App` from `WpfApplication`
 
@@ -172,9 +180,8 @@ public static class WpfProgram
 Application events (`OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`,
 `OnDispatcherUnhandledException`, `OnExit`) and window events (`OnWindowCreated`,
 `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`,
-`OnWindowClosing`, `OnWindowClosed`) are surfaced through the same `ILifecycleEventService`
-design as .NET MAUI, and every window gets its own service scope (with
-`IWpfInitializeScopedService` support).
+`OnWindowClosing`, `OnWindowClosed`) are surfaced through `ILifecycleEventService`, and every
+window gets its own service scope (with `IWpfInitializeScopedService` support).
 
 ```csharp
 builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
@@ -236,31 +243,31 @@ builder.Configuration
 
 ## Essentials
 
-Every .NET MAUI Essentials module that has a sensible Windows/WPF equivalent has been
-ported with the same interface + static facade design (e.g. `AppInfo.Current`,
-`Preferences.Default`) and, where the module needs OS integration, the same Windows
-implementation strategy MAUI itself uses — swapped from WinRT/UWP APIs (unavailable to a
-plain unpackaged WPF app) to the nearest Win32/.NET equivalent. All of it is registered in
-the container by `UseEssentials()`, part of the builder defaults:
+A broad set of platform services, each following the same interface + static facade design
+(e.g. `AppInfo.Current`, `Preferences.Default`) so you can inject the interface for
+testability or just call the static facade directly. Where a module needs OS integration,
+the Windows implementation goes straight to the nearest Win32/.NET equivalent rather than
+WinRT/UWP APIs (unavailable to a plain unpackaged WPF app). All of it is registered in the
+container by `UseEssentials()`, part of the builder defaults:
 
 | Module | Static facade | Interface | Windows implementation |
 | --- | --- | --- | --- |
 | App info | `AppInfo` | `IAppInfo` | Assembly metadata/attributes; theme from the `AppsUseLightTheme` registry value; packaging via `GetCurrentPackageFullName`; `InstallDate`/`InstallLocation` from the installer's `Uninstall` registry entry, if any |
 | Publisher info | `PublisherInfo` | `IPublisherInfo` | Assembly metadata, falling back to `AssemblyCompanyAttribute` |
-| Device identity | `DeviceIdentity` | `IDeviceIdentity` | See [License enforcement: DeviceIdentity](#license-enforcement-deviceidentity) below — no MAUI counterpart |
-| Device info | `DeviceInfo` | `IDeviceInfo` | BIOS registry (`Model`/`Manufacturer`); MAUI's own Chromium-style tablet-mode heuristic for `Idiom` |
-| File system | `FileSystem` | `IFileSystem` | `%LocalAppData%\{Publisher}\{AppGuid}\{Data,Cache}`, same layout as MAUI's unpackaged path |
-| Preferences | `Preferences` | `IPreferences` | Same unpackaged JSON-file strategy MAUI itself uses for non-MSIX apps |
+| Device identity | `DeviceIdentity` | `IDeviceIdentity` | See [License enforcement: DeviceIdentity](#license-enforcement-deviceidentity) below — a desktop-specific addition |
+| Device info | `DeviceInfo` | `IDeviceInfo` | BIOS registry (`Model`/`Manufacturer`); a Chromium-style tablet-mode heuristic for `Idiom` |
+| File system | `FileSystem` | `IFileSystem` | `%LocalAppData%\{Publisher}\{AppGuid}\{Data,Cache}`, created on first access |
+| Preferences | `Preferences` | `IPreferences` | A local JSON file, guarded by a lock around file I/O |
 | Secure storage | `SecureStorage` | `ISecureStorage` | DPAPI (`ProtectedData`, current-user scope) instead of the WinRT `DataProtectionProvider` |
-| Version tracking | `VersionTracking` | `IVersionTracking` | Pure C#, ported near-verbatim (built on `Preferences` + `AppInfo`, no platform code) |
+| Version tracking | `VersionTracking` | `IVersionTracking` | Pure C#, no platform-specific code (built on `Preferences` + `AppInfo`) |
 | Connectivity | `Connectivity` | `IConnectivity` | `System.Net.NetworkInformation` instead of the WinRT `NetworkInformation` API |
-| Device display | `DeviceDisplay` | `IDeviceDisplay` | The same Win32 monitor-info P/Invoke block MAUI uses, against the active WPF window; `KeepScreenOn` via `SetThreadExecutionState`; change notifications via `SystemEvents.DisplaySettingsChanged` |
-| Email | `Email` | `IEmail` | Simple MAPI (`MAPISendMail`) — ported near-verbatim, this was already pure Win32 in MAUI |
+| Device display | `DeviceDisplay` | `IDeviceDisplay` | A Win32 monitor-info P/Invoke block against the active WPF window; `KeepScreenOn` via `SetThreadExecutionState`; change notifications via `SystemEvents.DisplaySettingsChanged` |
+| Email | `Email` | `IEmail` | Simple MAPI (`MAPISendMail`) |
 | Launcher | `Launcher` | `ILauncher` | `Process.Start(UseShellExecute: true)` instead of the WinRT `Windows.System.Launcher`; `CanOpenAsync` checks `HKEY_CLASSES_ROOT` for a registered scheme handler |
 | Contacts | `Contacts` | `IContacts` | Throws `FeatureNotSupportedException` — see note below |
 | Geolocation | `Geolocation` | `IGeolocation` | Throws `FeatureNotSupportedException` — see note below; `Location`'s distance math is fully functional |
 | App actions | `AppActions` | `IAppActions` | The taskbar Jump List (`System.Windows.Shell.JumpList`) instead of the WinRT `Windows.UI.StartScreen.JumpList` |
-| Permissions | `Permissions.CheckStatusAsync<T>()` / `RequestAsync<T>()` | *(none — generic static API, no DI, same as MAUI)* | Most permissions report `Granted` (no manifest/capability concept for an unpackaged app); `ContactsRead`/`ContactsWrite`/`LocationWhenInUse`/`LocationAlways`/`Microphone`/`Sensors` throw `FeatureNotSupportedException` — see [Permissions](#permissions) below |
+| Permissions | `Permissions.CheckStatusAsync<T>()` / `RequestAsync<T>()` | *(none — generic static API, no DI)* | Most permissions report `Granted` (no manifest/capability concept for an unpackaged app); `ContactsRead`/`ContactsWrite`/`LocationWhenInUse`/`LocationAlways`/`Microphone`/`Sensors` throw `FeatureNotSupportedException` — see [Permissions](#permissions) below |
 
 ```csharp
 var name = AppInfo.Name;
@@ -314,8 +321,8 @@ need:
 | `PublisherInfo.Copyright` | `AssemblyCopyrightAttribute` | `<Copyright>` |
 
 `AppInfo.AppGuid` and `PublisherInfo.Website`/`SupportUrl`/`SupportEmail` have no standard
-MSBuild-property equivalent — MAUI's own `ApplicationId` is a MAUI-SDK-only concept, and
-there is no built-in "website"/"support URL"/"support email" assembly attribute at all. For
+MSBuild-property equivalent — there is no built-in "app id"/"website"/"support URL"/"support
+email" assembly attribute at all. For
 those (or to override any of the properties above with a value that differs from
 `<Product>`/`<Company>`/`<Copyright>`), set the `Barbatos.Wpf.ApplicationModel.*` assembly
 metadata directly — it is always checked *before* the standard fallback:
@@ -350,9 +357,9 @@ var publisher = PublisherInfo.Name;
 var copyright = PublisherInfo.Copyright;
 ```
 
-> **Important:** `AppInfo.AppGuid` (renamed from .NET MAUI's `PackageName`, since on this
-> platform it is not a store package identifier — it is simply the stable identifier used to
-> derive the app's storage folder) should stay constant across releases. Changing it after
+> **Important:** `AppInfo.AppGuid` (not a store package identifier on this platform — it is
+> simply the stable identifier used to derive the app's storage folder) should stay constant
+> across releases. Changing it after
 > shipping moves `Preferences`, `SecureStorage`, and `FileSystem.AppDataDirectory` to a new
 > folder, effectively discarding every existing user's stored data. If you ship an installer,
 > set it to a real GUID matching the installer's own application identifier — see
@@ -400,9 +407,8 @@ AppPublisher={#Publisher}
 > these are two different concepts that usually carry the same value only because the SDK
 > defaults `<FileVersion>` from `<Version>`. If you ever set `<AssemblyVersion>` to something
 > fixed (a common practice to avoid binding-redirect churn) while letting `<Version>`/
-> `<FileVersion>` increment per build, `AppInfo.VersionString` (which reads `AssemblyVersion`,
-> matching .NET MAUI's own behavior) and what your installer reports from the `.exe` file will
-> diverge — set `Barbatos.Wpf.ApplicationModel.AppInfo.Version` explicitly if you need them to
+> `<FileVersion>` increment per build, `AppInfo.VersionString` (which reads `AssemblyVersion`)
+> and what your installer reports from the `.exe` file will diverge — set `Barbatos.Wpf.ApplicationModel.AppInfo.Version` explicitly if you need them to
 > stay in lockstep.
 
 ### Reading back InstallDate and InstallLocation
@@ -431,12 +437,12 @@ MSI/WiX convention) and the `_is1`-suffixed one (the Inno Setup convention). The
 Other fields the installer's uninstall entry carries — `EstimatedSize`, `DisplayIcon`,
 `NoModify`/`NoRepair`, the `Inno Setup: *` bookkeeping keys — describe the *installed copy*
 rather than something an app typically needs to read back about itself, so they stay outside
-`AppInfo`'s scope, the same way .NET MAUI's `IAppInfo` doesn't expose them either.
+`AppInfo`'s scope.
 
 ### App actions and version tracking
 
 `AppActions` (taskbar Jump List shortcuts) and `VersionTracking.Track()` are wired up
-through `ConfigureEssentials`, mirroring .NET MAUI's `IEssentialsBuilder`:
+through `ConfigureEssentials`:
 
 ```csharp
 builder.ConfigureEssentials(essentials => essentials
@@ -451,25 +457,25 @@ builder.ConfigureEssentials(essentials => essentials
 
 Clicking a Jump List entry launches a new process with an encoded command-line argument;
 `UseEssentials()` checks for it on the `WpfLifecycle.OnStartup` event and raises
-`AppActions.OnAppAction` — the same activation flow .NET MAUI uses (relaunch arguments), just
-adapted to WPF's native Jump List API instead of `Windows.UI.StartScreen.JumpList`. Because
+`AppActions.OnAppAction` — a relaunch-argument activation flow adapted to WPF's native Jump
+List API instead of `Windows.UI.StartScreen.JumpList`. Because
 `System.Windows.Shell.JumpList` has no way to read back what the OS is currently showing
 (unlike WinRT's `JumpList.LoadCurrentAsync()`), `AppActions.GetAsync()` returns the actions
 last set by `SetAsync()` in this process rather than querying the OS.
 
 ### Contacts and Geolocation
 
-.NET MAUI's real Windows implementations of `Contacts` and `Geolocation` are built on WinRT
-contracts (`Windows.ApplicationModel.Contacts.ContactPicker`,
+A real Windows implementation of `Contacts`/`Geolocation` needs WinRT contracts
+(`Windows.ApplicationModel.Contacts.ContactPicker`,
 `Windows.Devices.Geolocation.Geolocator`) that require a TargetFramework with WinRT
 projections (`net8.0-windows10.0.19041.0`-style) and, for some APIs, MSIX packaging —
 neither of which this plain `net8.0-windows`/`net9.0-windows`/`net10.0-windows` WPF library
-uses. Rather than pull in that machinery, both modules ship with their full MAUI-shaped type
-surface (`IContacts`/`Contact`/`ContactEmail`/`ContactPhone`,
-`IGeolocation`/`Location`/`GeolocationRequest`/...) so code compiles unchanged, but every
-member of the Windows implementation throws `FeatureNotSupportedException` — the exact
-exception (and message style) .NET MAUI itself throws for feature/platform combinations it
-doesn't support. If you need a real implementation (for example Geolocation via the classic
+uses. Rather than pull in that machinery, both modules still ship their full type surface
+(`IContacts`/`Contact`/`ContactEmail`/`ContactPhone`,
+`IGeolocation`/`Location`/`GeolocationRequest`/...) — useful if you share code with a .NET
+MAUI project, since it compiles unchanged either way — but every member of the Windows
+implementation throws `FeatureNotSupportedException` instead of doing a real lookup. If you
+need a real implementation (for example Geolocation via the classic
 Win32 Location API, or Contacts via Microsoft Graph), register your own after the builder is
 created — a later `AddSingleton` call takes precedence over the `TryAddSingleton` that
 `UseEssentials()` performs, so code that resolves `IContacts`/`IGeolocation` through
@@ -480,15 +486,15 @@ builder.Services.AddSingleton<IContacts, MyGraphContacts>();
 ```
 
 The static `Contacts.PickContactAsync()`/`Geolocation.GetLocationAsync()` facades are
-independent of DI (same as in .NET MAUI) and will keep using the built-in
+independent of DI and will keep using the built-in
 `FeatureNotSupportedException`-throwing implementation regardless — prefer the injected
 `IContacts`/`IGeolocation` interface if you register a replacement.
 
 ### Permissions
 
-`Permissions` is the WPF counterpart of .NET MAUI's `Permissions` API, ported with the exact
-same generic, DI-free static surface — there is no `IPermissions` interface to register,
-because MAUI's own `Permissions` isn't service-injectable either:
+`Permissions` is a generic, DI-free static surface — there is no `IPermissions` interface to
+register; each permission type (`Permissions.Camera`, `Permissions.Microphone`, ...) is just
+a type argument to `CheckStatusAsync<TPermission>()`/`RequestAsync<TPermission>()`:
 
 ```csharp
 var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
@@ -497,37 +503,36 @@ if (status != PermissionStatus.Granted)
     status = await Permissions.RequestAsync<Permissions.Camera>();
 ```
 
-Every permission type MAUI ships (`Battery`, `Bluetooth`, `CalendarRead`/`CalendarWrite`,
-`Camera`, `ContactsRead`/`ContactsWrite`, `Flashlight`, `LaunchApp`,
-`LocationWhenInUse`/`LocationAlways`, `Maps`, `Media`, `Microphone`, `NearbyWifiDevices`,
-`NetworkState`, `Phone`, `Photos`/`PhotosAddOnly`, `PostNotifications`, `Reminders`,
-`Sensors`, `Sms`, `Speech`, `StorageRead`/`StorageWrite`, `Vibrate`) is present as a nested
-type of `Permissions`, exactly as in MAUI. Two behaviors on WPF:
+Every permission type below is present as a nested type of `Permissions`: `Battery`,
+`Bluetooth`, `CalendarRead`/`CalendarWrite`, `Camera`, `ContactsRead`/`ContactsWrite`,
+`Flashlight`, `LaunchApp`, `LocationWhenInUse`/`LocationAlways`, `Maps`, `Media`,
+`Microphone`, `NearbyWifiDevices`, `NetworkState`, `Phone`, `Photos`/`PhotosAddOnly`,
+`PostNotifications`, `Reminders`, `Sensors`, `Sms`, `Speech`, `StorageRead`/`StorageWrite`,
+`Vibrate`. Two behaviors on WPF:
 
 - **Most permissions report `PermissionStatus.Granted`.** An unpackaged desktop WPF app has
-  no `AppxManifest.xml` capability declarations to check, and .NET MAUI's own Windows
-  implementation already just returns `Granted` for these same permissions (it never
-  actually gates `Camera`, `CalendarRead`, `Phone`, `StorageRead`, etc. on Windows either) —
-  `EnsureDeclared()` is a no-op for the same reason.
+  no `AppxManifest.xml` capability declarations to check, and Windows itself doesn't gate
+  `Camera`, `CalendarRead`, `Phone`, `StorageRead`, etc. behind a runtime consent prompt
+  outside a packaged/store app — `EnsureDeclared()` is a no-op for the same reason.
 - **`ContactsRead`, `ContactsWrite`, `LocationWhenInUse`, `LocationAlways`, `Microphone`, and
-  `Sensors` throw `FeatureNotSupportedException`.** MAUI backs these six with real WinRT
+  `Sensors` throw `FeatureNotSupportedException`.** A real check for these six needs WinRT
   device-access contracts (`ContactManager`, `Geolocator`, `DeviceAccessInformation`,
   `MediaCapture`) that need WinRT projections and, for some APIs, MSIX packaging — the same
   machinery this library already opts out of for [`Contacts` and `Geolocation`](#contacts-and-geolocation).
-  Rather than silently report `Granted` for a permission MAUI itself actually checks, these
-  six are honest about not performing a real check.
+  Rather than silently report `Granted` for something it can't actually verify, these six are
+  honest about it instead.
 
 If you need a real permission check (for example reading the Windows privacy consent
 registry, or a custom capability broker), subclass `Permissions.BasePlatformPermission` and
-pass your subclass as `TPermission` — the same extensibility model .NET MAUI itself offers.
+pass your subclass as `TPermission`.
 
 ### License enforcement: DeviceIdentity
 
-.NET MAUI's `DeviceInfo` deliberately exposes no device identifier and no network address —
 Apple and Google both prohibit collecting raw hardware IDs (IMEI, serial numbers) for
-ordinary commercial apps, so MAUI's cross-platform surface never offers one in the first
-place. `DeviceIdentity` exists for the desktop-specific case this rules out: enforcing a
-per-machine license/activation limit. It has no .NET MAUI counterpart.
+ordinary commercial apps, so cross-platform mobile frameworks (including .NET MAUI's own
+`DeviceInfo`) never expose a device identifier or network address in the first place.
+`DeviceIdentity` exists for the desktop-specific case this rules out: enforcing a per-machine
+license/activation limit.
 
 > [!IMPORTANT]
 > This section explains what the API does and why it's shaped this way — it is **not legal
@@ -635,9 +640,10 @@ Notes:
 - `KeepAwake` prevents idle sleep while still letting the display turn off
   (set `KeepDisplayOn` to also keep the display on); the sleep block is released when
   the host is disposed.
-- The tray icon supports a context menu, tooltip, and click/double-click events; the
-  sample uses it together with the `OnWindowClosing` lifecycle event to implement
-  minimize-to-tray.
+- The tray icon supports a context menu, tooltip, click/double-click events, and balloon
+  notifications (`ShowBalloonTip`); the sample uses it together with the `OnWindowClosing`
+  lifecycle event to implement minimize-to-tray, showing a balloon each time the window is
+  hidden so a hidden window doesn't look identical to a closed app.
 - `RunOnStartup` state is persisted by the OS registry; the other toggles can be
   persisted by writing their configuration sections back to a user settings file that is
   loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
@@ -712,10 +718,10 @@ Notes:
 > **Note:** an earlier version of this library had a `ConfigureGlobalHotkeys` feature
 > (system-wide keyboard shortcuts via `RegisterHotKey`, for a "Quick Entry" hotkey). It has
 > been removed in favor of `IAppActions` (taskbar Jump List shortcuts — see
-> [Essentials](#essentials) above), which is what .NET MAUI's own Essentials actually
-> exposes as "app actions" on Windows. A global keyboard hotkey is a materially different
-> capability (no MAUI equivalent); if you need one, `RegisterHotKey`/`UnregisterHotKey`
-> P/Invoke is straightforward to reintroduce as your own `IWpfInitializeService`.
+> [Essentials](#essentials) above) instead, which better matches what "app actions" means on
+> Windows. A global keyboard hotkey is a materially different capability; if you need one,
+> `RegisterHotKey`/`UnregisterHotKey` P/Invoke is straightforward to reintroduce as your own
+> `IWpfInitializeService`.
 
 ---
 
@@ -791,16 +797,13 @@ simultaneously but the same customer twice should just refocus the existing wind
 
 ## SplashScreen
 
-There is no .NET MAUI runtime code to port here: MAUI's splash screen is entirely a build-time
-asset pipeline (`Microsoft.Maui.Resizetizer`, driven by the `<MauiSplashScreen>` MSBuild item)
-that generates a native Android theme / iOS storyboard / Windows AppxManifest entry per
-platform, with zero cross-platform C# logic — and on Windows it only applies to **packaged**
-(MSIX) apps; the AppxManifest it relies on is stripped entirely for unpackaged apps, which is
-the deployment model this library targets. So instead of porting, `WpfApplication` gets a
-splash screen hook of its own, following the same shape MAUI uses elsewhere (a lifecycle hook
-you override, plus a plain settings object) rather than the DI-based `Configure...()` pattern
-the other Features use — a splash screen has to show before the dependency injection container
-even exists.
+This is fresh work, not a port: on Windows, a splash screen for a **packaged** (MSIX) app is
+just a build-time asset pipeline generating an AppxManifest entry, with zero runtime C# logic
+needed — but that manifest is stripped entirely for unpackaged apps, the deployment model this
+library targets, so there's nothing to build on from that approach here. `WpfApplication` gets
+a splash screen hook of its own instead (a lifecycle hook you override, plus a plain settings
+object) rather than the DI-based `Configure...()` pattern the other features use — a splash
+screen has to show before the dependency injection container even exists.
 
 ```csharp
 public partial class App : WpfApplication
@@ -1049,6 +1052,280 @@ settings UI, can hand the scheduler a new `IWpfPeriodicService` at any time.
 
 ---
 
+## State management (`Barbatos.Wpf.Apsu`)
+
+A lightweight state-management layer for WPF: a **store** is an `ObservableObject`-derived
+class holding state as ordinary properties, plus batched change notification, an explicit
+reset hook, computed getters that can span several stores, plugins, and a middleware-style
+action interceptor chain that can observe, time, retry, or outright block an action call.
+
+> **Familiar from Vue's Pinia?** The design borrows its shape from Pinia's own
+> `defineStore`/getters/actions/plugins model - a head start if you've used it before, though
+> nothing here requires that background.
+
+```csharp
+public class CounterStore : StoreBase
+{
+    int _count;
+    readonly Getter<string> _summary;
+
+    public CounterStore() => _summary = new Getter<string>(() => $"Count is {Count}", this);
+
+    public int Count
+    {
+        get => _count;
+        set => SetProperty(ref _count, value);
+    }
+
+    public string Summary => _summary.Value; // computed(), cached until StateChanged fires
+
+    [Action]
+    public virtual void Increment() => Count++;
+
+    public override void Reset() => Count = 0;
+}
+```
+
+```csharp
+builder.Services.AddStore<CounterStore>();
+```
+
+```csharp
+// Resolved via DI (a ViewModel's constructor, typically) like any other registered service:
+counterStore.Increment();
+var summary = counterStore.Summary; // "Count is 1"
+```
+
+### Stores
+
+`StoreBase` (abstract, derives from `CommunityToolkit.Mvvm.ComponentModel.ObservableObject`) is
+the base every store derives from:
+
+| Member | Role |
+| --- | --- |
+| State | Ordinary properties set via `SetProperty` |
+| `StateChanged` (`event EventHandler?`) | Fires once per property set outside `Patch`, or once per `Patch` call no matter how many properties it touched |
+| `Patch(Action<StoreBase> mutate)` | Batches several property changes into a single `StateChanged` notification |
+| `Reset()` (`virtual`) | Restores initial state - **must be overridden**; the default throws `NotSupportedException` so a forgotten override fails loudly instead of silently doing nothing |
+
+Register a store with **`AddStore<TStore>()`** - it becomes a singleton, created lazily on
+first resolution and cached for the container's lifetime after that, keyed by `TStore` itself.
+A store's constructor can take further dependencies - other services, or other stores,
+resolved by the container the same way any other constructor dependency is. Register its local
+interceptors in the same call by chaining `Add` on the builder it hands you - one `AddStore`
+call handles the store and every local interceptor it needs, instead of a separate
+`AddStoreInterceptor<TStore>(...)` call per interceptor plus a trailing `AddStore<TStore>()`:
+
+```csharp
+builder.Services.AddStore<OrderStore>(i => i
+    .Add<NonEmptyCartGuardInterceptor>()
+    .Add(sp => new CheckoutCooldownInterceptor(TimeSpan.FromSeconds(3), sp.GetRequiredService<ApsuActivityLog>())));
+```
+
+Omit the callback entirely (the default) for a store that only needs global interceptors, or
+none at all - see [Actions and action interceptors](#actions-and-action-interceptors) below
+for what each `Add` overload does.
+
+### Getters
+
+`Getter<T>` is a lazily-computed, cached value, invalidated whenever any of its declared
+dependency stores raises `StateChanged`.
+
+```csharp
+readonly Getter<string> _summary;
+
+public OrderStore(UserStore userStore)
+{
+    _summary = new Getter<string>(
+        () => $"{OrderCount} order(s) for {userStore.UserName}",
+        this, userStore); // combines two stores - list every store the callback reads
+}
+
+public string Summary => _summary.Value;
+```
+
+Every store the callback reads must be listed explicitly as a `dependencies` argument, since
+C# has no proxy-based reactivity to auto-track that on its own - this is a coarse invalidation
+(any state change on any listed dependency recomputes the getter, not just a change to the
+specific property it actually reads), a deliberate simplification over a full
+dependency-tracking system.
+
+### Actions and action interceptors
+
+A `[Action]`-marked `public virtual` method is interceptable, shaped as ASP.NET Core-style
+middleware: a chain of interceptors that can run code before and after the action, retry it,
+or short-circuit it entirely. Interception only activates when at least one
+`IStoreActionInterceptor` applies to that store; a store with no interceptors registered never
+pays for the proxy.
+
+```csharp
+public sealed class LoggingInterceptor : IStoreActionInterceptor
+{
+    public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+    {
+        Console.WriteLine($"[{context.Store.GetType().Name}] {context.ActionName} starting");
+        var result = await next(); // call first - see the warning below
+        Console.WriteLine($"[{context.Store.GetType().Name}] {context.ActionName} done");
+        return result;
+    }
+}
+```
+
+```csharp
+// Global - wraps every store's actions. DI-constructed - no `new` needed, since
+// LoggingInterceptor's own constructor only needs other registered services (if any):
+builder.Services.AddSingleton<IStoreActionInterceptor, LoggingInterceptor>();
+
+// Local - wraps only CounterStore's actions, registered together with the store in one call.
+// Add<T>() is DI-constructed the same way the global registration above is:
+builder.Services.AddStore<CounterStore>(i => i.Add<ThrottleInterceptor>());
+```
+
+An interceptor that needs a value the container can't supply on its own (a duration, a
+threshold, ...) alongside a service it can isn't a special case - `Add` has a factory overload
+too, still getting the service DI-resolved, explicit about the one input that has to come from
+the call site instead of the container:
+
+```csharp
+builder.Services.AddStore<CounterStore>(i => i.Add(sp =>
+    new ThrottleInterceptor(TimeSpan.FromSeconds(1), sp.GetRequiredService<IClock>())));
+```
+
+Chain as many `Add` calls as the store needs local interceptors - `Add<TInterceptor>()`
+(DI-constructed), `Add(instance)` (already-built), and `Add(factory)` (built lazily, a service
+plus a raw value) mix freely in the same chain. For registering a local interceptor separately
+from `AddStore` instead - e.g. from a different composition step - the standalone
+`AddStoreInterceptor<TStore, TInterceptor>()` (and its instance/factory overloads) remain
+available too.
+
+Both kinds compose into a single chain per store: every **global** interceptor runs, in
+registration order, outside every **local** one - the same nesting a global ASP.NET Core
+middleware has relative to endpoint-specific behavior. Registering more than one interceptor for
+the same store (global or local) stacks them, innermost by registration order. Not calling
+`next` short-circuits the whole chain - the action itself never runs, not just observed after
+the fact:
+
+```csharp
+public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+{
+    if (context.ActionName == nameof(UserStore.SelectUser) &&
+        context.Arguments[0] is int userId && userId is < 1 or > 10)
+    {
+        return Task.FromResult<object?>(null); // blocked - SelectUser's body never runs
+    }
+
+    return next();
+}
+```
+
+`StoreActionContext.Arguments` carries the actual call arguments in declaration order, so a
+condition can be about *what an action was called with*, not just the store's current state.
+
+> [!IMPORTANT]
+> **Call `next` as your first meaningful step if you're going to call it at all - never `await`
+> anything genuinely asynchronous before calling it.** Castle DynamicProxy's underlying
+> `Proceed()` (what `next` eventually reaches) is not safe to call from a continuation that
+> already crossed a real `await` suspension - doing so hangs the action forever instead of
+> throwing (confirmed by isolating and killing the stuck process during this feature's own
+> testing). Awaiting real asynchronous work *after* `next()` returns (post-processing, e.g.
+> flushing a log) is fully supported - only work ordered *before* it is unsafe. A synchronous
+> action's interceptor chain still runs through this same `async` shape, but the proxy blocks on
+> it (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a synchronous caller -
+> safe as long as every interceptor in that chain only does synchronous work, but risks the
+> classic WPF sync-over-async deadlock if one doesn't. Pair genuinely asynchronous interceptor
+> logic with a `Task`-returning action to avoid this entirely.
+
+Combine with `OnDispatcherUnhandledException` (see [Lifecycle events](#lifecycle-events)) to give
+a store action's error and any other unhandled exception one shared reporting path, since an
+interceptor can `catch` around `next()` and still let the exception propagate:
+
+```csharp
+public sealed class ErrorReportingInterceptor : IStoreActionInterceptor
+{
+    public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+    {
+        try
+        {
+            return await next();
+        }
+        catch (Exception ex)
+        {
+            Report(context.Store.GetType().Name, context.ActionName, ex); // same sink OnDispatcherUnhandledException uses
+            throw;
+        }
+    }
+}
+```
+
+A store using interceptors must be **non-`sealed`** with **exactly one public constructor**
+(interception works by generating a runtime subclass via Castle DynamicProxy that overrides every
+`[Action]`-marked method) - `AddStore<TStore>()` throws a descriptive `InvalidOperationException`
+at first resolution otherwise, rather than failing silently.
+
+#### Removing an interceptor at runtime
+
+Register with the `out InterceptorHandle` overload instead of the plain one to be able to
+remove an interceptor later without rebuilding the host - `axios`'s
+[`interceptors.request.eject(id)`](https://axios.rest/pages/advanced/interceptors.html):
+
+```csharp
+builder.Services.AddStoreInterceptor(new LoggingInterceptor(), out var loggingHandle);
+// Local interceptors have the same overload: AddStoreInterceptor<TStore>(interceptor, out handle)
+
+// Later, e.g. from a settings toggle:
+loggingHandle.Eject();
+```
+
+Ejecting doesn't remove the interceptor from the chain structurally - its slot just becomes a
+transparent pass-through straight to the next interceptor (or the action itself) from that call
+onward, as if it had never been registered. A call already in flight when `Eject()` runs keeps
+using the interceptor; every call that starts afterward skips it. There's no "re-attach" -
+construct and register a new interceptor if you need the behavior back. Most interceptors don't
+need this - it's opt-in per interceptor, not automatic.
+
+### Plugins
+
+`IStorePlugin` extends every store with cross-cutting behavior:
+
+```csharp
+public sealed class PersistencePlugin : IStorePlugin
+{
+    public void Apply(StoreBase store)
+    {
+        if (store is CounterStore counter)
+            counter.StateChanged += (_, _) => Preferences.Set("count", counter.Count);
+    }
+}
+
+builder.Services.AddSingleton<IStorePlugin, PersistencePlugin>();
+```
+
+Every registered plugin's `Apply` runs once per store, right after that store's own
+constructor has already run, in plugin-registration order. A plugin can read/write state or
+subscribe to `StateChanged`, but cannot transparently intercept an action call (use an
+`IStoreActionInterceptor` for that instead).
+
+### Registry
+
+`IStoreRegistry` (resolved automatically - there's normally no need to depend on it directly)
+exposes every store actually resolved so far, for cross-cutting introspection (e.g. a debug
+panel listing live stores). It exists purely for introspection, not caching - the DI container
+itself is already what caches and singleton-izes each store.
+
+See the `Barbatos.Wpf.Apsu` namespace in the [API Reference](#api-reference) for the full member
+list. Two worked examples ship with this repository:
+
+- **`samples/Barbatos.Wpf.Core.Sample`** - `CounterStore` (state, a getter, two actions) plus
+  `SampleActionLoggingInterceptor`, a single global interceptor also called directly from the
+  `OnDispatcherUnhandledException` lifecycle hook, showing the two error paths share one policy.
+- **`samples/Barbatos.Wpf.Aquarius.Sample`** (`ApsuInteropDemoView`/`ApsuInteropDemoViewModel`) -
+  a richer scenario against a real API (jsonplaceholder.typicode.com): `UserStore`/`OrderStore`
+  watching each other's state and calling across stores, a getter combining both, and a full
+  3-global + 3-local interceptor chain (logging, timing, audit trail, argument-based validation,
+  a state-based guard, and a cooldown) demonstrating short-circuiting at every layer.
+
+---
+
 ## AI chat + MCP (`Barbatos.Wpf.Mcp`)
 
 Every modern AI-capable desktop app now ships MCP ([Model Context
@@ -1236,8 +1513,7 @@ included; there is nothing else to install.
 - `src/Barbatos.Wpf.Core` — the library.
 - `samples/Barbatos.Wpf.Core.Sample` — a complete sample application showing DI,
   configuration, host environment, Essentials usage, and the live lifecycle event log.
-- `tests/Barbatos.Wpf.Core.UnitTests` — the unit test suite, ported from the
-  .NET MAUI hosting and Essentials tests.
+- `tests/Barbatos.Wpf.Core.UnitTests` — the unit test suite covering hosting and Essentials.
 
 ---
 

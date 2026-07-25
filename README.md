@@ -2,16 +2,18 @@
 
 ![Barbatos.Wpf logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/nuget.png?raw=true)
 
-### *Already know .NET MAUI or Vue? You already know Barbatos.Wpf.*
+### *A modern application host, ready-made platform services, and reactive state - for plain, unpackaged desktop WPF.*
 
 [![GitHub stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
 [![License](https://img.shields.io/github/license/Barbatos-Labs/Barbatos.Wpf)](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/LICENSE.md)
 
-Barbatos.Wpf ports well-established ideas from other ecosystems onto plain, unpackaged
-desktop WPF - no MAUI Blazor Hybrid, no JS runtime, no rewrite. Each package keeps its
-source ecosystem's own shape and naming wherever that maps honestly, and clearly
-documents it where WPF genuinely differs, rather than reinventing something WPF already
-does natively. It ships as several independent NuGet packages rather than one monolith -
+Barbatos.Wpf gives plain, unpackaged desktop WPF the building blocks most apps end up
+hand-rolling anyway: a real application host with dependency injection, configuration,
+logging, and lifecycle events; a broad set of ready-made platform services (app info,
+preferences, secure storage, connectivity, dialogs, tray icon, notifications, ...); and a
+reactive, composition-style approach to state and data binding that keeps ViewModels small
+and XAML declarative. Nothing extra to run - no additional runtime, no rewrite of an
+existing app. It ships as several independent NuGet packages rather than one monolith -
 install only what you need, add the rest whenever you need it.
 
 ## Packages
@@ -31,11 +33,11 @@ install only what you need, add the rest whenever you need it.
 [![Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.Core.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Core)
 [![Stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
 
-.NET MAUI's `MauiApp`/`MauiAppBuilder` hosting model and Essentials APIs (`AppInfo`,
-`Preferences`, `SecureStorage`, `Connectivity`, ...) - dependency injection,
-configuration, logging, and lifecycle events for WPF. Also ships an MCP (Model Context
-Protocol) client + bring-your-own-key AI chat feature - your app's own end user supplies
-their Gemini/Claude/ChatGPT/other API key, you never pay for their usage.
+An application host - dependency injection, configuration, logging, and lifecycle events -
+plus a broad set of ready-made platform services for WPF: `AppInfo`, `Preferences`,
+`SecureStorage`, `Connectivity`, dialogs, tray icon, notifications, and more. Also ships an
+MCP (Model Context Protocol) client + bring-your-own-key AI chat feature - your app's own
+end user supplies their Gemini/Claude/ChatGPT/other API key, you never pay for their usage.
 
 [README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Core/README.md) · [API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Core/API-REFERENCE.md)
 
@@ -55,10 +57,11 @@ their Gemini/Claude/ChatGPT/other API key, you never pay for their usage.
 [![Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.Aquarius.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Aquarius)
 [![Stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
 
-Vue 3's Composition API - `ref`/`computed`/`watch`, lifecycle hooks,
-`v-model`/`v-show`/`v-if`/`v-on`, custom directives, `<Teleport>`, `<Transition>`,
-`provide`/`inject`, `<Suspense>` - built directly on CommunityToolkit.Mvvm. No dependency
-on Core - install it standalone or alongside.
+Reactive state and composition-style bindings for WPF ViewModels and XAML: `Ref<T>`/
+`Computed<T>`/`Watch`, lifecycle hooks, structural and custom directives (`Directives.Model`/
+`Show`/`Event`/`Class`/`Style`), `Teleport`, `Transition`/`TransitionGroup`, `Provide`/
+`Inject`, `Suspense` - built directly on CommunityToolkit.Mvvm. No dependency on Core -
+install it standalone or alongside.
 
 [README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md) · [API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/API-REFERENCE.md)
 

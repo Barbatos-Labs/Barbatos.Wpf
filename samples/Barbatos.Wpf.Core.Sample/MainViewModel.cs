@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Barbatos.Wpf.ApplicationModel.Communication;
+using Barbatos.Wpf.Apsu;
 using Barbatos.Wpf.Devices;
 using Barbatos.Wpf.Dialogs;
 using Barbatos.Wpf.Mcp;
@@ -48,6 +49,7 @@ public class MainViewModel : INotifyPropertyChanged
     readonly IMcpServerRegistry _mcpServerRegistry;
     readonly IReadOnlyList<AiProviderDescriptor> _aiProviderCatalog;
     readonly SettingsStore _settingsStore;
+    readonly CounterStore _counterStore;
 
     string _heartbeatIntervalSeconds;
     string _heartbeatStatusText = string.Empty;
@@ -83,7 +85,9 @@ public class MainViewModel : INotifyPropertyChanged
         IAiApiKeyProvider aiApiKeyProvider,
         IMcpServerRegistry mcpServerRegistry,
         IOptions<AiProviderOptions> aiProviderOptions,
-        SettingsStore settingsStore)
+        SettingsStore settingsStore,
+        CounterStore counterStore,
+        SampleActivityLog activityLog)
     {
         Greeting = greetingService.GetGreeting();
         EnvironmentDescription = greetingService.GetEnvironmentDescription();
@@ -112,6 +116,7 @@ public class MainViewModel : INotifyPropertyChanged
         _aiApiKeyProvider = aiApiKeyProvider;
         _mcpServerRegistry = mcpServerRegistry;
         _settingsStore = settingsStore;
+        _counterStore = counterStore;
         // The catalog WpfProgram.CreateWpfApp seeded via ConfigureMcp's configureProvider - this
         // sample's own choice of which providers to suggest, not anything Barbatos.Wpf.Mcp
         // prescribes (see AiProviderOptions.Providers's own remarks).
@@ -119,6 +124,12 @@ public class MainViewModel : INotifyPropertyChanged
         AiProviders = _aiProviderCatalog.Select(p => p.Key!).ToList();
 
         _mcpServerRegistry.Changed += (_, _) => OnPropertyChanged(nameof(McpServersDescription));
+        _counterStore.PropertyChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Count));
+            OnPropertyChanged(nameof(DoubleCountLabel));
+        };
+        activityLog.Logged += LogLifecycleEvent;
         _aiChat.ConfigurationChanged += (_, _) => _ = RefreshAiStatusAsync();
         _ = RefreshAiStatusAsync();
 
@@ -241,6 +252,23 @@ public class MainViewModel : INotifyPropertyChanged
 
     public void LogLifecycleEvent(string message) =>
         LifecycleEvents.Add($"[{DateTime.Now:HH:mm:ss.fff}] {message}");
+
+    /// <summary>State, read straight through from <see cref="CounterStore"/> - forwarded into
+    /// this ViewModel's own <see cref="PropertyChanged"/> by the subscription set up above.</summary>
+    public int Count => _counterStore.Count;
+
+    /// <summary>A getter, read straight through from <see cref="CounterStore"/>.</summary>
+    public string DoubleCountLabel => _counterStore.DoubleCountLabel;
+
+    /// <summary>Calls the store's action directly - no ViewModel-side logic involved.</summary>
+    public void IncrementCounter() => _counterStore.Increment();
+
+    /// <summary>
+    /// Deliberately does not catch anything - see <see cref="CounterStore.SimulateError"/> and
+    /// <see cref="WpfProgram.CreateWpfApp"/>'s <c>OnDispatcherUnhandledException</c> lifecycle
+    /// hook for what happens to the exception.
+    /// </summary>
+    public void SimulateCounterError() => _counterStore.SimulateError();
 
     public bool RunOnStartupEnabled
     {

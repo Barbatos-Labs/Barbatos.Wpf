@@ -1,0 +1,88 @@
+using System.Net.Http;
+using Barbatos.Wpf.Apsu;
+using Barbatos.Wpf.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Barbatos.Wpf.Aquarius.Sample;
+
+/// <summary>
+/// Composes the <see cref="WpfApp"/> host, mirroring .NET MAUI's <c>MauiProgram</c> pattern (and
+/// <c>Barbatos.Wpf.Core.Sample</c>'s own <c>WpfProgram</c>).
+/// </summary>
+public static class WpfProgram
+{
+    public static WpfApp CreateWpfApp()
+    {
+        var builder = WpfApp.CreateBuilder();
+
+        // Shared by UserStore/OrderStore for real network calls to a free fake REST API, instead
+        // of Task.Delay simulations - a single long-lived HttpClient (not one per call/request),
+        // the standard guidance for avoiding socket exhaustion.
+        builder.Services.AddSingleton(new HttpClient { BaseAddress = new Uri("https://jsonplaceholder.typicode.com/") });
+
+        // The single shared sink every interceptor below reports into (see its own remarks for
+        // why) - DI-constructed (it has no dependencies of its own), so every interceptor below
+        // just asks for it via the container instead of a local variable being threaded through
+        // by hand.
+        builder.Services.AddSingleton<ApsuActivityLog>();
+
+        // The full 3-global + 3-local interceptor chain this session's own unit tests
+        // (StoreActionInterceptorTests.SixChainedInterceptorsAllRunInOrderWhenEveryOneCallsNext /
+        // AnyInterceptorBlockingInASixDeepChainPreventsTheActionAndEverythingAfterIt) verify in
+        // the abstract - this is the same shape with real, distinct responsibilities. Registered
+        // before AddStore<T>() so every interceptor is already in place by the time any store is
+        // first resolved (registration order among these calls otherwise does not matter). Only
+        // registered as IStoreActionInterceptor/keyed - nothing outside this method ever needs an
+        // interceptor instance directly, the same way a Pinia plugin is never imported into a
+        // component once pinia.use(plugin) has registered it.
+        //
+        // Four of the six need nothing but ApsuActivityLog, so DI constructs them outright - no
+        // `new` anywhere for these. The other two (timing warning, checkout cooldown) also need a
+        // plain TimeSpan, which the container has no way to invent on its own - a factory is the
+        // normal way any DI container handles "this one value comes from code, not a service",
+        // not a limitation specific to this library.
+
+        // Global #1-#3: every one wraps every action on every store, in this registration order
+        // (outermost to innermost) - see each type for what it does.
+        builder.Services.AddSingleton<IStoreActionInterceptor, ApsuActionLoggingInterceptor>();
+
+        // 200ms: a single JSONPlaceholder round-trip is typically well under this, but
+        // CheckoutAsync's own call also awaits UserStore.RefreshProfileAsync's separate
+        // round-trip afterward, so the *composite* call crosses it more often than either alone.
+        // Real (if fake-API) network latency now, not a fixed Task.Delay - the threshold is
+        // measuring something genuinely variable.
+        builder.Services.AddSingleton<IStoreActionInterceptor>(sp =>
+            new ApsuTimingWarningInterceptor(TimeSpan.FromMilliseconds(200), sp.GetRequiredService<ApsuActivityLog>()));
+
+        builder.Services.AddSingleton<IStoreActionInterceptor, ApsuAuditTrailInterceptor>();
+
+        // Barbatos.Wpf.Apsu stores - see UserStore/OrderStore for the cross-store scenarios
+        // (watch, explicit cross-store action calls, a getter combining both) they demonstrate.
+        // OrderStore's constructor depends on UserStore, so both must be registered; which one
+        // is registered first does not matter; resolution order is decided by whichever is
+        // resolved first (here, OrderStore, since MainViewModel asks for it first below). Each
+        // store's own local interceptors are declared right inside its own AddStore call, one
+        // call total per store instead of a separate AddStoreInterceptor call per interceptor
+        // plus a trailing AddStore.
+        builder.Services.AddSingleton<IStorePlugin, UserSessionPersistencePlugin>();
+
+        // Local: UserStore.SelectUser only.
+        builder.Services.AddStore<UserStore>(i => i.Add<UserIdValidationInterceptor>());
+
+        // Local: both wrap OrderStore.CheckoutAsync, stacked (cartGuard outer, checkoutCooldown
+        // inner, per Add() order) on top of the 3 global ones above - local interceptors compose
+        // with each other exactly like global ones do, not just with the global layer. cartGuard
+        // deliberately added first: it checks a precondition and should run before
+        // checkoutCooldown spends a cooldown "token" on a call that was going to be rejected
+        // anyway - otherwise, repeatedly clicking Checkout on an empty cart would eventually get
+        // blocked by the cooldown instead of the (more specific, more useful) empty-cart message.
+        builder.Services.AddStore<OrderStore>(i => i
+            .Add<NonEmptyCartGuardInterceptor>()
+            .Add(sp => new CheckoutCooldownInterceptor(TimeSpan.FromSeconds(3), sp.GetRequiredService<ApsuActivityLog>())));
+
+        builder.Services.AddSingleton<MainViewModel>();
+        builder.Services.AddSingleton<MainWindow>();
+
+        return builder.Build();
+    }
+}
