@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <Version>2.2.0</Version>
-    <AssemblyVersion>2.2.0</AssemblyVersion>
+    <Version>2.3.0</Version>
+    <AssemblyVersion>2.3.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -13,7 +13,7 @@
     <CommonTags>dotnet;wpf;windows;desktop;presentation;hosting;dependencyinjection;essentials;notifications;trayicon;splashscreen</CommonTags>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <Copyright>(c) 2026 Barbatos Labs | Pham The Hung and Barbatos.Wpf. All rights reserved.</Copyright>
+    <Copyright>(c) 2026 Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors. All rights reserved.</Copyright>
     <Description>Part of Barbatos.Wpf - a family of libraries that bring proven application-development ergonomics to plain desktop WPF.</Description>
     <PackageProjectUrl>https://github.com/Barbatos-Labs/Barbatos.Wpf</PackageProjectUrl>
     <PackageReleaseNotes>https://github.com/Barbatos-Labs/Barbatos.Wpf/releases</PackageReleaseNotes>

@@ -12,5 +12,8 @@ reference:
 - **[Barbatos.Wpf.Aquarius API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/API-REFERENCE.md)** -
   `Barbatos.Wpf.Aquarius.Reactivity`, `Barbatos.Wpf.Aquarius.Composition`,
   `Barbatos.Wpf.Aquarius.Xaml`, `Barbatos.Wpf.Aquarius.Animation`.
+- **[Barbatos.Wpf.AquariusRouter API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusRouter/API-REFERENCE.md)** -
+  `Barbatos.Wpf.AquariusRouter.Matching`, `Barbatos.Wpf.AquariusRouter.Routing`,
+  `Barbatos.Wpf.AquariusRouter.Xaml`.
 
-See the [root README](https://github.com/Barbatos-Labs/Barbatos.Wpf#readme) for an overview of both packages.
+See the [root README](https://github.com/Barbatos-Labs/Barbatos.Wpf#readme) for an overview of all three packages.

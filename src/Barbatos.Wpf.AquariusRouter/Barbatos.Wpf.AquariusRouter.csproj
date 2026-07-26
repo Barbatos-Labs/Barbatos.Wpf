@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Barbatos.Wpf.AquariusRouter</PackageId>
+    <TargetFrameworks>net10.0-windows;net9.0-windows;net8.0-windows</TargetFrameworks>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <UseWPF>true</UseWPF>
+    <!-- Full override, not an append to the shared $(CommonTags) - same reasoning as
+         Barbatos.Wpf.Aquarius.csproj: the shared value bakes in Core-specific words that
+         don't describe this package and would mislead NuGet search. -->
+    <CommonTags>dotnet;wpf;windows;desktop;presentation;router;routing;navigation;spa;compositionapi;mvvm;xaml</CommonTags>
+    <Description>A Vue Router-style navigation system for WPF - path matching with params/aliases/redirects, nested routes and named outlets via RouterView, navigation guards, and RouterLink - built directly on Barbatos.Wpf.Aquarius.</Description>
+    <RootNamespace>Barbatos.Wpf.AquariusRouter</RootNamespace>
+    <PackageIconSourceFile>aquariusrouter-logo.png</PackageIconSourceFile>
+    <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply.
+         IL2075/IL2067 cover this package's own use of Setup's Activator.CreateInstance(Type)-based
+         resolution path for constructing routed Views, inherently dynamic by design (see RouterView's
+         XML docs), matching the same suppression Barbatos.Wpf.Aquarius.csproj already carries for
+         Setup itself. -->
+    <NoWarn>$(NoWarn);IL2026;IL3050;IL2075;IL2067</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AquariusRouter reuses Ref<T> (CurrentRoute), Setup (View/ViewModel construction), and
+         Directives.Event/Command (RouterLink click-wiring) directly - the same kind of hard
+         dependency vue-router itself has on vue. Confirmed with the user before adding this:
+         no other src/ package in this repo references another src/ package yet. -->
+    <ProjectReference Include="..\Barbatos.Wpf.Aquarius\Barbatos.Wpf.Aquarius.csproj" />
+  </ItemGroup>
+
+</Project>

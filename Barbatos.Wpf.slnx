@@ -16,10 +16,12 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Barbatos.Wpf.Aquarius/Barbatos.Wpf.Aquarius.csproj" />
+    <Project Path="src/Barbatos.Wpf.AquariusRouter/Barbatos.Wpf.AquariusRouter.csproj" />
     <Project Path="src/Barbatos.Wpf.Core/Barbatos.Wpf.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Barbatos.Wpf.Aquarius.UnitTests/Barbatos.Wpf.Aquarius.UnitTests.csproj" />
+    <Project Path="tests/Barbatos.Wpf.AquariusRouter.UnitTests/Barbatos.Wpf.AquariusRouter.UnitTests.csproj" />
     <Project Path="tests/Barbatos.Wpf.Core.UnitTests/Barbatos.Wpf.Core.UnitTests.csproj" />
   </Folder>
 </Solution>

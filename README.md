@@ -67,14 +67,40 @@ install it standalone or alongside.
 
 </td>
 </tr>
+<tr>
+<td width="72" align="center">
+<a href="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusRouter/README.md">
+<img src="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/nuget.png?raw=true" width="64" height="64" alt="Barbatos.Wpf.AquariusRouter" />
+</a>
+</td>
+<td>
+
+**[Barbatos.Wpf.AquariusRouter](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusRouter/README.md)**
+&nbsp;
+[![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.AquariusRouter.svg)](https://www.nuget.org/packages/Barbatos.Wpf.AquariusRouter)
+[![Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.AquariusRouter.svg)](https://www.nuget.org/packages/Barbatos.Wpf.AquariusRouter)
+[![Stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
+
+A Vue Router-style navigation system for WPF, built directly on Aquarius: path matching with
+params/optional/repeatable segments/custom regex, nested routes, named outlets via
+`RouterView`, navigation guards (`IOnBeforeRouteEnter`/`Update`/`Leave`), redirect/alias, and
+`RouterLink` with live active-state styling.
+
+[README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusRouter/README.md) · [API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusRouter/API-REFERENCE.md)
+
+</td>
+</tr>
 </table>
 
-Both packages share the same `Barbatos.Wpf` root C# namespace and target
-`net8.0-windows`/`net9.0-windows`/`net10.0-windows`.
+All packages share the same `Barbatos.Wpf` root C# namespace and target
+`net8.0-windows`/`net9.0-windows`/`net10.0-windows`. `Barbatos.Wpf.AquariusRouter` additionally
+depends on `Barbatos.Wpf.Aquarius` itself (the same way `vue-router` depends on `vue`) - install
+both together.
 
 ```powershell
 dotnet add package Barbatos.Wpf.Core
 dotnet add package Barbatos.Wpf.Aquarius
+dotnet add package Barbatos.Wpf.AquariusRouter
 ```
 
 ## Templates
