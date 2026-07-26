@@ -595,6 +595,7 @@ registered when its `Configure...` method is called, binds its own configuration
 | Push notifications (adaptive toast, images/buttons/navigation) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` | Yes |
 | Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
 | Realtime push notification listener (SignalR) | `ConfigurePushNotifications()` | `Barbatos:PushNotifications` | `IPushNotificationService` | Yes |
+| Keyboard shortcuts (in-app + `RegisterHotKey` global hotkeys) | `ConfigureInputSystem(...)` | `Barbatos:InputSystem` | `IInputSystemService` | Yes |
 
 "Enabled by default" means what happens the moment you call the `Configure...` method with no
 further setup — every feature is still opt-in at the *builder* level (call the method, or the
@@ -610,6 +611,15 @@ builder.ConfigureTrayIcon(options =>
     options.MenuItems.Add(new TrayMenuItem("Exit", App.ExitApplication));
 });
 builder.ConfigureNotifications();
+builder.ConfigureInputSystem(options =>
+{
+    var shortcuts = new InputActionMap("AppShortcuts");
+    shortcuts.AddAction("QuickEntry")
+        .AddKeyBinding(Key.K, ModifierKeys.Control)      // in-app only
+        .AddGlobalBinding(Key.Space, ModifierKeys.Control | ModifierKeys.Alt); // works even minimized
+    options.ActionMaps.Add(shortcuts);
+});
+// after Build(): app.Services.GetRequiredService<IInputSystemService>().FindAction("QuickEntry")!.Performed += (_, _) => ShowQuickEntry();
 ```
 
 And from a configuration file:
@@ -621,7 +631,8 @@ And from a configuration file:
     "RunOnStartup": { "Enabled": true },
     "TrayIcon": { "Enabled": true, "ToolTip": "My app" },
     "KeepAwake": { "Enabled": true, "KeepDisplayOn": false },
-    "Notifications": { "Enabled": true }
+    "Notifications": { "Enabled": true },
+    "InputSystem": { "Enabled": true }
   }
 }
 ```
@@ -714,14 +725,37 @@ Notes:
     `"RegisterDevice"`/`"ReceiveNotification"`) are configurable via `ConfigurePushNotifications`'s
     `configureSignalR` parameter (or the `Barbatos:PushNotifications:SignalR` config section) to
     match whatever hub method names your specific server actually uses.
-
-> **Note:** an earlier version of this library had a `ConfigureGlobalHotkeys` feature
-> (system-wide keyboard shortcuts via `RegisterHotKey`, for a "Quick Entry" hotkey). It has
-> been removed in favor of `IAppActions` (taskbar Jump List shortcuts — see
-> [Essentials](#essentials) above) instead, which better matches what "app actions" means on
-> Windows. A global keyboard hotkey is a materially different capability; if you need one,
-> `RegisterHotKey`/`UnregisterHotKey` P/Invoke is straightforward to reintroduce as your own
-> `IWpfInitializeService`.
+- InputSystem unifies three binding kinds under one `InputAction`: `KeyBinding` (in-app, requires
+  keyboard focus — optionally scoped to a specific `FrameworkElement` via `InputActionMap.Scope`
+  instead of the whole app), `GlobalKeyBinding` (a true OS-level hotkey via `RegisterHotKey`,
+  fires even while unfocused/minimized), and `ChordBinding` (an in-app *sequence* of combinations
+  pressed one after another within a timeout — VS Code's "leader key" shortcuts, e.g. `Ctrl+K`
+  then `Ctrl+P`). An action can carry a `KeyBinding` and a `GlobalKeyBinding` for the same
+  combination — the same `Performed` event fires from either source. In practice only the global
+  path ever actually fires from a real keystroke while the app is focused: once `RegisterHotKey`
+  claims a combination, Windows routes every press of it into `WM_HOTKEY` exclusively,
+  system-wide, for as long as the registration holds — *including* while the registering app's
+  own window has focus — so the ordinary `WM_KEYDOWN`/`WM_KEYUP` sequence the `KeyBinding` half
+  relies on simply never arrives for that exact combination in the first place; there is no
+  double-firing to suppress because the two paths structurally cannot both fire for one physical
+  keystroke. The `KeyBinding` half is really a fallback for the (rare) case the global
+  registration itself fails, e.g. another app already owns that exact combination. Matching is
+  always exact (`ModifierKeys.None` never matches with a modifier held, like WPF's own native
+  `KeyGesture`), and `IInputInteraction` (`HoldInteraction`, `TapInteraction`,
+  `MultiTapInteraction`, `PressInteraction`) reinterprets raw press/release into gestures like
+  "held for 2 seconds" — conceptually ported from Unity's Input System (Actions/Bindings/
+  Interactions), narrowed to what a keyboard-only desktop app actually needs: no Composite
+  Bindings (WPF's own `ModifierKeys` flags enum already collapses a modifier+key chord into one
+  binding), no Control Schemes (there's only one device family), no Processors/Device abstraction
+  layer/`.inputactions` file format/haptics/XR/mobile — none of that carries over.
+  `GlobalKeyBinding` specifically cannot carry an interaction, and there is no global counterpart
+  of `ChordBinding` either: `RegisterHotKey`/`WM_HOTKEY` has no "released" message and delivers a
+  single edge-triggered notification per press, a hard OS constraint rather than a design choice
+  — a sequence is tracked entirely from WPF's own key events, which never arrive while unfocused
+  in the first place. Bindings can be changed at runtime — e.g. for a user-facing "customize your
+  shortcuts" screen — via `InputAction.RemoveBinding`/`ClearBindings`; a `KeyBinding`/`ChordBinding`
+  change takes effect on the very next keystroke automatically, while a `GlobalKeyBinding` change
+  additionally needs `IInputSystemService.RefreshBindings()` to actually re-register with the OS.
 
 ---
 

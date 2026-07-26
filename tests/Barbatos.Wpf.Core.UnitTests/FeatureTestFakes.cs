@@ -4,8 +4,10 @@
 // All Rights Reserved.
 
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
 using Barbatos.Wpf.ApplicationModel;
 using Barbatos.Wpf.Devices;
+using Barbatos.Wpf.Input;
 using Barbatos.Wpf.Mcp;
 using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.Power;
@@ -33,6 +35,36 @@ public sealed class FakePowerManager : IPowerManager
     public List<(bool KeepAwake, bool KeepDisplayOn)> Calls { get; } = new();
 
     public void SetKeepAwake(bool keepAwake, bool keepDisplayOn) => Calls.Add((keepAwake, keepDisplayOn));
+}
+
+/// <summary>Ported from this library's own earlier (removed) <c>ConfigureGlobalHotkeys</c> feature's own identically-shaped test double - dictionaries + <see cref="RaiseHotkeyPressed"/>, adapted off the old string-parsed gesture onto <see cref="Key"/>/<see cref="ModifierKeys"/>.</summary>
+public sealed class FakeHotkeyPlatform : IHotkeyPlatform
+{
+    public Dictionary<int, (Key Key, ModifierKeys Modifiers)> Registered { get; } = new();
+
+    public List<int> Unregistered { get; } = new();
+
+    /// <summary>When set, <see cref="Register"/> returns <see langword="false"/> without recording - simulates the OS rejecting a hotkey another process (or another action) already owns.</summary>
+    public bool RejectRegistrations { get; set; }
+
+    public event EventHandler<int>? HotkeyPressed;
+
+    public bool Register(int id, Key key, ModifierKeys modifiers)
+    {
+        if (RejectRegistrations)
+            return false;
+
+        Registered[id] = (key, modifiers);
+        return true;
+    }
+
+    public void Unregister(int id)
+    {
+        Registered.Remove(id);
+        Unregistered.Add(id);
+    }
+
+    public void RaiseHotkeyPressed(int id) => HotkeyPressed?.Invoke(this, id);
 }
 
 public sealed class FakeTrayIconPlatform : ITrayIconPlatform

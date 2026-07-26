@@ -19,6 +19,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.Tray`](#barbatoswpftray-namespace)** | The system tray icon optional feature. |
 | **[`Barbatos.Wpf.Power`](#barbatoswpfpower-namespace)** | The keep-awake optional feature. |
 | **[`Barbatos.Wpf.Startup`](#barbatoswpfstartup-namespace)** | The run-on-startup optional feature. |
+| **[`Barbatos.Wpf.Input`](#barbatoswpfinput-namespace)** | The keyboard-shortcut optional feature: in-app `KeyBinding` and OS-level `GlobalKeyBinding` unified under one `InputAction` model, plus Hold/Tap/MultiTap/Press interactions. |
 | **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The push notifications optional feature. |
 | **[`Barbatos.Wpf.PushNotifications`](#barbatoswpfpushnotifications-namespace)** | The realtime push-notification client optional feature (SignalR). |
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
@@ -596,6 +597,108 @@ Registers/unregisters the app in the current user's `Run` registry key.
 ### `RunOnStartupOptions`
 
 - **`Enabled`** (`bool`)
+
+---
+
+## `Barbatos.Wpf.Input` Namespace
+
+Keyboard shortcuts — in-app and true OS-level global hotkeys, unified under one `InputAction`
+model conceptually ported from Unity's Input System (Actions/Bindings/Interactions), narrowed to
+what a keyboard-only desktop app needs. See the root README's own "InputSystem" bullet under
+[Optional desktop features](README.md#optional-desktop-features) for the full rationale of what
+was ported vs. deliberately dropped.
+
+### `IInputSystemService`
+
+- **`IsEnabled`** (`bool`), **`SetEnabled(bool)`**, **`IsEnabledChanged`** (event) — master switch;
+  disabling unregisters every global hotkey, resets every in-progress `IInputInteraction`, and
+  resets every in-progress `ChordBinding` attempt back to its first step.
+- **`ActionMaps`** (`IReadOnlyList<InputActionMap>`), **`AddActionMap(InputActionMap)`**,
+  **`RemoveActionMap(InputActionMap)`** (`bool`).
+- **`RefreshBindings()`** — re-registers every reachable `GlobalKeyBinding` with the OS and
+  reclaims cached per-binding state for any binding no longer reachable from any current action.
+  Only strictly required after a `GlobalKeyBinding` change made directly on an action's bindings
+  (outside `AddActionMap`/`RemoveActionMap`) — a `KeyBinding`/`ChordBinding` change already takes
+  effect on the very next keystroke without it, since bindings are read fresh every time, never
+  cached — but calling it after any binding mutation is harmless and is what reclaims memory.
+- **`FindAction(string name)`** (`InputAction?`), **`FindActionMap(string name)`** (`InputActionMap?`) —
+  the usual way to attach a `.Performed` handler once app code has a dependency (e.g. a router)
+  that wasn't available yet when the maps were declared in `ConfigureInputSystem`.
+- **`ProcessKeyDown(Key, ModifierKeys)`** / **`ProcessKeyUp(Key, ModifierKeys)`** — what the real
+  WPF key-event wiring calls internally; also directly usable to script a shortcut
+  programmatically or to unit test action wiring without a real window or keyboard.
+
+### `InputSystemOptions`
+
+- **`Enabled`** (`bool`, default `true`).
+- **`ActionMaps`** (`IList<InputActionMap>`) — code-only, like `TrayIconOptions.MenuItems`.
+
+### `InputActionMap`
+
+- `InputActionMap(string name, FrameworkElement? scope = null)`.
+- **`Scope`** (`FrameworkElement?`) — `KeyBinding`s on this map only fire while `Scope.IsKeyboardFocusWithin`
+  is `true`; `null` means "active whenever the app has focus". Never affects `GlobalKeyBinding`.
+- **`Enabled`** (`bool`, default `true`) — bulk enable/disable for every action in the map.
+- **`Actions`** (`IReadOnlyList<InputAction>`), **`AddAction(InputAction)`**, **`AddAction(string name)`** (`InputAction`).
+
+### `InputAction`
+
+- `InputAction(string name)`.
+- **`Bindings`** (`IReadOnlyList<InputBinding>`), **`AddBinding(InputBinding)`**,
+  **`AddKeyBinding(Key, ModifierKeys, IInputInteraction?)`**, **`AddGlobalBinding(Key, ModifierKeys)`**,
+  **`AddChordBinding(params (Key, ModifierKeys)[])`**, **`AddChordBinding(TimeSpan stepTimeout, params (Key, ModifierKeys)[])`** —
+  all return `this`/the action, chainable.
+- **`RemoveBinding(InputBinding)`** (`bool`) — removes by reference identity; `false` if not
+  present. **`ClearBindings()`** — removes every binding, returns `this`. A `KeyBinding`/
+  `ChordBinding` removal takes effect on the next keystroke automatically; a `GlobalKeyBinding`
+  removal additionally needs `IInputSystemService.RefreshBindings()` to actually re-register
+  with the OS — the mechanism a runtime shortcut-customization UI would use to let a user rebind
+  an action to a different key.
+- **`Phase`** (`InputActionPhase`) — the most recent Started/Performed/Canceled transition.
+- **`Started`**, **`Performed`**, **`Canceled`** (`EventHandler<InputActionContext>`) — the same
+  events fire regardless of which binding (in-app, global, or chord) triggered them.
+
+### `InputBinding` / `SingleKeyBinding` / `KeyBinding` / `GlobalKeyBinding` / `ChordBinding`
+
+- `InputBinding` (abstract) — the common base of every binding kind; carries no members of its
+  own.
+- `SingleKeyBinding` (abstract, `: InputBinding`) — one key/modifier combination pressed at once;
+  the base of `KeyBinding`/`GlobalKeyBinding`. **`Key`**, **`Modifiers`** (`ModifierKeys`),
+  **`Interaction`** (`IInputInteraction?`), **`Matches(Key, ModifierKeys)`** (`bool`, exact match
+  only — like WPF's own native `KeyGesture`).
+- `KeyBinding(Key, ModifierKeys = None, IInputInteraction? = null)` — in-app, requires focus.
+- `GlobalKeyBinding(Key, ModifierKeys = None)` — OS-level via `RegisterHotKey`; `Interaction` is
+  always `null` (`RegisterHotKey`/`WM_HOTKEY` has no "released" message).
+- `ChordBinding(params (Key, ModifierKeys)[] steps)` (`: InputBinding`) — an in-app *sequence* of
+  combinations pressed one after another (VS Code's "leader key" shortcuts, e.g. `Ctrl+K` then
+  `Ctrl+P`); throws `ArgumentException` for fewer than two steps or a `Key.None` step. No
+  `Interaction` slot (the sequence itself is the gesture) and no global counterpart (a sequence
+  needs WPF's own key events, which never arrive while unfocused).
+  - **`Steps`** (`IReadOnlyList<(Key Key, ModifierKeys Modifiers)>`)
+  - **`StepTimeout`** (`TimeSpan`, settable, defaults to `ChordBinding.DefaultStepTimeout` — 1.5s)
+    — how long to wait for the next step before canceling the attempt; re-armed after every
+    successful non-final step, not just the first.
+  - **`MatchesStep(int stepIndex, Key, ModifierKeys)`** (`bool`) — `false` for an out-of-range
+    index rather than throwing.
+  - A bare modifier keypress (`Key.LeftCtrl`/`RightCtrl`/etc.) never counts as a step and never
+    cancels a pending sequence — the same way it's already a no-op against a plain `KeyBinding`.
+    An off-sequence key at any step cancels the whole attempt back to step zero.
+
+### `IInputInteraction` / built-ins
+
+- `IInputInteraction` — **`Process(ref InputInteractionContext)`**, **`Reset()`**.
+- `InputInteractionContext` — **`IsPressed`**, **`IsTimeout`** (`bool`); **`Started()`**,
+  **`Performed()`**, **`Canceled()`** — independent flags, more than one can be called per
+  `Process` (e.g. Started+Performed together); **`SetTimeout(TimeSpan)`** requests a follow-up
+  `Process` call.
+- `DefaultInteraction` — the implicit behavior when `Interaction` is `null`: Started+Performed
+  together on press, Canceled on release.
+- `HoldInteraction(TimeSpan duration)` — performs only after being held ≥ `duration`.
+- `TapInteraction(TimeSpan maxDuration)` — performs on a release within `maxDuration`.
+- `MultiTapInteraction(int tapCount, TimeSpan tapTime, TimeSpan tapDelay)` — performs after
+  `tapCount` taps, each ≤ `tapTime` held and ≤ `tapDelay` apart (e.g. a double-tap).
+- `PressInteraction(PressInteractionTrigger = Press)` — `Press`/`Release`/`PressAndRelease`,
+  an explicit alternative to `DefaultInteraction`'s implicit on-press behavior.
 
 ---
 
