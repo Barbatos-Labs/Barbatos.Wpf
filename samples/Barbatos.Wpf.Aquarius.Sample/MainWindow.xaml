@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Barbatos.Wpf.Aquarius.Sample"
         xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+        xmlns:shared="clr-namespace:Barbatos.Wpf.Samples.Shared;assembly=Barbatos.Wpf.Samples.Shared"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=local:MainViewModel}"
         Title="Barbatos.Wpf.Aquarius Sample"
@@ -87,6 +88,17 @@
 
             <TabItem Header="Apsu + Aquarius">
                 <local:ApsuInteropDemoView DataContext="{Binding ApsuInteropDemo}" />
+            </TabItem>
+
+            <!--
+                Unlike every tab above, no DataContext binding here at all - InfoCardView is
+                deliberately self-sufficient (aq:Setup.Enable resolves its own ViewModel), unlike
+                this sample's own Views, which are all constructed and bound by MainViewModel.
+                Defined once in Barbatos.Wpf.Samples.Shared and reused unmodified in
+                Barbatos.Wpf.AquariusRouter.Sample too (see its own AppRoutes.cs, "/shared-demo").
+            -->
+            <TabItem Header="Shared">
+                <shared:InfoCardView Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top" />
             </TabItem>
         </TabControl>
 

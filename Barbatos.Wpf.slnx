@@ -2,6 +2,7 @@
   <Folder Name="/samples/">
     <Project Path="samples/Barbatos.Wpf.Aquarius.Sample/Barbatos.Wpf.Aquarius.Sample.csproj" />
     <Project Path="samples/Barbatos.Wpf.Core.Sample/Barbatos.Wpf.Core.Sample.csproj" />
+    <Project Path="samples/Barbatos.Wpf.Samples.Shared/Barbatos.Wpf.Samples.Shared.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />

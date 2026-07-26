@@ -23,6 +23,9 @@
          so this sample can demonstrate combining Barbatos.Wpf.Apsu (Core's Pinia-style store
          module) with Aquarius's own Composition API, see ApsuInteropDemoView. -->
     <ProjectReference Include="..\..\src\Barbatos.Wpf.Core\Barbatos.Wpf.Core.csproj" />
+    <!-- A component shared with Barbatos.Wpf.AquariusRouter.Sample (see InfoCardView) - both
+         samples reference this shared library directly, never each other. -->
+    <ProjectReference Include="..\Barbatos.Wpf.Samples.Shared\Barbatos.Wpf.Samples.Shared.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,25 @@
+<UserControl x:Class="Barbatos.Wpf.Samples.Shared.InfoCardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             aq:Setup.Enable="True">
+    <!--
+        Deliberately self-sufficient: aq:Setup.Enable resolves InfoCardViewModel via naming
+        convention (Setup.ServiceProvider-first-else-Activator.CreateInstance) wherever this View
+        is dropped - no parent needs to construct or bind a DataContext for it. This is what makes
+        it safely reusable in two apps with otherwise different composition styles:
+        Barbatos.Wpf.AquariusRouter.Sample (via RouteRecord.View - Router only ever constructs the
+        View type itself, see Router.cs's own remarks, so a routed View always needs to resolve
+        its own DataContext this way) and Barbatos.Wpf.Aquarius.Sample (whose own demo Views are
+        instead manually bound to a DataContext from MainViewModel - mixing that pattern with
+        aq:Setup.Enable on the SAME element would race: Setup.OnInitialized unconditionally
+        overwrites DataContext with no check for an already-set value, so an explicit binding
+        would just get silently clobbered).
+    -->
+    <Border Background="#F4F6FB" BorderBrush="#D8DEEA" BorderThickness="1" CornerRadius="8" Padding="16">
+        <StackPanel>
+            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Margin="0,6,0,0" Text="{Binding Description}" TextWrapping="Wrap" Foreground="#4A4A4A" />
+        </StackPanel>
+    </Border>
+</UserControl>
