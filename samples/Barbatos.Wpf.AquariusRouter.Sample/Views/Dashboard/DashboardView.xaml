@@ -1,0 +1,37 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Dashboard.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
+             xmlns:services="clr-namespace:Barbatos.Wpf.AquariusRouter.Sample.Services"
+             aq:Setup.Enable="True">
+    <UserControl.Resources>
+        <services:PremiumAccessConverter x:Key="PremiumAccess" />
+    </UserControl.Resources>
+    <StackPanel Margin="24">
+        <TextBlock Text="Dashboard" FontSize="24" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,16" TextWrapping="Wrap"
+                   Text="This route only rendered because DashboardViewModel.OnBeforeRouteEnter checked AuthState.IsLoggedIn and let the navigation continue. It also declares a second, named 'sidebar' outlet (see MainWindow.xaml) - fed from the SAME route record's RouteRecord.Views map." />
+        <CheckBox Margin="0,0,0,12" Content="Admin privileges (required by the /admin route's per-route BeforeEnter guard)"
+                  IsChecked="{Binding AuthState.IsAdmin}" />
+        <CheckBox Margin="0,0,0,12" Content="Premium plan (required by the /settings subtree's Meta[&quot;requiresPremium&quot;])"
+                  IsChecked="{Binding AuthState.IsPremium}" />
+        <Button Content="Log Out" Padding="8,4" HorizontalAlignment="Left" Command="{Binding LogOutCommand}" />
+        <!-- A SECOND entry point into the exact same nested route Settings' own sidebar links to
+             directly (see SettingsShellView) - and a THIRD one lives on Preferences too.
+             RouterLink.To only accepts a ButtonBase or a Hyperlink (see RouterLink's own remarks) -
+             a Button styled with no chrome is what reads as a plain text link here. This route's
+             own "/settings" ancestor also requires the premium plan (see AppRoutes) - toggle the
+             checkbox above and watch this button enable/disable live. -->
+        <Button Margin="0,16,0,0" Content="Notification preferences →" HorizontalAlignment="Left" Padding="0"
+                Background="Transparent" BorderThickness="0" Foreground="#2050C0" Cursor="Hand"
+                aqr:RouterLink.To="/settings/notifications">
+            <Button.IsEnabled>
+                <MultiBinding Converter="{StaticResource PremiumAccess}">
+                    <Binding Path="AuthState.IsLoggedIn" />
+                    <Binding Path="AuthState.IsPremium" />
+                </MultiBinding>
+            </Button.IsEnabled>
+        </Button>
+    </StackPanel>
+</UserControl>

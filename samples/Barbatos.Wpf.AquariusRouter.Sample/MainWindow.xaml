@@ -1,0 +1,84 @@
+<Window x:Class="Barbatos.Wpf.AquariusRouter.Sample.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
+        xmlns:services="clr-namespace:Barbatos.Wpf.AquariusRouter.Sample.Services"
+        Title="Barbatos.Wpf.AquariusRouter Sample" Height="600" Width="900">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <!-- Hides every nav RouterLink while logged out; a premium-gated one then stays visible
+             but disabled once logged in on the free plan - see PremiumAccessConverter below and
+             AuthState's own remarks. -->
+        <services:LoggedInVisibilityConverter x:Key="LoggedInVisibility" />
+        <services:PremiumAccessConverter x:Key="PremiumAccess" />
+        <Style x:Key="NavLink" TargetType="Button">
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Visibility" Value="{Binding AuthState.IsLoggedIn, Converter={StaticResource LoggedInVisibility}}" />
+            <Style.Triggers>
+                <!-- The native-WPF mapping of Vue Router's linkActiveClass: a plain bindable bool
+                     consumed via an ordinary DataTrigger instead of a CSS class name. -->
+                <DataTrigger Binding="{Binding (aqr:RouterLink.IsActive), RelativeSource={RelativeSource Self}}" Value="True">
+                    <Setter Property="FontWeight" Value="Bold" />
+                    <Setter Property="Foreground" Value="#2050C0" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="12" VerticalAlignment="Center">
+            <Button Content="Home" Style="{StaticResource NavLink}" aqr:RouterLink.To="/" />
+            <Button Content="About" Style="{StaticResource NavLink}" aqr:RouterLink.To="/about" />
+            <!-- InfoCardView is defined in Barbatos.Wpf.Samples.Shared and reused unmodified in
+                 Barbatos.Wpf.Aquarius.Sample too - see AppRoutes.cs's own remarks. -->
+            <Button Content="Shared component" Style="{StaticResource NavLink}" aqr:RouterLink.To="/shared-demo" />
+            <Button Content="User 1" Style="{StaticResource NavLink}" aqr:RouterLink.To="/users/1" />
+            <Button Content="User 2" Style="{StaticResource NavLink}" aqr:RouterLink.To="/users/2" />
+            <Button Content="Dashboard" Style="{StaticResource NavLink}" aqr:RouterLink.To="/dashboard" />
+            <Button Content="Preferences" Style="{StaticResource NavLink}" aqr:RouterLink.To="/preferences" />
+            <!-- The one premium-gated link (see AppRoutes' "/settings" Meta) - stays visible once
+                 logged in (inherited from the NavLink style above) but only enabled on the
+                 premium plan. Toggle it from Dashboard's "Premium plan" checkbox. -->
+            <Button Content="Settings" Style="{StaticResource NavLink}" aqr:RouterLink.To="/settings">
+                <Button.IsEnabled>
+                    <MultiBinding Converter="{StaticResource PremiumAccess}">
+                        <Binding Path="AuthState.IsLoggedIn" />
+                        <Binding Path="AuthState.IsPremium" />
+                    </MultiBinding>
+                </Button.IsEnabled>
+            </Button>
+            <Button Content="Admin" Style="{StaticResource NavLink}" aqr:RouterLink.To="/admin" />
+            <Button Content="Old Home (redirect)" Style="{StaticResource NavLink}" aqr:RouterLink.To="/old-home" />
+            <Button Content="Broken Link (404)" Style="{StaticResource NavLink}" aqr:RouterLink.To="/nonexistent/path" />
+            <TextBlock Margin="20,0,0,0" VerticalAlignment="Center" FontStyle="Italic"
+                       Text="{Binding AuthState.IsLoggedIn, StringFormat='Logged in: {0}'}" />
+            <!-- Flipped around the awaited delay inside the global BeforeResolve guard - see
+                 MainViewModel.IsNavigating / AppNavigationGuards.Register. -->
+            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="Bold" Foreground="#C05000"
+                       Text="Resolving..." Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+
+        <Border DockPanel.Dock="Top" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0" />
+
+        <!-- The global AfterEach demo: every navigation attempt (including cancelled/aborted/
+             duplicated/redirected ones) gets recorded here - see NavigationHistoryLog and
+             AppNavigationGuards.Register's AfterEach. -->
+        <Border DockPanel.Dock="Right" Width="260" Margin="0,12,12,12" BorderBrush="#DDDDDD" BorderThickness="1,0,0,0" Padding="12,0,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Navigation history" FontWeight="Bold" Margin="0,0,0,8" />
+                <ListBox ItemsSource="{Binding NavigationHistory.Entries}" BorderThickness="0" Background="Transparent" />
+            </DockPanel>
+        </Border>
+
+        <DockPanel Margin="12">
+            <!-- The named-outlet demo: only /dashboard's route record declares a "sidebar" view,
+                 so this stays empty (zero size) on every other route. -->
+            <aqr:RouterView OutletName="sidebar" DockPanel.Dock="Right" Margin="12,0,0,0" />
+            <aqr:RouterView />
+        </DockPanel>
+    </DockPanel>
+</Window>

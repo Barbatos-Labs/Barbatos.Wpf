@@ -1,0 +1,58 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Settings.SettingsShellView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
+             aq:Setup.Enable="True">
+    <UserControl.Resources>
+        <Style x:Key="SettingsTabLink" TargetType="Button">
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <!-- IsExactActive, not IsActive: with "Profile" being the empty-path index child,
+                     both "Profile" and whichever OTHER tab is current would count as IsActive
+                     ("current route is this link's target or a descendant of it") since the shell
+                     record itself is always in the matched chain - only IsExactActive tells the
+                     tabs apart from one another. -->
+                <DataTrigger Binding="{Binding (aqr:RouterLink.IsExactActive), RelativeSource={RelativeSource Self}}" Value="True">
+                    <Setter Property="FontWeight" Value="Bold" />
+                    <Setter Property="Background" Value="#EEF3FF" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Styled to READ as a modal dialog - a centered card over a dimmed backdrop - but it is
+         really just this route's own View, occupying the SAME default outlet every other
+         top-level route uses (see AppRoutes.cs's remarks on /settings). A real app that wants a
+         genuinely separate OS Window instead of an in-window overlay can give that Window its own
+         RouterView with an explicit Router - AquariusRouter supports that too - but an in-window
+         overlay already demonstrates this sample's actual point: a deeply-nested route reachable
+         from several different RouterLinks (see Dashboard/Preferences) AND from a keyboard
+         shortcut (see ShortcutRouting.cs) alike. -->
+    <Grid Background="#66000000">
+        <Border Background="White" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="6"
+                MaxWidth="480" MinWidth="380" MaxHeight="320" Margin="40">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="20,16,12,12">
+                    <Button DockPanel.Dock="Right" Content="✕" Padding="8,2" aqr:RouterLink.To="/" ToolTip="Close (back to Home)" />
+                    <TextBlock Text="Settings" FontSize="20" FontWeight="Bold" />
+                </DockPanel>
+                <Border DockPanel.Dock="Top" BorderBrush="#EEEEEE" BorderThickness="0,1,0,0" />
+
+                <StackPanel DockPanel.Dock="Left" Width="140" Margin="12,16,0,16">
+                    <Button Content="Profile" Style="{StaticResource SettingsTabLink}" aqr:RouterLink.To="/settings" />
+                    <Button Content="Notifications" Style="{StaticResource SettingsTabLink}" aqr:RouterLink.To="/settings/notifications" />
+                    <Button Content="Security" Style="{StaticResource SettingsTabLink}" aqr:RouterLink.To="/settings/security" />
+                </StackPanel>
+
+                <!-- The nested outlet - finds its own depth/effective Router automatically. -->
+                <aqr:RouterView Margin="16" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

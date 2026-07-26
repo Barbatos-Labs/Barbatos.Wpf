@@ -1,0 +1,39 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Preferences.PreferencesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
+             xmlns:services="clr-namespace:Barbatos.Wpf.AquariusRouter.Sample.Services"
+             aq:Setup.Enable="True">
+    <UserControl.Resources>
+        <services:PremiumAccessConverter x:Key="PremiumAccess" />
+    </UserControl.Resources>
+    <StackPanel Margin="24">
+        <TextBlock Text="Preferences" FontSize="24" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                   Text="This route only declares Meta[&quot;requiresAuth&quot;] = true in AppRoutes.cs - PreferencesViewModel itself has no guard interface at all and knows nothing about auth. The redirect-to-login happens entirely inside AppNavigationGuards.Register's global router.BeforeEach, which reads that Meta flag." />
+        <!-- A THIRD entry point into /settings/security - see DashboardView for the second, and
+             the Settings shell's own sidebar for the first. RouterLink.To only accepts a
+             ButtonBase or a Hyperlink (see RouterLink's own remarks) - a Button styled with no
+             chrome is what reads as a plain text link here. This route's own "/settings" ancestor
+             also requires the premium plan (see AppRoutes) - reachable while already inside
+             Preferences (so no "hidden while logged out" treatment is needed, only the plan gate). -->
+        <Button Margin="0,16,0,0" Content="Manage security settings →" HorizontalAlignment="Left" Padding="0"
+                Background="Transparent" BorderThickness="0" Foreground="#2050C0" Cursor="Hand"
+                aqr:RouterLink.To="/settings/security">
+            <Button.IsEnabled>
+                <MultiBinding Converter="{StaticResource PremiumAccess}">
+                    <Binding Path="AuthState.IsLoggedIn" />
+                    <Binding Path="AuthState.IsPremium" />
+                </MultiBinding>
+            </Button.IsEnabled>
+        </Button>
+
+        <TextBlock Margin="0,24,0,0" FontWeight="SemiBold" Text="Keyboard shortcut for Dashboard" />
+        <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="Gray"
+                   Text="Applies immediately, no restart needed - and is remembered next launch." />
+        <ComboBox Margin="0,8,0,0" Width="200" HorizontalAlignment="Left"
+                  ItemsSource="{Binding DashboardShortcutPresets}"
+                  SelectedItem="{Binding SelectedDashboardShortcut}" />
+    </StackPanel>
+</UserControl>

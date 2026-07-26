@@ -1,0 +1,22 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Users.UserLayoutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
+             aq:Setup.Enable="True">
+    <DockPanel Margin="24">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock FontSize="24" FontWeight="Bold" Text="{Binding Heading}" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,16">
+                <Button Content="Overview" Margin="0,0,8,0" Padding="8,4"
+                        aqr:RouterLink.To="{Binding OverviewTarget}" />
+                <Button Content="Settings" Padding="8,4"
+                        aqr:RouterLink.To="{Binding SettingsTarget}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- The nested outlet - finds its own depth/effective Router automatically, no wiring
+             needed here beyond just declaring it inside this matched View's own content. -->
+        <aqr:RouterView />
+    </DockPanel>
+</UserControl>

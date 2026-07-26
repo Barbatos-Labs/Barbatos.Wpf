@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <Product>Barbatos.Wpf.AquariusRouter Sample</Product>
+    <Company>Barbatos Labs</Company>
+    <Version>1.0.0</Version>
+    <Copyright>Copyright (c) 2026 Barbatos Labs</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.AquariusRouter\Barbatos.Wpf.AquariusRouter.csproj" />
+    <!-- Only for the DI/hosting shell (WpfApp/WpfApplication) - AquariusRouter itself has no
+         dependency on Core, same positioning as Aquarius's own sample. -->
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.Core\Barbatos.Wpf.Core.csproj" />
+    <!-- A component shared with Barbatos.Wpf.Aquarius.Sample (see InfoCardView) - both samples
+         reference this shared library directly, never each other. -->
+    <ProjectReference Include="..\Barbatos.Wpf.Samples.Shared\Barbatos.Wpf.Samples.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Barbatos.Wpf.AquariusRouter.Matching" />
+    <Using Include="Barbatos.Wpf.AquariusRouter.Routing" />
+    <Using Include="Barbatos.Wpf.AquariusRouter.Xaml" />
+    <!-- This sample's own sub-namespaces (see Routing/, Services/, Views/*) - so e.g. a
+         ViewModel under Views/Login doesn't need an explicit "using ...Sample.Services;" just
+         to reach AuthState. -->
+    <Using Include="Barbatos.Wpf.AquariusRouter.Sample.Routing" />
+    <Using Include="Barbatos.Wpf.AquariusRouter.Sample.Services" />
+  </ItemGroup>
+
+</Project>

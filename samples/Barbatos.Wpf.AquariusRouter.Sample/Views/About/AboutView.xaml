@@ -1,0 +1,12 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.About.AboutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             aq:Setup.Enable="True">
+    <StackPanel Margin="24">
+        <TextBlock Text="About" FontSize="24" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                   Text="This route (/about) is also reachable as an alias under /aboutus - same RouteRecord, same mounted instance either way. /old-home is a static RouteRecord.Redirect straight to Home, resolved before any guard runs." />
+        <TextBlock Margin="0,8,0,0" Text="{Binding CurrentPath}" FontFamily="Consolas" />
+    </StackPanel>
+</UserControl>

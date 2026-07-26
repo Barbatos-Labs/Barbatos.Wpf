@@ -1,0 +1,10 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Settings.SettingsNotificationsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             aq:Setup.Enable="True">
+    <TextBlock TextWrapping="Wrap">
+        <Run FontWeight="Bold" Text="Notifications" /><LineBreak />
+        <Run Text="Reachable directly at /settings/notifications - try the 'Notification preferences' link on the Dashboard, a SECOND entry point converging on this exact same nested route." />
+    </TextBlock>
+</UserControl>

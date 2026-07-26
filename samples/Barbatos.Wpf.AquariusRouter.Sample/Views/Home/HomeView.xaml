@@ -1,0 +1,14 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Home.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             aq:Setup.Enable="True">
+    <StackPanel Margin="24">
+        <TextBlock Text="Home" FontSize="24" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                   Text="Welcome to the Barbatos.Wpf.AquariusRouter sample. Use the nav bar above to explore param routes (Users), nested routes with a named outlet (Dashboard), a guarded route, redirect/alias, and the catch-all 404 view." />
+        <TextBlock Margin="0,16,0,0" FontWeight="Bold" Text="Trying the keyboard shortcuts (InputSystem)" />
+        <TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                   Text="Ctrl+F9 jumps to Dashboard (in-app only - try it while a different app is focused, nothing happens). Ctrl+F8 jumps to Settings → Security - it works even while this window is minimized (a true OS-level global hotkey), AND while focused (an in-app shortcut) - same action, either source. Hold Ctrl+Shift+F8 for half a second to jump to Settings → Notifications - see ShortcutRouting.cs and HoldInteraction." />
+    </StackPanel>
+</UserControl>
