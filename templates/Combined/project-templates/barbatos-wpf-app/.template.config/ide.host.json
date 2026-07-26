@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/ide.host",
+  "symbolInfo": [
+    { "id": "IncludeAquarius", "isVisible": true },
+    { "id": "IncludeAquariusRouter", "isVisible": true },
+    { "id": "IncludeI18n", "isVisible": true },
+    { "id": "IncludeSingleInstance", "isVisible": true },
+    { "id": "IncludeRunOnStartup", "isVisible": true },
+    { "id": "IncludeTrayIcon", "isVisible": true },
+    { "id": "IncludeKeepAwake", "isVisible": true },
+    { "id": "IncludeNotifications", "isVisible": true },
+    { "id": "IncludePushNotifications", "isVisible": true },
+    { "id": "IncludePeriodicServices", "isVisible": true },
+    { "id": "IncludeInputSystem", "isVisible": true },
+    { "id": "IncludeDialogs", "isVisible": true },
+    { "id": "IncludeMcp", "isVisible": true },
+    { "id": "IncludeSplashScreen", "isVisible": true }
+  ]
+}

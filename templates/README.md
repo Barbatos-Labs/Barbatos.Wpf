@@ -72,10 +72,11 @@ is easy to spot rather than silently landing in the wrong namespace.
 dotnet new barbatos-wpf-app -n MyApp
 ```
 
-A complete, runnable WPF app in a new `MyApp/` folder, referencing all three packages via
-`PackageReference` (not a `ProjectReference` into this repo - a real, portable starter a
-consumer outside this repo can restore once `Barbatos.Wpf.Core`/`Barbatos.Wpf.Aquarius` are
-published too) and showing them working together, not just coexisting:
+A complete, runnable WPF app in a new `MyApp/` folder, referencing `Barbatos.Wpf.Core` and,
+by default, `Barbatos.Wpf.Aquarius`/`Barbatos.i18n` too - all via `PackageReference` (not a
+`ProjectReference` into this repo - a real, portable starter a consumer outside this repo can
+restore once these packages are published), showing them working together, not just
+coexisting:
 - `Barbatos.Wpf.Core`'s `WpfApp`/`WpfAppBuilder` supplies the DI container.
 - `Barbatos.Wpf.Aquarius`'s `Setup.ServiceProvider` is pointed at that same container, so
   `MainWindow`'s `aq:Setup.ViewModel="{x:Type local:MainViewModel}"` resolves `MainViewModel`
@@ -87,11 +88,41 @@ published too) and showing them working together, not just coexisting:
   provider to read from - demonstrated with an English/Vietnamese greeting and a live language
   switch.
 
-`Barbatos.Wpf.Core`/`Barbatos.Wpf.Aquarius` aren't published to NuGet.org yet as of this
-writing - restoring a freshly generated project will fail with NU1101 for those two until
-they are (see the template's own `.template.config/template.json` for the `--PackageVersion`
+`Barbatos.Wpf.Core`/`Aquarius`/`AquariusRouter` aren't published to NuGet.org yet as of this
+writing - restoring a freshly generated project will fail with NU1101 for those until they
+are (see the template's own `.template.config/template.json` for the `--PackageVersion`
 parameter, if the version needs to move once they do publish). `Barbatos.i18n.Wpf`/
 `Barbatos.i18n.DependencyInjection` are already published and resolve normally.
+
+### Picking which modules to include
+
+Beyond the 3 packages above, `Barbatos.Wpf.Core` alone has 11 independently-optional
+features (single instance, tray icon, InputSystem, MCP, ...) - the template exposes every one
+of these, plus `Barbatos.Wpf.AquariusRouter` (page navigation) and `Barbatos.i18n`
+(localization) themselves, as boolean `--Include*` flags rather than baking a fixed feature
+set in:
+
+```powershell
+dotnet new barbatos-wpf-app -n MyApp --IncludeAquariusRouter true --IncludeInputSystem true --IncludeMcp true
+dotnet new barbatos-wpf-app -n MyApp --help   # lists every flag, its description, and its default
+```
+
+**Visual Studio's "Create a new project" wizard renders these as real checkboxes** - each
+symbol's `displayName`/`description` in `template.json`, surfaced via the sibling
+`.template.config/ide.host.json` (`symbolInfo[].isVisible`), is what drives that UI; this is a
+genuine, long-standing Visual Studio feature, not something specific to this template.
+**JetBrains Rider does not render per-flag checkboxes** even in its newest versions - only a
+single raw "extra parameters" text field for the whole `dotnet new` invocation - so from Rider
+(or the plain CLI) you pass the same `--Include*` flags shown above by hand instead of ticking
+boxes. The generated project is identical either way; only how you choose the flags differs.
+
+`Barbatos.Wpf.AquariusRouter` has a hard dependency on `Barbatos.Wpf.Aquarius` (a real
+`ProjectReference` in the library itself), so checking "AquariusRouter" alone still generates
+a project referencing both, via a computed symbol (`AquariusEffective`) - the "Aquarius"
+checkbox itself can stay visually unchecked while its content is included anyway. Every other
+flag is fully independent. Running the template with no `--Include*` flags at all reproduces
+today's exact default (`Aquarius`+`i18n` on, everything else off) - nothing about the default
+experience changed.
 
 ## Uninstall
 

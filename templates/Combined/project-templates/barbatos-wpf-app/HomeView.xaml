@@ -1,0 +1,11 @@
+<UserControl x:Class="BarbatosWpfApp.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             aq:Setup.Enable="True">
+    <StackPanel Margin="24">
+        <TextBlock Text="Home" FontSize="24" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                   Text="Rendered by AquariusRouter's RouterView from Router.Current's route table (AppRoutes.cs). Click 'About (routed)' above to navigate." />
+    </StackPanel>
+</UserControl>

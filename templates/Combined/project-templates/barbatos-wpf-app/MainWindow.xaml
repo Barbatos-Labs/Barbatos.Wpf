@@ -1,24 +1,57 @@
 <Window x:Class="BarbatosWpfApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+<!--#if (AquariusEffective) -->
         xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
-        xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml"
         xmlns:local="clr-namespace:BarbatosWpfApp"
+<!--#endif -->
+<!--#if (IncludeI18n) -->
+        xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml"
+<!--#endif -->
+<!--#if (IncludeAquariusRouter) -->
+        xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
+<!--#endif -->
+<!--#if (AquariusEffective) -->
         aq:Setup.ViewModel="{x:Type local:MainViewModel}"
+<!--#endif -->
         Title="BarbatosWpfApp" Height="450" Width="800">
+<!--#if (IncludeAquariusRouter) -->
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Center" Margin="16,16,16,0">
+            <Button Content="Home" aqr:RouterLink.To="/" Padding="12,4" Margin="0,0,8,0" />
+            <Button Content="About (routed)" aqr:RouterLink.To="/about" Padding="12,4" />
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Top" HorizontalAlignment="Center" Margin="16">
+<!--#else -->
     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+<!--#endif -->
+<!--#if (IncludeI18n) -->
         <!-- Barbatos.i18n.Wpf's markup extension - BindArg (not the static Arg) is what makes
              this refresh when SwitchLanguage below changes CurrentCultureName; see
              MainViewModel's own remarks on CurrentCultureName for why that's needed at all. -->
         <TextBlock FontSize="18" Margin="0,0,0,16" TextWrapping="Wrap" MaxWidth="400" TextAlignment="Center"
                    Text="{i18n:StringLocalizer Text='Greeting', BindArg={Binding CurrentCultureName}}" />
 
+<!--#endif -->
+<!--#if (AquariusEffective) -->
         <TextBlock Text="{Binding Count.Value}" FontSize="32" HorizontalAlignment="Center" />
         <Button Content="Count" Command="{Binding IncrementCommand}" Padding="20,8" Margin="0,16,0,0" HorizontalAlignment="Center" />
 
+<!--#endif -->
+<!--#if (IncludeI18n) -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
             <Button Content="English" Command="{Binding SwitchLanguageCommand}" CommandParameter="en-US" Padding="12,4" Margin="0,0,8,0" />
             <Button Content="Tiếng Việt" Command="{Binding SwitchLanguageCommand}" CommandParameter="vi-VN" Padding="12,4" />
         </StackPanel>
+<!--#endif -->
+<!--#if (IncludeDialogs) -->
+        <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="12,4" Margin="16,16,16,0" HorizontalAlignment="Center" />
+<!--#endif -->
+<!--#if (IncludeAquariusRouter) -->
+        </StackPanel>
+        <aqr:RouterView Margin="16" />
+    </DockPanel>
+<!--#else -->
     </StackPanel>
+<!--#endif -->
 </Window>

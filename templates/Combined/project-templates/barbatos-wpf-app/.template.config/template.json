@@ -4,7 +4,7 @@
   "classifications": [ "WPF", "Barbatos.Wpf", "Aquarius", "Core", "i18n", "MVVM" ],
   "identity": "Barbatos.Wpf.Templates.CombinedApp",
   "name": "Barbatos.Wpf App (Aquarius + Core + i18n)",
-  "description": "A starter WPF app referencing Barbatos.Wpf.Core (MAUI-style hosting/DI), Barbatos.Wpf.Aquarius (Vue-style reactivity/Setup), and Barbatos.i18n (localization) together: Setup.ServiceProvider is wired to Core's DI container so Views resolve ViewModels through the same graph, and that same container backs Barbatos.i18n.Wpf's {i18n:StringLocalizer} markup extension via UseWpfLocalization - all three work together rather than merely coexisting.",
+  "description": "A starter WPF app referencing Barbatos.Wpf.Core, and optionally Barbatos.Wpf.Aquarius, Barbatos.Wpf.AquariusRouter, and Barbatos.i18n, wired together - tick the modules you want (Visual Studio) or pass --Include* flags (CLI/Rider).",
   "shortName": "barbatos-wpf-app",
   "tags": {
     "language": "C#",
@@ -16,9 +16,133 @@
     "PackageVersion": {
       "type": "parameter",
       "datatype": "text",
-      "replaces": "2.2.0",
-      "defaultValue": "2.2.0",
-      "description": "Version of Barbatos.Wpf.Core/Barbatos.Wpf.Aquarius to reference - override with --PackageVersion if it has moved on from the default by the time you use this."
+      "replaces": "2.3.0",
+      "defaultValue": "2.3.0",
+      "description": "Version of Barbatos.Wpf.Core/Aquarius/AquariusRouter to reference - override with --PackageVersion if it has moved on from the default by the time you use this. Not yet published to nuget.org as of this writing - see templates/README.md."
+    },
+    "IncludeAquarius": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "displayName": "Aquarius (reactive state, Setup.ViewModel)",
+      "description": "Adds Barbatos.Wpf.Aquarius: Ref<T>/Setup.ViewModel wiring and a Count demo."
+    },
+    "IncludeAquariusRouter": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "AquariusRouter (page navigation)",
+      "description": "Adds Barbatos.Wpf.AquariusRouter: a minimal Home/About route table, RouterView outlet, RouterLink nav. Requires Aquarius - automatically included even if 'Aquarius' above is left unchecked."
+    },
+    "AquariusEffective": {
+      "type": "computed",
+      "value": "(IncludeAquarius || IncludeAquariusRouter)"
+    },
+    "IncludeI18n": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "displayName": "i18n (localization)",
+      "description": "Adds Barbatos.i18n.Wpf/DependencyInjection: {i18n:StringLocalizer}, an English/Vietnamese greeting, and a language switch."
+    },
+    "IncludeSingleInstance": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Single instance",
+      "description": "A second launch attempt is blocked and brings the first instance's window to the foreground."
+    },
+    "IncludeRunOnStartup": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Run on Windows startup",
+      "description": "Registers/unregisters the app to launch when Windows starts."
+    },
+    "IncludeTrayIcon": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "System tray icon",
+      "description": "Adds a tray icon with Open/Exit menu items."
+    },
+    "IncludeKeepAwake": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Keep awake",
+      "description": "Prevents the system from sleeping while enabled at runtime."
+    },
+    "IncludeNotifications": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Toast notifications",
+      "description": "Registers INotificationService for Windows toast notifications."
+    },
+    "IncludePushNotifications": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Push notifications (SignalR)",
+      "description": "Registers the SignalR-based push notification client (disabled by default - no server configured)."
+    },
+    "IncludePeriodicServices": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Periodic background services",
+      "description": "Adds a HeartbeatService.cs sample IWpfPeriodicService, ticking every 5 seconds."
+    },
+    "IncludeInputSystem": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Keyboard shortcuts (InputSystem)",
+      "description": "Adds an example in-app keyboard shortcut (Ctrl+F9 shows the main window)."
+    },
+    "IncludeDialogs": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Dialog service",
+      "description": "Adds IDialogService plus a minimal AboutWindow shown through it."
+    },
+    "IncludeMcp": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "MCP client (BYOK AI chat)",
+      "description": "Registers the MCP client with a zero-setup NuGet MCP server. No AI provider/API key is configured - bring your own key."
+    },
+    "IncludeSplashScreen": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Splash screen",
+      "description": "Shows the built-in SplashScreen while the app starts."
     }
-  }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "condition": "(!IncludePeriodicServices)",
+          "exclude": [ "HeartbeatService.cs" ]
+        },
+        {
+          "condition": "(!IncludeDialogs)",
+          "exclude": [ "AboutWindow.xaml", "AboutWindow.xaml.cs" ]
+        },
+        {
+          "condition": "(!IncludeAquariusRouter)",
+          "exclude": [
+            "AppRoutes.cs",
+            "HomeView.xaml", "HomeView.xaml.cs", "HomeViewModel.cs",
+            "AboutView.xaml", "AboutView.xaml.cs", "AboutViewModel.cs"
+          ]
+        }
+      ]
+    }
+  ]
 }

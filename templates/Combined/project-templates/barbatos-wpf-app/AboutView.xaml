@@ -1,0 +1,11 @@
+<UserControl x:Class="BarbatosWpfApp.AboutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             aq:Setup.Enable="True">
+    <StackPanel Margin="24">
+        <TextBlock Text="About" FontSize="24" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                   Text="A second route, rendered through the same RouterView outlet as Home - navigated to via aqr:RouterLink.To, not a second window." />
+    </StackPanel>
+</UserControl>
