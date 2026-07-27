@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <rect width="400" height="400" fill="#ffffff"/>
+  <path d="M 200 90 L 275 118 L 275 195 C 275 245 244 280 200 300 C 156 280 125 245 125 195 L 125 118 Z"
+        fill="none" stroke="#2d3436" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M 163 198 L 190 228 L 240 165" fill="none" stroke="#0984e3" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="200" y="345" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="600" fill="#2d3436">valee</text>
+</svg>

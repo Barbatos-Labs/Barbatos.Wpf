@@ -1,0 +1,95 @@
+{
+  "version": "2.0",
+  "MainWindow": {
+    "Title": "Ứng dụng mẫu Barbatos.Wpf.AquariusValee",
+    "TabLogin": "Đăng nhập",
+    "TabSignup": "Đăng ký",
+    "TabProfile": "Hồ sơ (FromModel)",
+    "TabCustomRules": "Quy tắc tùy chỉnh",
+    "TabShowcase": "Giới thiệu",
+    "Language": "Ngôn ngữ"
+  },
+  "Login": {
+    "Header": "Đăng nhập",
+    "Description": "Nhập email bất kỳ và mật khẩu bất kỳ khác 'correct-password' sẽ kích hoạt lỗi giả lập từ server thông qua Form.SetFieldError. Hãy thử bấm Đăng nhập khi để trống mọi trường trước - nút bấm chỉ bị vô hiệu hóa khi đang thực sự gửi đi, không phải vì form có vẻ chưa hợp lệ.",
+    "EmailLabel": "Email",
+    "PasswordLabel": "Mật khẩu",
+    "Submit": "Đăng nhập",
+    "Submitting": "Đang đăng nhập...",
+    "InvalidCredentials": "Email hoặc mật khẩu không đúng.",
+    "WelcomeBack": "Chào mừng trở lại, {0}!"
+  },
+  "Signup": {
+    "Header": "Đăng ký - hai cách kiểm tra chéo trường, đặt cạnh nhau",
+    "Description": "Cả hai khung bên dưới đều kiểm tra mật khẩu xác nhận có khớp với mật khẩu hay không, nhưng bằng hai cơ chế hoàn toàn khác nhau - xem ghi chú trong SignupViewModel để biết vì sao [Compare] chỉ hoạt động ở chế độ bên trái (schema).",
+    "SchemaTitle": "Chế độ Schema",
+    "SchemaDescription": "Form.FromModel<SignupModel>() - [Compare(nameof(Password))] đặt trên thuộc tính ConfirmPassword của chính model.",
+    "AdHocTitle": "Chế độ Ad-hoc",
+    "AdHocDescription": "Không có lớp model - Form.DefineField + Field.DependsOn cùng một quy tắc tự viết đọc trực tiếp giá trị của trường mật khẩu.",
+    "EmailLabel": "Email",
+    "PasswordLabel": "Mật khẩu",
+    "ConfirmPasswordLabel": "Xác nhận mật khẩu",
+    "Submit": "Tạo tài khoản",
+    "SchemaSuccess": "Đã tạo tài khoản cho {0}.",
+    "AdHocSuccess": "Đã tạo tài khoản.",
+    "PasswordMismatch": "Mật khẩu xác nhận không khớp."
+  },
+  "Profile": {
+    "Header": "Chỉnh sửa hồ sơ",
+    "Description": "Mọi trường và mọi quy tắc ở đây đều đến từ các attribute DataAnnotations của ProfileEditModel thông qua Form.FromModel - không có gì được khai báo thủ công.",
+    "DisplayNameLabel": "Tên hiển thị",
+    "AgeLabel": "Tuổi",
+    "BioLabel": "Giới thiệu bản thân",
+    "WebsiteLabel": "Trang web",
+    "Submit": "Lưu",
+    "Success": "Đã lưu hồ sơ - {0} đã được cập nhật."
+  },
+  "CustomRules": {
+    "Header": "Quy tắc tùy chỉnh (không model, không attribute)",
+    "Description": "Một Field<string> độc lập - hai delegate ValidationRule<T> thông thường cùng một AsyncValidationRule<T> giả lập lệnh gọi API 'tên này đã được dùng chưa?'. Hãy gõ 'admin', 'root', 'test' hoặc 'user' để thấy nó báo lỗi sau một khoảng trễ ngắn - theo dõi chữ 'Đang kiểm tra...' xuất hiện trong lúc chờ.",
+    "UsernameLabel": "Tên đăng nhập",
+    "Checking": "Đang kiểm tra...",
+    "Required": "Vui lòng nhập tên đăng nhập.",
+    "NoSpaces": "Tên đăng nhập không được chứa khoảng trắng.",
+    "Taken": "'{0}' đã được sử dụng - hãy thử admin/root/test/user để thấy lỗi này."
+  },
+  "Showcase": {
+    "Header": "Giới thiệu các attribute",
+    "Description": "Mọi trường bên dưới đều được FieldTemplateSelector hiển thị, không phải XAML viết tay - control thực tế (dropdown cho Plan/Theme, ô nhiều dòng cho Notes, ô văn bản thường cho các trường còn lại) được chọn cho từng trường dựa trên [UIHint]/[DataType], còn dòng chữ xám nhỏ dưới mỗi trường là [Display(Prompt = \"...\")] - văn bản gợi ý riêng biệt, không phải lựa chọn control. Hãy thử 'admin' (DeniedValues), tên đăng nhập bắt đầu bằng chữ số (CustomValidation), số điện thoại/thẻ không hợp lệ, hoặc mã quốc gia không đủ 2 ký tự (Length) - rồi gửi form khi vẫn còn trường chưa hợp lệ để thấy tiêu điểm nhảy đến trường lỗi đầu tiên.",
+    "Submit": "Gửi",
+    "Success": "Tốt - mọi trường đều hợp lệ."
+  },
+  "Field": {
+    "Username": "Tên đăng nhập",
+    "UsernamePrompt": "Không phải 'admin', 'root', hoặc 'administrator'.",
+    "PhoneNumber": "Số điện thoại",
+    "PhoneNumberPrompt": "Ví dụ: +1 555 123 4567",
+    "CardNumber": "Số thẻ",
+    "CardNumberPrompt": "16 chữ số, không có khoảng trắng hay dấu gạch ngang",
+    "Plan": "Gói dịch vụ",
+    "PlanPrompt": "Chọn gói đăng ký của bạn",
+    "Theme": "Giao diện",
+    "ThemePrompt": "Chọn giao diện màu sắc",
+    "CountryCode": "Mã quốc gia",
+    "CountryCodePrompt": "2 ký tự, ví dụ US hoặc VN",
+    "Notes": "Ghi chú",
+    "NotesPrompt": "Không bắt buộc, tối đa 280 ký tự"
+  },
+  "Validation": {
+    "Required": "Trường này là bắt buộc.",
+    "InvalidEmail": "Vui lòng nhập một địa chỉ email hợp lệ.",
+    "InvalidUrl": "Đây không phải là một URL hợp lệ.",
+    "PasswordMinLength8": "Mật khẩu phải có ít nhất 8 ký tự.",
+    "PasswordsMustMatch": "Mật khẩu xác nhận không khớp.",
+    "DisplayNameTooLong": "Tên hiển thị không được vượt quá 40 ký tự.",
+    "MaxLength280": "Không được vượt quá 280 ký tự.",
+    "AgeRange": "Tuổi phải nằm trong khoảng từ 13 đến 120.",
+    "UsernameNotAllowed": "Tên đăng nhập này không được phép sử dụng.",
+    "UsernameStartsWithDigit": "Tên đăng nhập không được bắt đầu bằng chữ số.",
+    "InvalidPhone": "Đây không phải là một số điện thoại hợp lệ.",
+    "InvalidCreditCard": "Đây không phải là một số thẻ hợp lệ.",
+    "InvalidPlan": "Vui lòng chọn một gói hợp lệ.",
+    "InvalidTheme": "Vui lòng chọn một giao diện hợp lệ.",
+    "InvalidCountryCodeLength": "Vui lòng dùng mã quốc gia gồm 2 ký tự, ví dụ US hoặc VN."
+  }
+}

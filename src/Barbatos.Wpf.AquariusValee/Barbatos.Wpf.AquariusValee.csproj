@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Barbatos.Wpf.AquariusValee</PackageId>
+    <TargetFrameworks>net10.0-windows;net9.0-windows;net8.0-windows</TargetFrameworks>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <UseWPF>true</UseWPF>
+    <!-- Full override, not an append to the shared $(CommonTags) - same reasoning as
+         Barbatos.Wpf.Aquarius.csproj/Barbatos.Wpf.AquariusRouter.csproj: the shared value bakes
+         in Core-specific words that don't describe this package and would mislead NuGet search. -->
+    <CommonTags>dotnet;wpf;windows;desktop;presentation;validation;forms;dataannotations;compositionapi;mvvm;xaml</CommonTags>
+    <Description>A vee-validate-style form-validation system for WPF - Field/Form reactive state, System.ComponentModel.DataAnnotations as the schema mechanism, INotifyDataErrorInfo-native error display, and Valee.Field/Valee.Form/Valee.For binding sugar - built directly on Barbatos.Wpf.Aquarius.</Description>
+    <RootNamespace>Barbatos.Wpf.AquariusValee</RootNamespace>
+    <PackageIconSourceFile>aquariusvalee-logo.png</PackageIconSourceFile>
+    <!-- WPF does not support trimming/AOT, so the configuration-binding trim warnings do not apply.
+         IL2075/IL2090 cover Form.FromModel's PropertyInfo/ValidationAttribute reflection over an
+         arbitrary TModel; IL2060 covers the matching MakeGenericMethod call. IL2067 is only
+         precautionary here (FromModel takes an already-constructed instance, not
+         Activator.CreateInstance(Type) the way Setup/RouterView's own resolution does) - kept for
+         consistency with the identical suppression block both sibling packages already carry. -->
+    <NoWarn>$(NoWarn);IL2026;IL3050;IL2075;IL2067;IL2090;IL2060</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AquariusValee reuses Watch.On (Field<T>.DependsOn's cross-field validation wiring) and
+         NextTick (Form.Meta's aggregate-notification batching) directly - the same kind of hard
+         dependency vee-validate itself has on vue's reactivity. This is the second src/ package
+         in this repo to reference another src/ package (after AquariusRouter -> Aquarius).
+         Confirmed with the user before adding this. -->
+    <ProjectReference Include="..\Barbatos.Wpf.Aquarius\Barbatos.Wpf.Aquarius.csproj" />
+  </ItemGroup>
+
+</Project>

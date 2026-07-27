@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <Product>Barbatos.Wpf.AquariusValee Sample</Product>
+    <Company>Barbatos Labs</Company>
+    <Version>1.0.0</Version>
+    <Copyright>Copyright (c) 2026 Barbatos Labs</Copyright>
+    <!-- WPF apps are never trimmed - these DataAnnotations/XAML-generated-code reflection
+         warnings don't apply here, matching the identical suppression the library itself
+         carries for the same underlying reason. -->
+    <NoWarn>$(NoWarn);IL2026;IL2067;IL2075</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Barbatos.i18n" />
+    <PackageReference Include="Barbatos.i18n.DependencyInjection" />
+    <PackageReference Include="Barbatos.i18n.Json" />
+    <PackageReference Include="Barbatos.i18n.Wpf" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Locales\**\*.json" />
+    <EmbeddedResource Include="Locales\**\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.AquariusValee\Barbatos.Wpf.AquariusValee.csproj" />
+    <!-- Only for the DI/hosting shell (WpfApp/WpfApplication), matching every other sample in
+         this repo - AquariusValee itself has no dependency on Core. -->
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.Core\Barbatos.Wpf.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Barbatos.Wpf.AquariusValee.Validation" />
+    <Using Include="Barbatos.Wpf.AquariusValee.Rules" />
+    <Using Include="System.ComponentModel.DataAnnotations" />
+    <!-- This sample's own sub-namespaces - so a ViewModel under Views/Login doesn't need an
+         explicit "using ...Sample.Services;" just to reach UsernameAvailabilityService. -->
+    <Using Include="Barbatos.Wpf.AquariusValee.Sample.Models" />
+    <Using Include="Barbatos.Wpf.AquariusValee.Sample.Services" />
+  </ItemGroup>
+
+</Project>

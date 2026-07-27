@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- WPF is never trimmed, so CompareAttribute's/MinLengthAttribute's own
+         RequiresUnreferencedCode warnings (about reflecting into a property that trimming could
+         remove) do not apply to this test project either. -->
+    <NoWarn>$(NoWarn);IL2026</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.AquariusValee\Barbatos.Wpf.AquariusValee.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="System.ComponentModel.DataAnnotations" />
+    <Using Include="Barbatos.Wpf.AquariusValee.Validation" />
+    <Using Include="Barbatos.Wpf.AquariusValee.Rules" />
+    <Using Include="Barbatos.Wpf.AquariusValee.Xaml" />
+  </ItemGroup>
+
+</Project>

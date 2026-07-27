@@ -1,0 +1,21 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusValee.Sample.Views.CustomRules.CustomRulesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aqv="http://schemas.barbatos.co/aquariusvalee/2026/xaml"
+             xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml">
+    <StackPanel Margin="24" MaxWidth="360" HorizontalAlignment="Left">
+        <TextBlock Text="{i18n:StringLocalizer Text='CustomRules.Header'}" FontSize="20" FontWeight="Bold" Margin="0,0,0,4" TextWrapping="Wrap" />
+        <TextBlock TextWrapping="Wrap" Margin="0,0,0,16" Foreground="Gray"
+                   Text="{i18n:StringLocalizer Text='CustomRules.Description'}" />
+
+        <TextBlock Text="{i18n:StringLocalizer Text='CustomRules.UsernameLabel'}" FontWeight="SemiBold" />
+        <TextBox aqv:Valee.Field="{Binding Username}" Margin="0,2,0,2" Padding="4" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+            <TextBlock Text="{i18n:StringLocalizer Text='CustomRules.Checking'}" FontStyle="Italic" Foreground="Gray"
+                       Visibility="{Binding Username.Meta.Pending, Converter={StaticResource BoolToVis}}" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding Username.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

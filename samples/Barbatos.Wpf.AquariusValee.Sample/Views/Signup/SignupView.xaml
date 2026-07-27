@@ -1,0 +1,62 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusValee.Sample.Views.Signup.SignupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aqv="http://schemas.barbatos.co/aquariusvalee/2026/xaml"
+             xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml">
+    <UserControl.Resources>
+        <i18n:LocalizeConverter x:Key="LocalizeConverter" />
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24" MaxWidth="640" HorizontalAlignment="Left">
+            <TextBlock Text="{i18n:StringLocalizer Text='Signup.Header'}" FontSize="22" FontWeight="Bold" Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16" Foreground="Gray"
+                       Text="{i18n:StringLocalizer Text='Signup.Description'}" />
+
+            <UniformGrid Columns="2">
+                <Border BorderBrush="LightGray" BorderThickness="1" Padding="16" Margin="0,0,8,0">
+                    <StackPanel aqv:Valee.Form="{Binding SchemaForm}">
+                        <TextBlock Text="{i18n:StringLocalizer Text='Signup.SchemaTitle'}" FontWeight="Bold" Margin="0,0,0,2" />
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="0,0,0,12"
+                                   Text="{i18n:StringLocalizer Text='Signup.SchemaDescription'}" />
+
+                        <TextBlock Text="{i18n:StringLocalizer Text='Signup.EmailLabel'}" FontWeight="SemiBold" />
+                        <TextBox aqv:Valee.Field="{Binding SchemaEmail}" Margin="0,2,0,2" Padding="4" />
+                        <TextBlock Text="{Binding SchemaEmail.ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" Margin="0,0,0,8" />
+
+                        <TextBlock Text="{i18n:StringLocalizer Text='Signup.PasswordLabel'}" FontWeight="SemiBold" />
+                        <PasswordBox aqv:Valee.PasswordField="{Binding SchemaPassword}" Margin="0,2,0,2" Padding="4" />
+                        <TextBlock Text="{Binding SchemaPassword.ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" Margin="0,0,0,8" />
+
+                        <TextBlock Text="{i18n:StringLocalizer Text='Signup.ConfirmPasswordLabel'}" FontWeight="SemiBold" />
+                        <PasswordBox aqv:Valee.PasswordField="{Binding SchemaConfirmPassword}" Margin="0,2,0,2" Padding="4" />
+                        <TextBlock Text="{Binding SchemaConfirmPassword.ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" Margin="0,0,0,8" />
+
+                        <Button Content="{i18n:StringLocalizer Text='Signup.Submit'}" Padding="12,6" HorizontalAlignment="Left"
+                                Command="{Binding SchemaSubmitCommand}" />
+                        <TextBlock Text="{Binding SchemaStatusMessage}" Margin="0,12,0,0" FontWeight="SemiBold" Foreground="Green" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border BorderBrush="LightGray" BorderThickness="1" Padding="16" Margin="8,0,0,0">
+                    <StackPanel aqv:Valee.Form="{Binding AdHocForm}">
+                        <TextBlock Text="{i18n:StringLocalizer Text='Signup.AdHocTitle'}" FontWeight="Bold" Margin="0,0,0,2" />
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="0,0,0,12"
+                                   Text="{i18n:StringLocalizer Text='Signup.AdHocDescription'}" />
+
+                        <TextBlock Text="{i18n:StringLocalizer Text='Signup.PasswordLabel'}" FontWeight="SemiBold" />
+                        <PasswordBox aqv:Valee.PasswordField="{Binding AdHocPassword}" Margin="0,2,0,2" Padding="4" />
+                        <TextBlock Text="{Binding AdHocPassword.ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" Margin="0,0,0,8" />
+
+                        <TextBlock Text="{i18n:StringLocalizer Text='Signup.ConfirmPasswordLabel'}" FontWeight="SemiBold" />
+                        <PasswordBox aqv:Valee.PasswordField="{Binding AdHocConfirmPassword}" Margin="0,2,0,2" Padding="4" />
+                        <TextBlock Text="{Binding AdHocConfirmPassword.ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" Margin="0,0,0,8" />
+
+                        <Button Content="{i18n:StringLocalizer Text='Signup.Submit'}" Padding="12,6" HorizontalAlignment="Left"
+                                Command="{Binding AdHocSubmitCommand}" />
+                        <TextBlock Text="{Binding AdHocStatusMessage}" Margin="0,12,0,0" FontWeight="SemiBold" Foreground="Green" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

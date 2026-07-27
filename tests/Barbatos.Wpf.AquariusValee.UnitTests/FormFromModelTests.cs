@@ -1,0 +1,161 @@
+namespace Barbatos.Wpf.AquariusValee.UnitTests;
+
+public class FormFromModelTests
+{
+    private sealed class SignupModel : IValidatableObject
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required]
+        [MinLength(8)]
+        [Display(Name = "Password")]
+        public string Password { get; set; } = "";
+
+        [Required]
+        [Compare(nameof(Password))]
+        public string ConfirmPassword { get; set; } = "";
+
+        public bool AcceptedTerms { get; set; }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (!AcceptedTerms)
+                yield return new ValidationResult("You must accept the terms.", [nameof(AcceptedTerms)]);
+        }
+    }
+
+    [Fact]
+    public void FromModelCreatesOneFieldPerPublicSettableProperty()
+    {
+        var form = Form.FromModel(new SignupModel());
+
+        Assert.Equal(4, form.Fields.Count);
+        Assert.Contains("Email", form.Fields.Keys);
+        Assert.Contains("Password", form.Fields.Keys);
+        Assert.Contains("ConfirmPassword", form.Fields.Keys);
+        Assert.Contains("AcceptedTerms", form.Fields.Keys);
+    }
+
+    [Fact]
+    public void FromModelReflectsDisplayNameAttributeAsLabel()
+    {
+        var form = Form.FromModel(new SignupModel());
+
+        Assert.Equal("Password", form.Fields["Password"].Label);
+    }
+
+    [Fact]
+    public async Task FromModelFieldValidatesUsingTheModelsOwnDeclaredAttributes()
+    {
+        var form = Form.FromModel(new SignupModel());
+        form.SetFieldValue("Email", "not-an-email");
+
+        await form.Fields["Email"].ValidateAsync();
+
+        Assert.NotEmpty(form.Fields["Email"].Errors);
+    }
+
+    [Fact]
+    public async Task CompareAttributeWorksInFromModelModeBecauseObjectInstanceIsTheRealLiveModel()
+    {
+        var form = Form.FromModel(new SignupModel());
+        form.SetFieldValue("Password", "secret123");
+        form.SetFieldValue("ConfirmPassword", "different");
+
+        await form.Fields["ConfirmPassword"].ValidateAsync();
+        Assert.NotEmpty(form.Fields["ConfirmPassword"].Errors);
+
+        form.SetFieldValue("ConfirmPassword", "secret123");
+        await form.Fields["ConfirmPassword"].ValidateAsync();
+        Assert.Empty(form.Fields["ConfirmPassword"].Errors);
+    }
+
+    [Fact]
+    public async Task IValidatableObjectCrossFieldRuleIsAppliedAsPartOfValidateAllAsync()
+    {
+        var form = Form.FromModel(new SignupModel());
+        form.SetFieldValue("Email", "user@example.com");
+        form.SetFieldValue("Password", "secret123");
+        form.SetFieldValue("ConfirmPassword", "secret123");
+        // AcceptedTerms left false.
+
+        await form.ValidateAllAsync();
+
+        Assert.Contains("You must accept the terms.", form.Fields["AcceptedTerms"].Errors);
+    }
+
+    [Fact]
+    public void FieldChangesWriteBackLiveOntoTheModelInstance()
+    {
+        var model = new SignupModel();
+        var form = Form.FromModel(model);
+
+        form.SetFieldValue("Email", "user@example.com");
+
+        Assert.Equal("user@example.com", model.Email);
+        Assert.Same(model, form.GetModel<SignupModel>());
+    }
+
+    [Fact]
+    public void GetModelThrowsForAFormNotBuiltViaFromModel()
+    {
+        var form = new Form();
+
+        Assert.Throws<InvalidOperationException>(form.GetModel<SignupModel>);
+    }
+
+    private sealed class HintedModel
+    {
+        [UIHint("MultilineText")]
+        public string Notes { get; set; } = "";
+
+        [DataType(DataType.CreditCard)]
+        public string CardNumber { get; set; } = "";
+
+        [Editable(false)]
+        public string ReadOnlyField { get; set; } = "fixed";
+
+        [Display(Prompt = "e.g. jane@example.com")]
+        public string Email { get; set; } = "";
+
+        public string PlainField { get; set; } = "";
+    }
+
+    [Fact]
+    public void FromModelReflectsUIHintAttributeAsUIHint()
+    {
+        var form = Form.FromModel(new HintedModel());
+
+        Assert.Equal("MultilineText", form.Fields["Notes"].UIHint);
+        Assert.Null(form.Fields["PlainField"].UIHint);
+    }
+
+    [Fact]
+    public void FromModelReflectsDisplayPromptAttributeAsPrompt()
+    {
+        var form = Form.FromModel(new HintedModel());
+
+        Assert.Equal("e.g. jane@example.com", form.Fields["Email"].Prompt);
+        Assert.Null(form.Fields["PlainField"].Prompt);
+    }
+
+    [Fact]
+    public void FromModelReflectsDataTypeAttributeAsDataTypeHint()
+    {
+        var form = Form.FromModel(new HintedModel());
+
+        Assert.Equal(DataType.CreditCard, form.Fields["CardNumber"].DataTypeHint);
+        Assert.Null(form.Fields["PlainField"].DataTypeHint);
+    }
+
+    [Fact]
+    public void FromModelReflectsEditableFalseAsIsReadOnly()
+    {
+        var form = Form.FromModel(new HintedModel());
+
+        Assert.True(form.Fields["ReadOnlyField"].IsReadOnly);
+        Assert.False(form.Fields["PlainField"].IsReadOnly);
+    }
+}

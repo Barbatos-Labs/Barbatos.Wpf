@@ -90,17 +90,41 @@ params/optional/repeatable segments/custom regex, nested routes, named outlets v
 
 </td>
 </tr>
+<tr>
+<td width="72" align="center">
+<a href="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusValee/README.md">
+<img src="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquariusvalee-logo.png?raw=true" width="64" height="64" alt="Barbatos.Wpf.AquariusValee" />
+</a>
+</td>
+<td>
+
+**[Barbatos.Wpf.AquariusValee](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusValee/README.md)**
+&nbsp;
+[![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.AquariusValee.svg)](https://www.nuget.org/packages/Barbatos.Wpf.AquariusValee)
+[![Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.AquariusValee.svg)](https://www.nuget.org/packages/Barbatos.Wpf.AquariusValee)
+[![Stars](https://img.shields.io/github/stars/Barbatos-Labs/Barbatos.Wpf?style=social)](https://github.com/Barbatos-Labs/Barbatos.Wpf/stargazers)
+
+A vee-validate-style form-validation system for WPF, built directly on Aquarius: reactive
+`Field`/`Form` state (touched/dirty/valid/pending), `System.ComponentModel.DataAnnotations` as
+the schema mechanism, `INotifyDataErrorInfo`-native error display, and
+`Valee.Field`/`Valee.Form`/`Valee.For` binding sugar.
+
+[README](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusValee/README.md) · [API Reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md)
+
+</td>
+</tr>
 </table>
 
 All packages share the same `Barbatos.Wpf` root C# namespace and target
-`net8.0-windows`/`net9.0-windows`/`net10.0-windows`. `Barbatos.Wpf.AquariusRouter` additionally
-depends on `Barbatos.Wpf.Aquarius` itself (the same way `vue-router` depends on `vue`) - install
-both together.
+`net8.0-windows`/`net9.0-windows`/`net10.0-windows`. `Barbatos.Wpf.AquariusRouter` and
+`Barbatos.Wpf.AquariusValee` both additionally depend on `Barbatos.Wpf.Aquarius` itself (the same
+way `vue-router`/`vee-validate` each depend on `vue`) - install Aquarius alongside either one.
 
 ```powershell
 dotnet add package Barbatos.Wpf.Core
 dotnet add package Barbatos.Wpf.Aquarius
 dotnet add package Barbatos.Wpf.AquariusRouter
+dotnet add package Barbatos.Wpf.AquariusValee
 ```
 
 ## Templates

@@ -1,0 +1,95 @@
+{
+  "version": "2.0",
+  "MainWindow": {
+    "Title": "Barbatos.Wpf.AquariusValee Sample",
+    "TabLogin": "Login",
+    "TabSignup": "Signup",
+    "TabProfile": "Profile (FromModel)",
+    "TabCustomRules": "Custom rules",
+    "TabShowcase": "Showcase",
+    "Language": "Language"
+  },
+  "Login": {
+    "Header": "Log In",
+    "Description": "Any email, and any password other than 'correct-password', triggers a server-driven error via Form.SetFieldError. Try clicking Log In with everything empty first - the button never disables just because the form looks invalid, only while it's actually submitting.",
+    "EmailLabel": "Email",
+    "PasswordLabel": "Password",
+    "Submit": "Log In",
+    "Submitting": "Signing in...",
+    "InvalidCredentials": "Incorrect email or password.",
+    "WelcomeBack": "Welcome back, {0}!"
+  },
+  "Signup": {
+    "Header": "Signup - two cross-field styles, side by side",
+    "Description": "Both panels below validate that the confirmation matches the password, but via genuinely different mechanisms - see SignupViewModel's own remarks for why [Compare] only works in the left (schema) mode.",
+    "SchemaTitle": "Schema mode",
+    "SchemaDescription": "Form.FromModel<SignupModel>() - [Compare(nameof(Password))] on the model's own ConfirmPassword property.",
+    "AdHocTitle": "Ad-hoc mode",
+    "AdHocDescription": "No model class - Form.DefineField + Field.DependsOn + a hand-written rule that reads the password field's value directly.",
+    "EmailLabel": "Email",
+    "PasswordLabel": "Password",
+    "ConfirmPasswordLabel": "Confirm password",
+    "Submit": "Create account",
+    "SchemaSuccess": "Account created for {0}.",
+    "AdHocSuccess": "Account created.",
+    "PasswordMismatch": "Passwords must match."
+  },
+  "Profile": {
+    "Header": "Edit Profile",
+    "Description": "Every field and every rule here comes from ProfileEditModel's own DataAnnotations attributes via Form.FromModel - nothing is declared by hand.",
+    "DisplayNameLabel": "Display name",
+    "AgeLabel": "Age",
+    "BioLabel": "Bio",
+    "WebsiteLabel": "Website",
+    "Submit": "Save",
+    "Success": "Profile saved - {0} is up to date."
+  },
+  "CustomRules": {
+    "Header": "Custom rules (no model, no attributes)",
+    "Description": "A single standalone Field<string> - two plain ValidationRule<T> delegates plus one AsyncValidationRule<T> that simulates a real 'is this taken?' API call. Type 'admin', 'root', 'test', or 'user' to see it fail after a short delay - watch 'Checking...' appear while it's in flight.",
+    "UsernameLabel": "Username",
+    "Checking": "Checking availability...",
+    "Required": "Username is required.",
+    "NoSpaces": "Username cannot contain spaces.",
+    "Taken": "'{0}' is already taken - try admin/root/test/user to see this."
+  },
+  "Showcase": {
+    "Header": "Attribute showcase",
+    "Description": "Every field below is rendered by FieldTemplateSelector, not hand-authored XAML - the control itself (a dropdown for Plan/Theme, a multi-line box for Notes, a plain box otherwise) is chosen per field from [UIHint]/[DataType], and the small gray line under each field is [Display(Prompt = \"...\")] - separate guidance text, not a control choice. Try 'admin' (DeniedValues), a username starting with a digit (CustomValidation), an invalid phone/card number, or a country code that isn't 2 letters (Length) - then submit with something still invalid to see focus jump to the first broken field.",
+    "Submit": "Submit",
+    "Success": "Looks good - every field passed."
+  },
+  "Field": {
+    "Username": "Username",
+    "UsernamePrompt": "Not 'admin', 'root', or 'administrator'.",
+    "PhoneNumber": "Phone number",
+    "PhoneNumberPrompt": "e.g. +1 555 123 4567",
+    "CardNumber": "Card number",
+    "CardNumberPrompt": "16 digits, no spaces or dashes",
+    "Plan": "Plan",
+    "PlanPrompt": "Choose your subscription tier",
+    "Theme": "Theme",
+    "ThemePrompt": "Choose a color theme",
+    "CountryCode": "Country code",
+    "CountryCodePrompt": "2 letters, e.g. US or VN",
+    "Notes": "Notes",
+    "NotesPrompt": "Optional, up to 280 characters"
+  },
+  "Validation": {
+    "Required": "This field is required.",
+    "InvalidEmail": "Enter a valid email address.",
+    "InvalidUrl": "That doesn't look like a valid URL.",
+    "PasswordMinLength8": "Password must be at least 8 characters.",
+    "PasswordsMustMatch": "Passwords must match.",
+    "DisplayNameTooLong": "Display name must be 40 characters or fewer.",
+    "MaxLength280": "Must be 280 characters or fewer.",
+    "AgeRange": "Age must be between 13 and 120.",
+    "UsernameNotAllowed": "That username isn't allowed.",
+    "UsernameStartsWithDigit": "Username cannot start with a digit.",
+    "InvalidPhone": "That doesn't look like a valid phone number.",
+    "InvalidCreditCard": "That doesn't look like a valid card number.",
+    "InvalidPlan": "Choose a valid plan.",
+    "InvalidTheme": "Choose a valid theme.",
+    "InvalidCountryCodeLength": "Use a 2-letter country code, e.g. US or VN."
+  }
+}

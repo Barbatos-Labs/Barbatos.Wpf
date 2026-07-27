@@ -1,0 +1,55 @@
+<Window x:Class="Barbatos.Wpf.AquariusValee.Sample.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Barbatos.Wpf.AquariusValee.Sample"
+        xmlns:login="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.Login"
+        xmlns:signup="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.Signup"
+        xmlns:profile="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.ProfileEdit"
+        xmlns:customrules="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.CustomRules"
+        xmlns:showcase="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.Showcase"
+        xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=local:MainViewModel}"
+        Title="{i18n:StringLocalizer Text='MainWindow.Title'}"
+        Height="720"
+        Width="620">
+    <DockPanel Margin="8">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
+            <TextBlock Text="{i18n:StringLocalizer Text='MainWindow.Language'}" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <ComboBox ItemsSource="{Binding SupportedCultures}" SelectedItem="{Binding SelectedCulture}"
+                      DisplayMemberPath="NativeName" Width="160" />
+        </StackPanel>
+
+        <!--
+            Each tab below is a fully self-contained View+ViewModel pair, matching every other
+            sample's own TabControl shell in this repo - this shell only wires each tab's
+            DataContext to its own property on MainViewModel. The x:Name markers let
+            MainWindow.xaml.cs rebuild each tab's View (not its ViewModel/Form - so typed-in
+            values survive) when the language switches, since a plain {i18n:StringLocalizer}
+            binding with no BindArg only ever evaluates once and won't refresh on its own.
+        -->
+        <TabControl>
+            <TabItem x:Name="LoginTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabLogin'}">
+                <login:LoginView DataContext="{Binding LoginDemo}" />
+            </TabItem>
+
+            <TabItem x:Name="SignupTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabSignup'}">
+                <signup:SignupView DataContext="{Binding SignupDemo}" />
+            </TabItem>
+
+            <TabItem x:Name="ProfileTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabProfile'}">
+                <profile:ProfileEditView DataContext="{Binding ProfileEditDemo}" />
+            </TabItem>
+
+            <TabItem x:Name="CustomRulesTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabCustomRules'}">
+                <customrules:CustomRulesView DataContext="{Binding CustomRulesDemo}" />
+            </TabItem>
+
+            <TabItem x:Name="ShowcaseTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabShowcase'}">
+                <showcase:ShowcaseView DataContext="{Binding ShowcaseDemo}" />
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

@@ -1,0 +1,104 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusValee.Sample.Views.Showcase.ShowcaseView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+             xmlns:aqv="http://schemas.barbatos.co/aquariusvalee/2026/xaml"
+             xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml">
+    <UserControl.Resources>
+        <aqv:FieldTemplateSelector x:Key="FieldTemplateSelector" />
+        <i18n:LocalizeConverter x:Key="LocalizeConverter" />
+
+        <!--
+            Every template below shares the same three-part shape: Label, then [Display(Prompt)]
+            as a small gray guidance line (plain hint text - not a control choice, unlike
+            UIHint/DataType below), then the actual input and its error. Label/Prompt/ErrorMessage
+            are all runtime-bound strings (Field.Label is a "Field.*" key, not display text), so -
+            unlike every other view's hand-typed XAML labels - they need LocalizeConverter to
+            resolve them.
+        -->
+
+        <!-- Matches ShowcaseModel.Notes's [UIHint("MultilineText")]. -->
+        <DataTemplate x:Key="MultilineText">
+            <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="{Binding Label, Converter={StaticResource LocalizeConverter}}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Prompt, Converter={StaticResource LocalizeConverter}}" FontSize="11" Foreground="Gray" Margin="0,0,0,2" />
+                <TextBox aqv:Valee.Field="{Binding}" Padding="4" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
+                <TextBlock Text="{Binding ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- No UIHint on ShowcaseModel.CardNumber, but [CreditCard] is itself a DataTypeAttribute
+             whose constructor sets DataType.CreditCard - do not also add an explicit
+             [DataType(DataType.CreditCard)], it collides with [CreditCard] for any reflection
+             that queries the DataTypeAttribute base type (AmbiguousMatchException at runtime,
+             not a compile error). FieldTemplateSelector falls back to the DataTypeHint's enum
+             name once UIHint is unset. -->
+        <DataTemplate x:Key="CreditCard">
+            <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="{Binding Label, Converter={StaticResource LocalizeConverter}}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Prompt, Converter={StaticResource LocalizeConverter}}" FontSize="11" Foreground="Gray" Margin="0,0,0,2" />
+                <TextBox aqv:Valee.Field="{Binding}" Padding="4" MaxLength="19" />
+                <TextBlock Text="{Binding ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- ShowcaseModel.Plan's [UIHint("PlanPicker")] - a genuinely different WIDGET (a
+             dropdown), not just a resized TextBox, matching its closed EnumDataType constraint so
+             picking from the list can't produce an invalid value in the first place. The three
+             items are ShowcaseModel.Plan's own SubscriptionPlan member names - kept as fixed
+             identifiers (like a wire-format enum value), not translated, since Valee.Field binds
+             SelectedItem directly to the field's real string value. -->
+        <DataTemplate x:Key="PlanPicker">
+            <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="{Binding Label, Converter={StaticResource LocalizeConverter}}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Prompt, Converter={StaticResource LocalizeConverter}}" FontSize="11" Foreground="Gray" Margin="0,0,0,2" />
+                <ComboBox aqv:Valee.Field="{Binding}" Padding="4">
+                    <sys:String>Free</sys:String>
+                    <sys:String>Pro</sys:String>
+                    <sys:String>Enterprise</sys:String>
+                </ComboBox>
+                <TextBlock Text="{Binding ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- ShowcaseModel.Theme's [UIHint("ThemePicker")] - same reasoning as PlanPicker above,
+             matching its AllowedValues constraint. -->
+        <DataTemplate x:Key="ThemePicker">
+            <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="{Binding Label, Converter={StaticResource LocalizeConverter}}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Prompt, Converter={StaticResource LocalizeConverter}}" FontSize="11" Foreground="Gray" Margin="0,0,0,2" />
+                <ComboBox aqv:Valee.Field="{Binding}" Padding="4">
+                    <sys:String>Light</sys:String>
+                    <sys:String>Dark</sys:String>
+                    <sys:String>System</sys:String>
+                </ComboBox>
+                <TextBlock Text="{Binding ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Every other field (no UIHint, no DataTypeHint match) falls back to this. -->
+        <DataTemplate x:Key="Default">
+            <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="{Binding Label, Converter={StaticResource LocalizeConverter}}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Prompt, Converter={StaticResource LocalizeConverter}}" FontSize="11" Foreground="Gray" Margin="0,0,0,2" />
+                <TextBox aqv:Valee.Field="{Binding}" Padding="4" />
+                <TextBlock Text="{Binding ErrorMessage, Converter={StaticResource LocalizeConverter}}" Foreground="Red" FontSize="11" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel aqv:Valee.Form="{Binding ShowcaseForm}" Margin="24" MaxWidth="420" HorizontalAlignment="Left">
+            <TextBlock Text="{i18n:StringLocalizer Text='Showcase.Header'}" FontSize="22" FontWeight="Bold" Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16" Foreground="Gray"
+                       Text="{i18n:StringLocalizer Text='Showcase.Description'}" />
+
+            <ItemsControl ItemsSource="{Binding ShowcaseForm.Fields.Values}"
+                          ItemTemplateSelector="{StaticResource FieldTemplateSelector}" />
+
+            <Button Content="{i18n:StringLocalizer Text='Showcase.Submit'}" Padding="12,6" HorizontalAlignment="Left" Margin="0,8,0,0"
+                    Command="{Binding SubmitCommand}" />
+            <TextBlock Text="{Binding StatusMessage}" Margin="0,16,0,0" FontWeight="SemiBold" Foreground="Green" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
