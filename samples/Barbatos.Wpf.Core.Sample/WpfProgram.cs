@@ -162,6 +162,20 @@ public static class WpfProgram
                 options.Provider = initial.Provider;
                 options.Model = initial.Model;
                 options.Endpoint = initial.Endpoint;
+            },
+            configureAgent: options =>
+            {
+                options.Name = "SampleAssistant";
+
+                // Instructions are deliberately NOT set here: this sample rebuilds them on every
+                // turn (see MainViewModel.SendAiChatMessage) because they carry the current
+                // date/time, which obviously can't be frozen at startup. An app whose
+                // instructions are static should just set options.Instructions here instead.
+
+                // Left at its default (AiToolApprovalMode.Always) on purpose - the NuGet MCP
+                // server above is third-party code, and demonstrating the approval panel is half
+                // the point of this tab. Set AiToolApprovalMode.Never for the older
+                // run-tools-immediately behavior that IAiChatService still has.
             });
 
         // The shared sink SampleActionLoggingInterceptor and the OnDispatcherUnhandledException

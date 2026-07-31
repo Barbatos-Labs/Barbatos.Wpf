@@ -20,6 +20,7 @@ using Barbatos.Wpf.SingleInstance;
 using Barbatos.Wpf.Startup;
 using Barbatos.Wpf.Storage;
 using Barbatos.Wpf.Tray;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 
@@ -44,6 +45,7 @@ public class MainViewModel : INotifyPropertyChanged
     readonly IEmail _email;
     readonly IDialogService _dialogService;
     readonly IAiChatService _aiChat;
+    readonly IAiAgentFactory _aiAgentFactory;
     readonly IAiChatClientFactory _aiChatClientFactory;
     readonly IAiApiKeyProvider _aiApiKeyProvider;
     readonly IMcpServerRegistry _mcpServerRegistry;
@@ -66,6 +68,18 @@ public class MainViewModel : INotifyPropertyChanged
     string _aiChatInput = string.Empty;
     bool _aiAwaitingReply;
 
+    // The conversation the agent remembers, kept across turns - this is what IAiChatService
+    // has no equivalent of. Dropped whenever IAiAgentFactory rebuilds the agent (a different
+    // provider/key, or an MCP server appearing/disappearing), since a session belongs to the
+    // agent that created it.
+    AgentSession? _aiSession;
+
+    // Set while the agent is paused waiting for the user to answer the inline approval panel;
+    // SendAiChatMessage awaits this, and ResolvePendingApproval completes it.
+    TaskCompletionSource<(bool Approved, bool AlwaysApprove)>? _pendingApproval;
+    string _pendingApprovalDescription = string.Empty;
+    bool _alwaysApproveTool;
+
     public MainViewModel(
         IGreetingService greetingService,
         IRunOnStartupService runOnStartup,
@@ -81,6 +95,7 @@ public class MainViewModel : INotifyPropertyChanged
         IEmail email,
         IDialogService dialogService,
         IAiChatService aiChat,
+        IAiAgentFactory aiAgentFactory,
         IAiChatClientFactory aiChatClientFactory,
         IAiApiKeyProvider aiApiKeyProvider,
         IMcpServerRegistry mcpServerRegistry,
@@ -112,6 +127,7 @@ public class MainViewModel : INotifyPropertyChanged
         _email = email;
         _dialogService = dialogService;
         _aiChat = aiChat;
+        _aiAgentFactory = aiAgentFactory;
         _aiChatClientFactory = aiChatClientFactory;
         _aiApiKeyProvider = aiApiKeyProvider;
         _mcpServerRegistry = mcpServerRegistry;
@@ -131,6 +147,18 @@ public class MainViewModel : INotifyPropertyChanged
         };
         activityLog.Logged += LogLifecycleEvent;
         _aiChat.ConfigurationChanged += (_, _) => _ = RefreshAiStatusAsync();
+        // The agent is rebuilt whenever its inputs change, and an AgentSession belongs to the
+        // agent that created it - so the remembered conversation is dropped here rather than
+        // carried onto a different agent. In practice this fires once at startup, when the
+        // seeded MCP server finishes connecting and its tools become available.
+        _aiAgentFactory.ConfigurationChanged += (_, _) =>
+        {
+            if (_aiSession is null)
+                return;
+
+            _aiSession = null;
+            LogLifecycleEvent("IAiAgentFactory.ConfigurationChanged - agent rebuilt, conversation reset");
+        };
         _ = RefreshAiStatusAsync();
 
         _notifications.Activated += (sender, args) =>
@@ -609,11 +637,17 @@ public class MainViewModel : INotifyPropertyChanged
         private set { _aiStatusDescription = value; OnPropertyChanged(); }
     }
 
+    /// <summary>
+    /// Lists each connected server's tools by name, not just how many there are - knowing what a
+    /// server actually exposes is the difference between asking something that reaches a tool and
+    /// asking something the model can just answer from memory (the seeded NuGet server, for
+    /// instance, has no "search for a package" tool at all).
+    /// </summary>
     public string McpServersDescription =>
         _mcpServerRegistry.Servers.Count == 0
             ? "(connecting to the seeded MCP server...)"
             : string.Join(" | ", _mcpServerRegistry.Servers.Select(server => server.IsConnected
-                ? $"{server.Name}: connected, {server.Tools.Count} tool(s)"
+                ? $"{server.Name}: connected - {string.Join(", ", server.Tools.Select(tool => tool.Name))}"
                 : $"{server.Name}: {server.LastError}"));
 
     /// <summary>
@@ -662,9 +696,37 @@ public class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<string> AiChatTranscript { get; } = new();
 
     /// <summary>
-    /// Sends <see cref="AiChatInput"/> through <see cref="IAiChatService"/>, which automatically
-    /// merges every connected MCP server's tools into the request - nothing else in this sample
-    /// wires MCP tools in by hand.
+    /// Whether the agent is currently paused waiting for the user to answer the inline approval
+    /// panel - drives that panel's visibility. Send needs no separate guard while this is showing:
+    /// the run it belongs to is still in flight, so <see cref="SendAiChatMessage"/>'s existing
+    /// "already awaiting a reply" check already ignores it.
+    /// </summary>
+    public bool HasPendingApproval => _pendingApproval is not null;
+
+    /// <summary>The tool call awaiting an answer, as shown in the approval panel.</summary>
+    public string PendingApprovalDescription
+    {
+        get => _pendingApprovalDescription;
+        private set { _pendingApprovalDescription = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// The panel's "Don't ask again for this tool" checkbox. Passed straight through to
+    /// <see cref="AgentApprovalExtensions.CreateApprovalResponse"/>'s <c>alwaysApprove</c>, which
+    /// records a standing rule on the session so the same tool stops prompting for the rest of
+    /// the conversation.
+    /// </summary>
+    public bool AlwaysApproveTool
+    {
+        get => _alwaysApproveTool;
+        set { _alwaysApproveTool = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Sends <see cref="AiChatInput"/> through the agent from <see cref="IAiAgentFactory"/>. The
+    /// agent already has every connected MCP server's tools attached, so nothing here wires tools
+    /// in by hand - and because it runs against a persistent <c>AgentSession</c>, the model
+    /// remembers earlier turns, which the older <see cref="IAiChatService"/> path does not do.
     /// </summary>
     public async void SendAiChatMessage()
     {
@@ -682,40 +744,51 @@ public class MainViewModel : INotifyPropertyChanged
         var replyIndex = -1;
         try
         {
-            LogLifecycleEvent("IAiChatService.GetStreamingResponseAsync(...)");
+            LogLifecycleEvent("IAiAgentFactory.GetAgentAsync(...)");
+            var agent = await _aiAgentFactory.GetAgentAsync();
+            _aiSession ??= await agent.CreateSessionAsync();
 
             // The raw model has no clock or internet access - unlike Gemini's own consumer web
             // app (which layers Google Search grounding on top), a plain API call only knows
             // "now" if it's told. Local time covers "what time is it" for wherever this app
             // happens to be running; UTC is included too so the model can compute any other
-            // timezone the user asks about from a fixed reference point.
+            // timezone the user asks about from a fixed reference point. These are set per run
+            // rather than on AiAgentOptions.Instructions precisely because they change every
+            // turn - run options take precedence over the agent's own, so this is the whole
+            // instruction string, not an addition to one.
             var now = DateTimeOffset.Now;
-            var options = new ChatOptions
+            var runOptions = new ChatClientAgentRunOptions(new ChatOptions
             {
-                Instructions = $"Current date/time: {now:yyyy-MM-dd HH:mm} ({TimeZoneInfo.Local.DisplayName}), " +
-                                $"{now.ToUniversalTime():yyyy-MM-dd HH:mm} UTC.",
-            };
+                Instructions =
+                    "You are the Barbatos.Wpf.Core sample assistant. " +
+                    $"Current date/time: {now:yyyy-MM-dd HH:mm} ({TimeZoneInfo.Local.DisplayName}), " +
+                    $"{now.ToUniversalTime():yyyy-MM-dd HH:mm} UTC. " +
+                    // Most of the seeded NuGet server's tools take a required absolute
+                    // solutionDirectory/rootDirectory argument. Without being told one the model
+                    // has nothing to put there, so it quietly answers from its own knowledge
+                    // instead of calling the tool - which looks exactly like tool-calling being
+                    // broken. Any app exposing path-taking MCP tools has to do something like this.
+                    $"This application runs from '{AppContext.BaseDirectory}' - use that path for " +
+                    "any tool argument asking for a solution directory or repository root. " +
+                    "Prefer calling a tool over answering from memory whenever one fits the question.",
+            });
 
-            // Streamed token-by-token instead of awaiting the full reply - IAiChatService's own
-            // ConfigureAwait(false) calls are internal to the library and don't affect this loop:
-            // each await here still resumes on this window's own captured UI-thread context, so
-            // updating AiChatTranscript directly (no Dispatcher.Invoke) is safe.
-            var reply = "AI: ";
-            await foreach (var update in _aiChat.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, message)], options))
+            AgentResponse response;
+            (response, replyIndex) = await RunStreamingIntoTranscriptAsync(
+                agent, new ChatMessage(ChatRole.User, message), runOptions, replyIndex);
+
+            // Under AiToolApprovalMode.Always a run that wants a tool comes back paused instead
+            // of answering - nothing has run yet. Requests are surfaced one at a time even when
+            // the model asked for several, so this has to loop until none are left rather than
+            // answering once.
+            while (response.GetToolApprovalRequests() is { Count: > 0 } pending)
             {
-                if (string.IsNullOrEmpty(update.Text))
-                    continue;
+                LogLifecycleEvent($"Tool approval requested: {ToolCallName(pending[0])}");
+                var (approved, alwaysApprove) = await RequestApprovalAsync(pending);
+                LogLifecycleEvent($"Tool approval {(approved ? "granted" : "denied")}{(approved && alwaysApprove ? " (don't ask again)" : string.Empty)}");
 
-                reply += update.Text;
-                if (replyIndex < 0)
-                {
-                    replyIndex = AiChatTranscript.Count;
-                    AiChatTranscript.Add(reply);
-                }
-                else
-                {
-                    AiChatTranscript[replyIndex] = reply;
-                }
+                (response, replyIndex) = await RunStreamingIntoTranscriptAsync(
+                    agent, pending.CreateApprovalResponse(approved, alwaysApprove), runOptions, replyIndex);
             }
 
             if (replyIndex < 0)
@@ -734,8 +807,115 @@ public class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
+            CancelPendingApproval();
             _aiAwaitingReply = false;
         }
+    }
+
+    /// <summary>
+    /// Streams one agent run into <see cref="AiChatTranscript"/> as it arrives, and returns the
+    /// assembled <see cref="AgentResponse"/> so the caller can check it for pending tool
+    /// approvals - <c>ToAgentResponse()</c> is what makes "stream the text" and "inspect the
+    /// finished response" possible at the same time.
+    /// </summary>
+    /// <param name="replyIndex">The transcript line this reply is being written into, or -1 if
+    /// nothing has been written yet; returned back out (rather than taken by <c>ref</c>, which an
+    /// async method cannot have) so a follow-up run after an approval keeps appending to the same
+    /// line instead of starting a new one.</param>
+    async Task<(AgentResponse Response, int ReplyIndex)> RunStreamingIntoTranscriptAsync(
+        AIAgent agent,
+        ChatMessage message,
+        ChatClientAgentRunOptions runOptions,
+        int replyIndex)
+    {
+        var index = replyIndex;
+        var updates = new List<AgentResponseUpdate>();
+        var reply = index < 0 ? "AI: " : AiChatTranscript[index];
+
+        // Each await here resumes on this window's own captured UI-thread context, so updating
+        // AiChatTranscript directly (no Dispatcher.Invoke) is safe.
+        await foreach (var update in agent.RunStreamingAsync(message, _aiSession, runOptions))
+        {
+            updates.Add(update);
+            if (string.IsNullOrEmpty(update.Text))
+                continue;
+
+            reply += update.Text;
+            if (index < 0)
+            {
+                index = AiChatTranscript.Count;
+                AiChatTranscript.Add(reply);
+            }
+            else
+            {
+                AiChatTranscript[index] = reply;
+            }
+        }
+
+        return (updates.ToAgentResponse(), index);
+    }
+
+    /// <summary>
+    /// Shows the inline approval panel and waits for the user to click Allow or Deny. Returning a
+    /// <see cref="Task{TResult}"/> completed by <see cref="ResolvePendingApproval"/> is what lets
+    /// the agent loop above read like ordinary sequential code while the UI stays responsive.
+    /// </summary>
+    Task<(bool Approved, bool AlwaysApprove)> RequestApprovalAsync(IReadOnlyList<ToolApprovalRequestContent> pending)
+    {
+        // Arguments are worth showing: the model chose them, and they are exactly the part a user
+        // needs to see before allowing anything ("delete_file(path: C:\...)" reads very
+        // differently from "delete_file").
+        var arguments = pending[0].ToolCall is FunctionCallContent { Arguments: { Count: > 0 } values }
+            ? string.Join(", ", values.Select(argument => $"{argument.Key}: {argument.Value}"))
+            : "(no arguments)";
+
+        PendingApprovalDescription = pending.Count > 1
+            ? $"{ToolCallName(pending[0])}({arguments})  -  {pending.Count - 1} more queued"
+            : $"{ToolCallName(pending[0])}({arguments})";
+
+        AlwaysApproveTool = false;
+        _pendingApproval = new TaskCompletionSource<(bool, bool)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        OnPropertyChanged(nameof(HasPendingApproval));
+
+        return _pendingApproval.Task;
+    }
+
+    /// <summary>
+    /// The tool's name for display. It lives on <see cref="FunctionCallContent"/>, not on the
+    /// <c>ToolCallContent</c> base that <c>ToolApprovalRequestContent.ToolCall</c> is typed as -
+    /// every MCP tool is a function call in practice, but the fallback keeps a hosted/server-side
+    /// tool from rendering as an empty name.
+    /// </summary>
+    static string ToolCallName(ToolApprovalRequestContent request) =>
+        request.ToolCall is FunctionCallContent function ? function.Name : request.ToolCall.CallId;
+
+    /// <summary>
+    /// Answers the pending approval - called by the panel's Allow/Deny buttons.
+    /// </summary>
+    public void ResolvePendingApproval(bool approved)
+    {
+        var pending = _pendingApproval;
+        if (pending is null)
+            return;
+
+        _pendingApproval = null;
+        OnPropertyChanged(nameof(HasPendingApproval));
+        pending.TrySetResult((approved, AlwaysApproveTool));
+    }
+
+    /// <summary>
+    /// Tears the panel down if a run ends while it is still showing (an error mid-loop, say), so
+    /// a stale prompt can't be left on screen with nothing awaiting it.
+    /// </summary>
+    void CancelPendingApproval()
+    {
+        var pending = _pendingApproval;
+        if (pending is null)
+            return;
+
+        _pendingApproval = null;
+        OnPropertyChanged(nameof(HasPendingApproval));
+        pending.TrySetResult((false, false));
     }
 
     void PersistSettings() =>

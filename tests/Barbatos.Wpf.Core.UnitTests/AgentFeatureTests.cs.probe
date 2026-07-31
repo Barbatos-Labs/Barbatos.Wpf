@@ -1,0 +1,1 @@
+cat >> AgentFeatureTests.cs <<'EOF'

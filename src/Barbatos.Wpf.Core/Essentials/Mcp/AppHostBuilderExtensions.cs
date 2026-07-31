@@ -20,14 +20,23 @@ public static partial class AppHostBuilderExtensions
     /// layer (the application's own end user supplies their Gemini/Claude/ChatGPT/other API key -
     /// the publisher never pays for usage), and <see cref="IAiChatService"/> ties both together
     /// so callers get MCP tool-calling "for free". Configurable from code via
-    /// <paramref name="configure"/>/<paramref name="configureProvider"/> and/or from the
-    /// <c>Barbatos:Mcp</c>/<c>Barbatos:Mcp:Provider</c> configuration sections (configuration
-    /// values override code values).
+    /// <paramref name="configure"/>/<paramref name="configureProvider"/>/<paramref name="configureAgent"/>
+    /// and/or from the <c>Barbatos:Mcp</c>/<c>Barbatos:Mcp:Provider</c>/<c>Barbatos:Mcp:Agent</c>
+    /// configuration sections (configuration values override code values).
     /// </summary>
+    /// <remarks>
+    /// Also registers the Microsoft Agent Framework layer on top of the same BYOK provider and
+    /// MCP servers: <see cref="IAiAgentFactory"/> builds an <c>AIAgent</c> that remembers a
+    /// conversation across turns and can pause for end-user tool approval, and
+    /// <see cref="IAiSessionStore"/> persists those conversations across app restarts. Both
+    /// layers stay available - see <see cref="IAiAgentFactory"/>'s own remarks for which to use
+    /// when.
+    /// </remarks>
     public static WpfAppBuilder ConfigureMcp(
         this WpfAppBuilder builder,
         Action<McpOptions>? configure = null,
-        Action<AiProviderOptions>? configureProvider = null)
+        Action<AiProviderOptions>? configureProvider = null,
+        Action<AiAgentOptions>? configureAgent = null)
     {
         var options = builder.Services.AddOptions<McpOptions>();
         if (configure != null)
@@ -39,10 +48,17 @@ public static partial class AppHostBuilderExtensions
             providerOptions.Configure(configureProvider);
         providerOptions.Bind(builder.Configuration.GetSection(AiProviderOptions.SectionName));
 
+        var agentOptions = builder.Services.AddOptions<AiAgentOptions>();
+        if (configureAgent != null)
+            agentOptions.Configure(configureAgent);
+        agentOptions.Bind(builder.Configuration.GetSection(AiAgentOptions.SectionName));
+
         builder.Services.TryAddSingleton<IAiApiKeyProvider, SecureStorageAiApiKeyProvider>();
         builder.Services.TryAddSingleton<IMcpServerRegistry, McpServerRegistry>();
         builder.Services.TryAddSingleton<IAiChatClientFactory, AiChatClientFactory>();
         builder.Services.TryAddSingleton<IAiChatService, AiChatService>();
+        builder.Services.TryAddSingleton<IAiAgentFactory, AiAgentFactory>();
+        builder.Services.TryAddSingleton<IAiSessionStore, FileAiSessionStore>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IWpfInitializeService, McpInitializer>());
 
         return builder;

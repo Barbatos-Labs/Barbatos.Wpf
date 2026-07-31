@@ -96,4 +96,13 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter)
             ((MainViewModel)DataContext).SendAiChatMessage();
     }
+
+    // The inline tool-approval panel's two answers - both just complete the Task the paused agent
+    // run is awaiting (see MainViewModel.ResolvePendingApproval). Denying is not an error: the
+    // agent carries on and tells the model the call was refused.
+    void ApproveToolButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).ResolvePendingApproval(approved: true);
+
+    void DenyToolButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).ResolvePendingApproval(approved: false);
 }

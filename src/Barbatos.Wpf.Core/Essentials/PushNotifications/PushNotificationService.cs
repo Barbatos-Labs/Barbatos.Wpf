@@ -8,6 +8,7 @@ using Barbatos.Wpf.ApplicationModel;
 using Barbatos.Wpf.Dispatching;
 using Barbatos.Wpf.Notifications;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Barbatos.Wpf.PushNotifications;
 
@@ -19,12 +20,26 @@ namespace Barbatos.Wpf.PushNotifications;
 /// </summary>
 internal sealed class PushNotificationService : IPushNotificationService
 {
+    /// <summary>
+    /// Forgiving on the way in: case-insensitive names and numbers-in-strings both accepted, so a
+    /// server that spells its JSON slightly differently than the payload type expects still works
+    /// rather than dropping every notification at the deserializer.
+    /// </summary>
+    static readonly JsonSerializerOptions DeserializerOptions = new(JsonSerializerDefaults.Web);
+
     readonly IPushNotificationTransport _transport;
     readonly INotificationService _notifications;
     readonly IPushNotificationFallbackPresenter _fallback;
     readonly ILauncher _launcher;
     readonly IDispatcher? _dispatcher;
+    readonly PushNotificationOptions _options;
     readonly ILogger<PushNotificationService>? _logger;
+
+    // Receipt ids already seen, plus the order they arrived in so the oldest can be forgotten once
+    // the history is full. Guarded by a lock because the transport's callbacks arrive on the
+    // ThreadPool, before anything has been marshalled to the UI thread.
+    readonly HashSet<string> _seenReceipts = new(StringComparer.Ordinal);
+    readonly Queue<string> _receiptOrder = new();
 
     Func<string, IPushNotification?>? _deserialize;
 
@@ -34,12 +49,14 @@ internal sealed class PushNotificationService : IPushNotificationService
         IPushNotificationFallbackPresenter fallback,
         ILauncher launcher,
         IDispatcherProvider dispatcherProvider,
+        IOptions<PushNotificationOptions> options,
         ILogger<PushNotificationService>? logger = null)
     {
         _transport = transport;
         _notifications = notifications;
         _fallback = fallback;
         _launcher = launcher;
+        _options = options.Value;
         _logger = logger;
 
         // Resolved once, here - this constructor runs synchronously on the UI thread (via the
@@ -71,7 +88,7 @@ internal sealed class PushNotificationService : IPushNotificationService
     /// <c>ConfigurePushNotifications</c>/<c>ConfigurePushNotifications&lt;TNotification&gt;</c>.
     /// </summary>
     internal void UseNotificationType<TNotification>() where TNotification : class, IPushNotification =>
-        _deserialize = json => JsonSerializer.Deserialize<TNotification>(json);
+        _deserialize = json => JsonSerializer.Deserialize<TNotification>(json, DeserializerOptions);
 
     public Task ConnectAsync(CancellationToken cancellationToken = default) =>
         _transport.StartAsync(cancellationToken);
@@ -79,6 +96,11 @@ internal sealed class PushNotificationService : IPushNotificationService
     public Task DisconnectAsync(CancellationToken cancellationToken = default) =>
         _transport.StopAsync(cancellationToken);
 
+    /// <remarks>
+    /// Goes straight to the display pipeline: no acknowledgement (there is no server to send one
+    /// to) and no de-duplication, so simulating the same notification twice really does show it
+    /// twice - which is what you want from a tool for checking display behavior.
+    /// </remarks>
     public Task SimulateNotificationAsync(IPushNotification notification, CancellationToken cancellationToken = default)
     {
         Process(notification);
@@ -94,12 +116,74 @@ internal sealed class PushNotificationService : IPushNotificationService
         }
         catch (JsonException ex)
         {
+            // Left unacknowledged on purpose: a payload this client cannot read is a bug worth
+            // keeping queued on the server rather than quietly discarding.
             _logger?.LogWarning(ex, "A push notification arrived that could not be deserialized into the registered notification type.");
             return;
         }
 
-        if (notification is not null)
-            Process(notification);
+        if (notification is null)
+            return;
+
+        var alreadySeen = IsDuplicate(notification);
+
+        // Acknowledged either way - a duplicate is itself evidence that the last acknowledgement
+        // never reached the server, so staying quiet would keep it re-sending forever.
+        Acknowledge(notification);
+
+        if (alreadySeen)
+        {
+            _logger?.LogDebug("Push notification {ReceiptId} was already received; not showing it again.", notification.ReceiptId);
+            return;
+        }
+
+        Process(notification);
+    }
+
+    /// <summary>
+    /// Records <paramref name="notification"/>'s receipt id and reports whether it had already been
+    /// seen. Payloads without a receipt id can't be recognized and are always treated as new.
+    /// </summary>
+    bool IsDuplicate(IPushNotification notification)
+    {
+        if (_options.DeduplicationHistorySize <= 0 || notification.ReceiptId is not { Length: > 0 } receiptId)
+            return false;
+
+        lock (_seenReceipts)
+        {
+            if (!_seenReceipts.Add(receiptId))
+                return true;
+
+            _receiptOrder.Enqueue(receiptId);
+
+            while (_receiptOrder.Count > _options.DeduplicationHistorySize)
+                _seenReceipts.Remove(_receiptOrder.Dequeue());
+
+            return false;
+        }
+    }
+
+    void Acknowledge(IPushNotification notification)
+    {
+        if (notification.ReceiptId is not { Length: > 0 } receiptId)
+            return;
+
+        // Fire-and-forget: this runs from a transport callback with nothing to await it, and a
+        // failed acknowledgement is recoverable (the server re-sends, and de-duplication above
+        // keeps the retry invisible).
+        _ = AcknowledgeAsync(receiptId);
+    }
+
+    async Task AcknowledgeAsync(string receiptId)
+    {
+        try
+        {
+            await _transport.AcknowledgeAsync(receiptId).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Acknowledging push notification {ReceiptId} failed.", receiptId);
+        }
     }
 
     void Process(IPushNotification notification)

@@ -117,6 +117,117 @@ public class PushNotificationFeatureTests
         Assert.False(received);
         Assert.Empty(notifications.Shown);
         Assert.Empty(fallback.Notified);
+
+        // Deliberately unacknowledged: a payload this client can't read should stay queued on the
+        // server rather than being silently marked as delivered.
+        Assert.Empty(transport.Acknowledged);
+    }
+
+    [Fact]
+    public void ReceivingANotificationAcknowledgesItBackToTheServer()
+    {
+        var (_, transport, _, _, _) = BuildService();
+
+        transport.RaiseNotificationReceived("""{"notificationId":1052,"appId":"A","title":"Title","message":"Body"}""");
+
+        Assert.Equal("1052", Assert.Single(transport.Acknowledged));
+    }
+
+    [Fact]
+    public void ANotificationWithNoIdIsNotAcknowledged()
+    {
+        var (_, transport, notifications, _, _) = BuildService();
+
+        transport.RaiseNotificationReceived("""{"appId":"A","title":"Title","message":"Body"}""");
+
+        // Shown, but there is no id to acknowledge with - so nothing is sent rather than "0".
+        Assert.Single(notifications.Shown);
+        Assert.Empty(transport.Acknowledged);
+    }
+
+    [Fact]
+    public void ARedeliveredNotificationIsShownOnceButAcknowledgedEveryTime()
+    {
+        var (service, transport, notifications, _, _) = BuildService();
+
+        var receivedCount = 0;
+        service.NotificationReceived += (_, _) => receivedCount++;
+
+        const string Payload = """{"notificationId":7,"appId":"A","title":"Title","message":"Body"}""";
+        transport.RaiseNotificationReceived(Payload);
+        transport.RaiseNotificationReceived(Payload);
+
+        // Shown once: a server that re-sends until acknowledged will re-deliver whenever an
+        // acknowledgement is lost, and the user must not see that.
+        Assert.Single(notifications.Shown);
+        Assert.Equal(1, receivedCount);
+
+        // Acknowledged twice: the repeat is itself proof the first acknowledgement never landed.
+        Assert.Equal(["7", "7"], transport.Acknowledged);
+    }
+
+    [Fact]
+    public void DifferentNotificationsAreBothShown()
+    {
+        var (_, transport, notifications, _, _) = BuildService();
+
+        transport.RaiseNotificationReceived("""{"notificationId":1,"appId":"A","title":"First","message":"Body"}""");
+        transport.RaiseNotificationReceived("""{"notificationId":2,"appId":"A","title":"Second","message":"Body"}""");
+
+        Assert.Equal(2, notifications.Shown.Count);
+    }
+
+    [Fact]
+    public void DeduplicationForgetsTheOldestReceiptOnceItsHistoryIsFull()
+    {
+        var (_, transport, notifications, _, _) = BuildService(options => options.DeduplicationHistorySize = 1);
+
+        transport.RaiseNotificationReceived("""{"notificationId":1,"appId":"A","title":"First","message":"Body"}""");
+        transport.RaiseNotificationReceived("""{"notificationId":2,"appId":"A","title":"Second","message":"Body"}""");
+        transport.RaiseNotificationReceived("""{"notificationId":1,"appId":"A","title":"First again","message":"Body"}""");
+
+        // Notification 1 fell out of a one-entry history, so its re-delivery is shown again.
+        Assert.Equal(3, notifications.Shown.Count);
+    }
+
+    [Fact]
+    public void DeduplicationCanBeTurnedOff()
+    {
+        var (_, transport, notifications, _, _) = BuildService(options => options.DeduplicationHistorySize = 0);
+
+        const string Payload = """{"notificationId":9,"appId":"A","title":"Title","message":"Body"}""";
+        transport.RaiseNotificationReceived(Payload);
+        transport.RaiseNotificationReceived(Payload);
+
+        Assert.Equal(2, notifications.Shown.Count);
+    }
+
+    [Fact]
+    public void PayloadPropertyNamesAreMatchedCaseInsensitively()
+    {
+        var (_, transport, notifications, _, _) = BuildService();
+
+        // A server that serializes with PascalCase (SignalR's own default, if its payload
+        // serializer is left alone) must still be understood.
+        transport.RaiseNotificationReceived("""{"NotificationId":3,"AppId":"A","Title":"Title","Message":"Body"}""");
+
+        var shown = Assert.Single(notifications.Shown).Content;
+        Assert.Equal("Title", shown.Title);
+        Assert.Equal("Body", shown.Message);
+        Assert.Equal("3", Assert.Single(transport.Acknowledged));
+    }
+
+    [Fact]
+    public async Task SimulatedNotificationsAreNeitherAcknowledgedNorDeduplicated()
+    {
+        var (service, transport, notifications, _, _) = BuildService();
+
+        var notification = new PushNotification { NotificationId = 5, AppId = "A", Title = "Title", Body = "Body" };
+        await service.SimulateNotificationAsync(notification);
+        await service.SimulateNotificationAsync(notification);
+
+        Assert.Equal(2, notifications.Shown.Count);
+        Assert.Empty(transport.Acknowledged);
     }
 
     [Fact]

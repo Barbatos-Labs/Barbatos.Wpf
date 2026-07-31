@@ -27,6 +27,21 @@ public interface IPushNotification
 
     /// <summary>What happens when the user interacts with the notification, or <see langword="null"/> for none.</summary>
     PushNotificationAction? Action { get; }
+
+    /// <summary>
+    /// The server's own identifier for this notification, used for two things:
+    /// <see cref="IPushNotificationService"/> sends it back as an acknowledgement so the server can
+    /// stop re-sending, and it recognizes a payload that has already been shown. A server that
+    /// re-sends until acknowledged will inevitably deliver the occasional duplicate - an
+    /// acknowledgement lost to a dropped connection - and this is what makes that invisible to the
+    /// user.
+    /// <para>
+    /// Defaults to <see langword="null"/>, which means "this payload cannot be acknowledged or
+    /// de-duplicated": every delivery is shown, and a server waiting for an acknowledgement will
+    /// keep re-sending. Override it on your own payload type whenever the server has an id.
+    /// </para>
+    /// </summary>
+    string? ReceiptId => null;
 }
 
 /// <summary>

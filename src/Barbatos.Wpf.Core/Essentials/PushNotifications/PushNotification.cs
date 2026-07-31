@@ -3,6 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace Barbatos.Wpf.PushNotifications;
@@ -57,4 +58,13 @@ public sealed class PushNotification : IPushNotification
     /// </summary>
     [JsonPropertyName("metadata")]
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// <see cref="NotificationId"/> rendered as text. <c>0</c> maps to <see langword="null"/>: it is
+    /// what a payload without an id deserializes to, and treating it as a real id would make every
+    /// such notification look like a duplicate of the last one.
+    /// </remarks>
+    [JsonIgnore]
+    public string? ReceiptId => NotificationId == 0 ? null : NotificationId.ToString(CultureInfo.InvariantCulture);
 }

@@ -25,7 +25,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
 | **[`Barbatos.Wpf.Dialogs`](#barbatoswpfdialogs-namespace)** | The dialog service: owner assignment, duplicate-open prevention, and graceful bulk-close for child windows. |
 | **[`Barbatos.Wpf.Apsu`](#barbatoswpfapsu-namespace)** | State management: stores, getters, plugins, and a middleware-style action interceptor chain. |
-| **[`Barbatos.Wpf.Mcp`](#barbatoswpfmcp-namespace)** | The MCP (Model Context Protocol) client + bring-your-own-key AI chat optional feature. |
+| **[`Barbatos.Wpf.Mcp`](#barbatoswpfmcp-namespace)** | The MCP (Model Context Protocol) client + bring-your-own-key AI chat/agent optional feature. |
 
 ---
 
@@ -801,6 +801,10 @@ mechanism and belong on that mechanism's own implementation/options.
 - **`NotificationReceived`** (`event EventHandler<string>`) — raw JSON text; deserialized by
   `IPushNotificationService` into whichever `IPushNotification` type the app registered.
 - **`StartAsync(CancellationToken = default)`** / **`StopAsync(CancellationToken = default)`** → `Task`
+- **`AcknowledgeAsync(string receiptId, CancellationToken = default)`** → `Task` — confirms a
+  notification arrived so a server with an offline queue stops re-sending it. Has a default
+  no-op implementation, since a fire-and-forget delivery mechanism has nowhere to send one.
+  Called automatically by `IPushNotificationService` for every notification with a `ReceiptId`.
 
 Registered via `TryAddSingleton` — replace with your own implementation (registered before
 `ConfigurePushNotifications`, e.g. for Firebase Cloud Messaging, Windows Notification Service, or
@@ -815,15 +819,20 @@ The minimum shape the service needs to display a notification.
 
 - **`Title`** (`string`), **`Body`** (`string`), **`ImageUrl`** (`string?`),
   **`Action`** (`PushNotificationAction?`)
+- **`ReceiptId`** (`string?`, default interface member returning `null`) — the server's identifier
+  for this notification. Used both to acknowledge receipt and to recognize a re-delivery, so the
+  same notification is never shown twice. `null` means neither is possible for this payload.
 
 ### `PushNotification`
 
 The default payload — `NotificationId` (`long`), `AppId` (`string`), `EventKey` (`string?`),
 `Title`/`Body` (`string`), `ImageUrl` (`string?`), `ScheduledFor`/`ExpiresAt`
 (`DateTimeOffset?`), `Action` (`PushNotificationAction?`), `Metadata`
-(`IReadOnlyDictionary<string, string>?`) — implements `IPushNotification`. Implement
-`IPushNotification` on your own type instead (and register it via
-`ConfigurePushNotifications<TNotification>()`) if your server's JSON shape differs.
+(`IReadOnlyDictionary<string, string>?`) — implements `IPushNotification`, with `ReceiptId`
+returning `NotificationId` as text (`null` when it is `0`, i.e. absent from the payload).
+Implement `IPushNotification` on your own type instead (and register it via
+`ConfigurePushNotifications<TNotification>()`) if your server's JSON shape differs. Incoming JSON
+is matched case-insensitively, so a server using PascalCase names works without a custom type.
 
 ### `PushNotificationAction` / `PushNotificationActionType`
 
@@ -856,6 +865,9 @@ Transport-agnostic — applies regardless of which `IPushNotificationTransport` 
 
 - **`Enabled`** (`bool`) — whether the client starts its transport at startup.
 - **`FallbackTimeout`** (`TimeSpan`, default 5s) — how long the fallback window stays visible.
+- **`DeduplicationHistorySize`** (`int`, default 256) — how many `ReceiptId`s to remember so a
+  re-delivered notification isn't shown twice. Per-process and deliberately not persisted; `0`
+  disables de-duplication.
 
 ### `SignalRPushNotificationTransport` / `SignalRPushNotificationOptions`
 
@@ -866,8 +878,20 @@ register a different transport):
 - **`DeviceId`**/**`AppVersion`**/**`Platform`** (`string?`) — auto-populated from
   `DeviceIdentity.GetInstanceIdAsync()`/`AppInfo.VersionString`/`DeviceInfo.Platform` when left
   unset.
+- **`AppKey`** (`string?`) — this application's key on the server, sent both as the
+  **`AppKeyHeaderName`** header (default `"X-App-Key"`) and as SignalR's `access_token`, since
+  which one arrives depends on the negotiated transport.
+- **`Tags`** (`IDictionary<string, string>`) — extra labels (plan tier, permission group, machine
+  role, ...) sent with the handshake, for servers that target a subset of devices.
 - **`HandshakeMethodName`** (default `"RegisterDevice"`), **`NotificationMethodName`** (default
-  `"ReceiveNotification"`) — the hub method names; adjust to match your server.
+  `"ReceiveNotification"`), **`AcknowledgeMethodName`** (`string?`, default
+  `"AcknowledgeNotification"`; `null` to send no acknowledgements) — the hub method names; adjust
+  to match your server.
+
+The handshake is re-sent after every automatic reconnect, not just on the first connect: SignalR
+issues a new connection id each time, so a server that maps connections to devices would otherwise
+treat the reconnected client as an anonymous stranger and push nothing to it until the app
+restarted.
 
 Configured via `ConfigurePushNotifications`'s `configureSignalR` parameter, or the
 `Barbatos:PushNotifications:SignalR` config section.
@@ -1262,9 +1286,15 @@ public sealed class InterceptorHandle
 
 ## `Barbatos.Wpf.Mcp` Namespace
 
-MCP (Model Context Protocol) client + bring-your-own-key (BYOK) AI chat. Has no .NET MAUI
-counterpart. See [AI chat + MCP](README.md#ai-chat--mcp-barbatoswpfmcp) in the README for the
-full behavior description, including the BYOK rationale and provider list.
+MCP (Model Context Protocol) client + bring-your-own-key (BYOK) AI chat, plus a Microsoft Agent
+Framework layer on top of both. Has no .NET MAUI counterpart. See
+[AI chat + MCP](README.md#ai-chat--mcp-barbatoswpfmcp) in the README for the full behavior
+description, including the BYOK rationale, the provider list, and when to use `IAiChatService`
+versus `IAiAgentFactory`.
+
+All of it is registered by a single `ConfigureMcp(configure?, configureProvider?, configureAgent?)`
+call — the third parameter, and everything below from `IAiAgentFactory` onwards, is additive: an
+app already built on `IAiChatService` is unaffected.
 
 ### `IMcpServerRegistry`
 
@@ -1352,10 +1382,11 @@ currently-configured provider/model.
 
 ### `IAiChatService`
 
-The facade most application code calls — merges `IMcpServerRegistry.Tools` into the caller's own
+The one-shot facade — merges `IMcpServerRegistry.Tools` into the caller's own
 `ChatOptions` (appended, never clobbering caller-supplied tools) before delegating to
 `IAiChatClientFactory`. Tool calls the model requests execute automatically, with no confirmation
-step.
+step, and nothing is remembered between calls. For conversation memory and end-user tool
+approval, use `IAiAgentFactory` instead; both stay registered.
 
 - **`ConfigurationChanged`** (`event EventHandler`) — forwards `IAiChatClientFactory.ConfigurationChanged`.
 - **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>`
@@ -1364,3 +1395,66 @@ step.
 
 Both throw `InvalidOperationException` (via `IAiChatClientFactory.GetChatClientAsync`) if no
 provider is fully configured yet.
+
+### `IAiAgentFactory`
+
+Builds a `Microsoft.Agents.AI.AIAgent` (Microsoft Agent Framework) over whichever provider
+`IAiChatClientFactory` currently has configured, with every connected MCP server's tools attached,
+the configured tool-approval policy applied, and logging/OpenTelemetry middleware wired in. The
+returned type is the framework's own `AIAgent`, not a wrapper — `RunAsync`, `RunStreamingAsync`,
+`CreateSessionAsync`, `SerializeSessionAsync` all work as the Agent Framework documents them.
+
+- **`ConfigurationChanged`** (`event EventHandler`) — forwards *both* `IAiChatClientFactory.ConfigurationChanged`
+  and `IMcpServerRegistry.Changed`, since an agent is handed its tools once, at construction.
+- **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>` — forwards `IAiChatClientFactory.IsConfiguredAsync`.
+- **`GetAgentAsync(CancellationToken = default)`** → `Task<AIAgent>` — the default agent described by
+  `AiAgentOptions`, cached until anything it was built from changes.
+- **`CreateAgentAsync(AiAgentDescriptor, CancellationToken = default)`** → `Task<AIAgent>` — a one-off,
+  uncached agent with its own instructions/tools/approval policy.
+
+Both throw `InvalidOperationException` if no provider is fully configured yet;
+`CreateAgentAsync` also throws it for a descriptor failing `AiAgentDescriptor.Validate()`.
+
+### `AiAgentOptions` / `AiAgentDescriptor` / `AiToolApprovalMode`
+
+- **`AiAgentOptions`** (`SectionName` = `"Barbatos:Mcp:Agent"`): **`Name`** (`string`, default
+  `"Assistant"`), **`Description`**/**`Instructions`** (`string?`), **`ToolApproval`**
+  (`AiToolApprovalMode`, default `Always`), **`IncludeMcpTools`** (`bool`, default `true`),
+  **`EnableLogging`** (`bool`, default `true`), **`EnableOpenTelemetry`** (`bool`, default
+  `false`), **`OpenTelemetrySourceName`** (`string`, default `"Barbatos.Wpf.Mcp"`).
+- **`AiAgentDescriptor`**: **`Name`** (`string?`, required), **`Description`**/**`Instructions`**
+  (`string?`), **`ToolApproval`** (default `Always`), **`IncludeMcpTools`** (default `true`),
+  **`Tools`** (`IList<AITool>`), plus **`Validate()`** — the same pure pre-flight check
+  `McpServerDescriptor.Validate()` and `AiProviderDescriptor.Validate()` provide.
+- **`AiToolApprovalMode`**: **`Always`** (default — each tool call pauses the run for end-user
+  approval) and **`Never`** (auto-execute, matching `IAiChatService`'s behavior).
+
+### `AgentApprovalExtensions`
+
+Drives the tool-approval round trip without hand-assembling `AIContent` lists.
+
+- **`GetToolApprovalRequests(this AgentResponse)`** → `IReadOnlyList<ToolApprovalRequestContent>` —
+  empty when the agent produced an ordinary answer; non-empty means the run is paused and no tool
+  has run yet.
+- **`CreateApprovalResponse(this IEnumerable<ToolApprovalRequestContent>, bool approved, bool alwaysApprove = false, string? reason = null)`**
+  → `ChatMessage` — pass to the agent's next run on the same session. `alwaysApprove: true` records
+  a standing "don't ask again" rule for that tool; it is ignored when denying. Throws
+  `ArgumentException` for an empty request list.
+
+### `IAiSessionStore`
+
+Persists an `AgentSession` across app restarts — the "where does the serialized session live" seam
+the Agent Framework deliberately leaves to the app. Default implementation writes one JSON file per
+session under `IFileSystem.AppDataDirectory` (per-user, **not** encrypted — back it with
+`ISecureStorage` or your own store if the conversations warrant it). Register your own before
+calling `ConfigureMcp`, exactly as with `IAiApiKeyProvider`.
+
+- **`SaveAsync(string sessionId, AIAgent, AgentSession, CancellationToken = default)`** → `Task`
+- **`LoadAsync(string sessionId, AIAgent, CancellationToken = default)`** → `Task<AgentSession?>` —
+  `null` when nothing was saved under that id, so a "resume last conversation" path can fall back
+  to `CreateSessionAsync()` without catching anything.
+- **`ListAsync(CancellationToken = default)`** → `Task<IReadOnlyList<string>>`
+- **`DeleteAsync(string sessionId, CancellationToken = default)`** → `Task<bool>`
+
+The same agent must be passed to `LoadAsync` as to `SaveAsync`. Session ids that cannot become a
+file name are rejected with `ArgumentException` rather than silently sanitized.

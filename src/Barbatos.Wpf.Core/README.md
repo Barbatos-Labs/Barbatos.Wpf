@@ -52,6 +52,7 @@ registered in the same container.**
   * [Plugins](#plugins)
   * [Registry](#registry)
 * **[AI chat + MCP (Barbatos.Wpf.Mcp)](#ai-chat--mcp-barbatoswpfmcp)**
+  * [Agents (Microsoft Agent Framework)](#agents-microsoft-agent-framework)
   * [Providers](#providers)
   * [Configuration](#configuration)
 * **[Ecosystem](#ecosystem)**
@@ -721,10 +722,23 @@ Notes:
   - A notification's `Action` (`Url`/`Setting`/`Route`/`None`) is dispatched automatically for
     `Url`/`Setting` (opened via `Launcher`); `Route` raises `RouteRequested` instead, since only
     your app knows its own screens/navigation.
-  - The default transport's own `HandshakeMethodName`/`NotificationMethodName` (defaulting to
-    `"RegisterDevice"`/`"ReceiveNotification"`) are configurable via `ConfigurePushNotifications`'s
+  - The default transport's own `HandshakeMethodName`/`NotificationMethodName`/
+    `AcknowledgeMethodName` (defaulting to `"RegisterDevice"`/`"ReceiveNotification"`/
+    `"AcknowledgeNotification"`) are configurable via `ConfigurePushNotifications`'s
     `configureSignalR` parameter (or the `Barbatos:PushNotifications:SignalR` config section) to
-    match whatever hub method names your specific server actually uses.
+    match whatever hub method names your specific server actually uses. Set `AppKey` there too if
+    your server authenticates clients.
+  - **Delivery is at-least-once, and the client makes that invisible.** Every notification with a
+    `ReceiptId` is acknowledged back to the server as soon as it has been displayed, which is what
+    lets a server keep an offline queue and stop re-sending. Because an acknowledgement can be lost
+    to a dropped connection, the server will occasionally re-deliver something already shown, so
+    the service remembers the last `PushNotificationOptions.DeduplicationHistorySize` receipt ids
+    and shows each notification only once — while still re-acknowledging the repeat, since the
+    repeat is itself evidence the first acknowledgement never landed.
+  - **The handshake is re-sent after every automatic reconnect.** SignalR issues a new connection
+    id on reconnect, so a server that maps connections to devices sees the reconnected client as an
+    anonymous stranger until it identifies itself again. Without this, a client that briefly lost
+    its network would silently stop receiving anything until the app was restarted.
 - InputSystem unifies three binding kinds under one `InputAction`: `KeyBinding` (in-app, requires
   keyboard focus — optionally scoped to a specific `FrameworkElement` via `InputActionMap.Scope`
   instead of the whole app), `GlobalKeyBinding` (a true OS-level hotkey via `RegisterHotKey`,
@@ -1415,7 +1429,76 @@ Console.WriteLine(response.Text);
 | `IMcpServerRegistry` | Connects to MCP servers (stdio child process or HTTP), aggregates their tools. Runtime-mutable (`AddServerAsync`/`RemoveServerAsync`), not just a fixed config list - build your own "add an MCP server" settings UI on top if your app should let the end user do that themselves, the same way Claude Desktop/Cursor do. |
 | `IAiApiKeyProvider` | Resolves/stores the end user's own API key, keyed per provider string (case-insensitively) so switching providers never loses a different provider's key. The default implementation is `SecureStorage`-backed; swap in Credential Manager/a key vault by registering your own before calling `ConfigureMcp`. |
 | `IAiChatClientFactory` | The "which provider" seam (structurally the same role `IPushNotificationTransport` plays for push notifications) - builds/caches the `Microsoft.Extensions.AI.IChatClient` for whichever provider/model is currently selected. Inject this directly instead of `IAiChatService` if you want a raw chat client with no MCP tools merged in. |
-| `IAiChatService` | The facade most app code actually calls - merges every connected server's tools into `ChatOptions.Tools` automatically before delegating to `IAiChatClientFactory`, so callers never wire MCP tools in by hand. `GetResponseAsync`/`GetStreamingResponseAsync`. |
+| `IAiChatService` | The one-shot facade - merges every connected server's tools into `ChatOptions.Tools` automatically before delegating to `IAiChatClientFactory`, so callers never wire MCP tools in by hand. `GetResponseAsync`/`GetStreamingResponseAsync`. No memory between calls, and tools run without asking. |
+| `IAiAgentFactory` | The agent layer (see below) - builds a Microsoft Agent Framework `AIAgent` over the same provider and the same MCP servers, adding conversation memory and end-user tool approval. |
+| `IAiSessionStore` | Persists an agent's conversation across app restarts. File-backed by default; swap in your own the same way as `IAiApiKeyProvider`. |
+
+### Agents (Microsoft Agent Framework)
+
+`IAiChatService` is a single request/response call. That is fine for "summarize this", but a
+conversational assistant needs two things it does not have: it forgets everything between calls,
+and it runs whatever tool the model asks for the instant it is asked. `IAiAgentFactory` builds a
+[Microsoft Agent Framework](https://github.com/microsoft/agent-framework) `AIAgent` over the *same*
+BYOK provider and the *same* connected MCP servers, adding exactly those two things.
+
+Both layers stay registered and neither replaces the other - keep using `IAiChatService` for
+one-shot requests, and use an agent for the conversational surface.
+
+```csharp
+builder.ConfigureMcp(configureAgent: options =>
+{
+    options.Name = "Assistant";
+    options.Instructions = "You help the user manage their project files. Be concise.";
+});
+```
+
+```csharp
+var agent = await agentFactory.GetAgentAsync();
+var session = await agent.CreateSessionAsync();   // carries history across turns
+
+var response = await agent.RunAsync("What's new in Newtonsoft.Json?", session);
+
+// Under the default AiToolApprovalMode.Always, a run that wants a tool comes back paused
+// instead of answering - nothing has run yet.
+while (response.GetToolApprovalRequests() is { Count: > 0 } pending)
+{
+    // ToolCall is typed as the ToolCallContent base; the name lives on FunctionCallContent,
+    // which is what every MCP tool call actually is.
+    var name = (pending[0].ToolCall as FunctionCallContent)?.Name ?? pending[0].ToolCall.CallId;
+
+    var allow = MessageBox.Show(
+        $"Let the assistant run '{name}'?", "Tool approval", MessageBoxButton.YesNo) == MessageBoxResult.Yes;
+
+    response = await agent.RunAsync(pending.CreateApprovalResponse(allow), session);
+}
+
+Console.WriteLine(response.Text);
+
+// Same conversation next launch:
+await sessionStore.SaveAsync("last-chat", agent, session);
+var restored = await sessionStore.LoadAsync("last-chat", agent) ?? await agent.CreateSessionAsync();
+```
+
+The returned `AIAgent` is Microsoft's own type, not a Barbatos wrapper, so everything the Agent
+Framework documents about running agents applies directly - `RunAsync`, `RunStreamingAsync`,
+structured output via `RunAsync<T>`, and so on.
+
+- **Tool approval defaults to on** (`AiToolApprovalMode.Always`). An MCP server is third-party
+  code whose tools this library cannot inspect for side effects, and in an app that lets end users
+  add their own servers it is not even code the publisher chose. Passing `alwaysApprove: true`
+  to `CreateApprovalResponse` (a "Don't ask again" checkbox) records a standing rule for the rest
+  of the session, so this costs one prompt per distinct tool rather than one per call. Set
+  `options.ToolApproval = AiToolApprovalMode.Never` for the older auto-execute behavior.
+- **The agent is rebuilt when its inputs change** - a different provider/model/API key, or an MCP
+  server connecting or disconnecting. Ask `GetAgentAsync()` per conversation rather than holding
+  one forever; an `AgentSession` survives those rebuilds.
+- **`CreateAgentAsync(descriptor)`** builds a second, differently-scoped agent (a summarizer, a
+  code reviewer) with its own instructions, its own tools, and its own approval policy, without
+  disturbing the default one.
+- **Saved sessions contain the conversation itself**, which for a desktop assistant can easily
+  include personal data. The default store writes plain JSON under
+  `IFileSystem.AppDataDirectory` - per-user, but not encrypted. Back `IAiSessionStore` with
+  `ISecureStorage` or your own encrypted store if that is not enough for your app.
 
 ### Providers
 
@@ -1502,7 +1585,8 @@ A couple of things worth knowing before relying on this:
   "Barbatos": {
     "Mcp": {
       "Enabled": true,
-      "Provider": { "Provider": "gemini", "Model": "gemini-3.5-flash" }
+      "Provider": { "Provider": "gemini", "Model": "gemini-3.5-flash" },
+      "Agent": { "Instructions": "Be concise.", "ToolApproval": "Always" }
     }
   }
 }
@@ -1517,12 +1601,12 @@ section still exists for the parts that are practical to override from a file (`
 
 A few behaviors worth knowing before relying on this feature:
 
-- **Tool calls execute automatically, with no confirmation step** - `IAiChatService` enables
+- **`IAiChatService` executes tool calls automatically, with no confirmation step** - it enables
   `Microsoft.Extensions.AI`'s function-invocation middleware by default, the same way Claude
   Desktop/Cursor auto-execute MCP tool calls. If your app needs a confirmation step before a tool
-  actually runs (for example because end users can add their own untrusted MCP servers), bypass
-  `IAiChatService` and build your own `ChatOptions` from `IMcpServerRegistry.Tools`/
-  `IAiChatClientFactory` directly instead.
+  actually runs (for example because end users can add their own untrusted MCP servers), use
+  `IAiAgentFactory` instead - its default `AiToolApprovalMode.Always` pauses the run and hands the
+  pending call back to you, which is what the "Agents" section above is about.
 - **Tool name collisions**: if two connected servers expose a same-named tool, the one from
   whichever server connected most recently wins - a warning is logged when this happens.
 - **A failed server connection is still tracked** - `IMcpServerRegistry.Servers` includes it with

@@ -35,4 +35,19 @@ public interface IPushNotificationTransport : IAsyncDisposable
 
     /// <summary>Stops receiving notifications, if started.</summary>
     Task StopAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tells the server that <paramref name="receiptId"/> arrived, so it can stop re-sending it.
+    /// Called automatically by <see cref="IPushNotificationService"/> for every notification whose
+    /// <see cref="IPushNotification.ReceiptId"/> isn't <see langword="null"/>.
+    /// <para>
+    /// Not every delivery mechanism has an acknowledgement concept (a push relay that fires and
+    /// forgets has nowhere to send one), so the default is to do nothing. Override it when the
+    /// server keeps an offline queue that acknowledgements are what drain.
+    /// </para>
+    /// </summary>
+    /// <param name="receiptId">The value of the received notification's <see cref="IPushNotification.ReceiptId"/>.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    Task AcknowledgeAsync(string receiptId, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

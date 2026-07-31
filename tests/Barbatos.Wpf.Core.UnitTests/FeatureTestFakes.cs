@@ -3,6 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Barbatos.Wpf.ApplicationModel;
@@ -15,6 +16,7 @@ using Barbatos.Wpf.PushNotifications;
 using Barbatos.Wpf.Startup;
 using Barbatos.Wpf.Storage;
 using Barbatos.Wpf.Tray;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
 namespace Barbatos.Wpf.Core.UnitTests;
@@ -159,9 +161,18 @@ public sealed class FakePushNotificationTransport : IPushNotificationTransport
         return Task.CompletedTask;
     }
 
+    /// <summary>Receipt ids the service has acknowledged, in order, including repeats.</summary>
+    public List<string> Acknowledged { get; } = new();
+
     /// <summary>Simulates the transport delivering a raw notification payload.</summary>
     public void RaiseNotificationReceived(string rawJson) =>
         NotificationReceived?.Invoke(this, rawJson);
+
+    public Task AcknowledgeAsync(string receiptId, CancellationToken cancellationToken = default)
+    {
+        Acknowledged.Add(receiptId);
+        return Task.CompletedTask;
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
@@ -377,4 +388,103 @@ public sealed class FakeChatClient : IChatClient
     public void Dispose()
     {
     }
+}
+
+/// <summary>
+/// Points <see cref="IFileSystem.AppDataDirectory"/> at a throwaway temp directory so
+/// <see cref="FileAiSessionStore"/> can be exercised without writing into the real per-user app
+/// data folder. Deleting the directory is the owning test's job (see <c>TempDirectory</c>).
+/// </summary>
+public sealed class FakeFileSystem : IFileSystem
+{
+    public FakeFileSystem(string root)
+    {
+        AppDataDirectory = root;
+        CacheDirectory = root;
+    }
+
+    public string CacheDirectory { get; }
+
+    public string AppDataDirectory { get; }
+
+    public Task<Stream> OpenAppPackageFileAsync(string filename) =>
+        throw new NotSupportedException($"{nameof(FakeFileSystem)} only exposes the directory properties.");
+
+    public Task<bool> AppPackageFileExistsAsync(string filename) => Task.FromResult(false);
+}
+
+/// <summary>
+/// Returns a pre-scripted sequence of responses, one per call, so a multi-turn agent run (ask for
+/// a tool, then answer once the tool result comes back) can be driven without a real model.
+/// Unlike <see cref="FakeChatClient"/> it records <em>every</em> <see cref="ChatOptions"/> it saw,
+/// since what matters for the agent tests is what reached the model on a particular turn.
+/// </summary>
+public sealed class ScriptedChatClient : IChatClient
+{
+    readonly Queue<ChatResponse> _responses = new();
+
+    public List<ChatOptions?> ReceivedOptions { get; } = new();
+
+    public List<IReadOnlyList<ChatMessage>> ReceivedMessages { get; } = new();
+
+    public ChatOptions? LastOptions => ReceivedOptions.Count == 0 ? null : ReceivedOptions[^1];
+
+    public ScriptedChatClient Enqueue(ChatResponse response)
+    {
+        _responses.Enqueue(response);
+        return this;
+    }
+
+    public ScriptedChatClient EnqueueText(string text) =>
+        Enqueue(new ChatResponse(new ChatMessage(ChatRole.Assistant, text)));
+
+    public ScriptedChatClient EnqueueToolCall(string callId, string toolName, IDictionary<string, object?>? arguments = null) =>
+        Enqueue(new ChatResponse(new ChatMessage(ChatRole.Assistant,
+            [new FunctionCallContent(callId, toolName, arguments ?? new Dictionary<string, object?>())])));
+
+    public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ReceivedOptions.Add(options);
+        ReceivedMessages.Add(messages.ToList());
+
+        return Task.FromResult(_responses.Count > 0
+            ? _responses.Dequeue()
+            : new ChatResponse(new ChatMessage(ChatRole.Assistant, "scripted default")));
+    }
+
+    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var response = await GetResponseAsync(messages, options, cancellationToken);
+        foreach (var update in response.ToChatResponseUpdates())
+            yield return update;
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+    public void Dispose()
+    {
+    }
+}
+
+/// <summary>
+/// A no-op <see cref="IAiSessionStore"/> used only to prove that a store registered before
+/// <c>ConfigureMcp</c> wins over the built-in file-backed default - the same precedence check
+/// <see cref="FakeAiApiKeyProvider"/> backs for API keys.
+/// </summary>
+public sealed class FakeAiSessionStore : IAiSessionStore
+{
+    public Task SaveAsync(string sessionId, AIAgent agent, AgentSession session, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    public Task<AgentSession?> LoadAsync(string sessionId, AIAgent agent, CancellationToken cancellationToken = default) =>
+        Task.FromResult<AgentSession?>(null);
+
+    public Task<IReadOnlyList<string>> ListAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+
+    public Task<bool> DeleteAsync(string sessionId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
 }
