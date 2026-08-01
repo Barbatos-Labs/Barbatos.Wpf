@@ -307,15 +307,7 @@ public sealed class RouteMatcher
 
     private void AddRouteNode(RouteRecord record, MatcherNode? parent)
     {
-        // Checked while the route table is being built rather than on some later navigation:
-        // Views already covers the single-outlet case as its "default" entry, so setting View too
-        // is always a mistake - and a silent one otherwise, since Views simply wins and the View
-        // never renders anywhere.
-        if (record.View is not null && record.Views is not null)
-        {
-            throw new InvalidOperationException(
-                $"Route \"{record.Name ?? record.Path}\" sets both View and Views - use one or the other, since Views already covers the single-outlet case as its \"default\" entry.");
-        }
+        ValidateRecord(record);
 
         var resolvedPath = JoinPath(record.Path, parent?.ResolvedPath);
         var segments = PathTokenizer.Tokenize(resolvedPath);
@@ -341,6 +333,41 @@ public sealed class RouteMatcher
                 IsAlias = true,
                 StaticFirstSegment = GetStaticFirstSegment(aliasSegments),
             });
+        }
+    }
+
+    /// <summary>
+    /// Catches route-table mistakes while the table is being built, rather than letting them
+    /// surface as a blank outlet on some later navigation.
+    /// </summary>
+    private static void ValidateRecord(RouteRecord record)
+    {
+        var name = record.Name ?? record.Path;
+
+        if (record.View is not null && record.Views is not null)
+        {
+            throw new InvalidOperationException(
+                $"Route \"{name}\" sets both View and Views - use one or the other, since Views already covers the single-outlet case as its \"default\" entry.");
+        }
+
+        if (record.ViewModel is not null && record.ViewModels is not null)
+        {
+            throw new InvalidOperationException(
+                $"Route \"{name}\" sets both ViewModel and ViewModels - use one or the other, since ViewModels already covers the single-outlet case as its \"default\" entry.");
+        }
+
+        if (record.ResolvedViewModels is not { } viewModels)
+            return;
+
+        // A ViewModel declared for an outlet this record never renders would silently do nothing.
+        var views = record.ResolvedViews;
+        foreach (var outletName in viewModels.Keys)
+        {
+            if (views is null || !views.ContainsKey(outletName))
+            {
+                throw new InvalidOperationException(
+                    $"Route \"{name}\" declares a ViewModel for outlet \"{outletName}\", but no View is declared for that outlet - add one to Views, or drop the entry.");
+            }
         }
     }
 

@@ -1,0 +1,44 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.CrossAssembly.AccountSummaryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Note what is NOT here: no aq: namespace, no aq:Setup.Enable, no aq:Setup.ViewModel - no
+        Aquarius wiring of any kind, and no mention of any ViewModel. This View is deliberately
+        "pristine", standing in for one that ships inside a component library you are not allowed
+        to edit. Its ViewModel is an equally untouched type from a different assembly, and the two
+        are paired entirely from the route table - see AppRoutes.cs's "/accounts/:id" record and
+        its RouteRecord.ViewModel.
+    -->
+    <StackPanel Margin="24">
+        <TextBlock Text="Cross-assembly ViewModel, paired by the route" FontSize="20" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,16" TextWrapping="Wrap"
+                   Text="This View is compiled into Barbatos.Wpf.AquariusRouter.Sample and contains no wiring at all. Its ViewModel is a type from a different assembly, in a different namespace, with a name the XxxView -> XxxViewModel convention would never guess. Neither file references the other." />
+
+        <TextBlock Margin="0,0,0,4">
+            <Run Text="View type:" FontWeight="SemiBold" />
+            <Run Text="Barbatos.Wpf.AquariusRouter.Sample.Views.CrossAssembly.AccountSummaryView" />
+        </TextBlock>
+        <TextBlock Margin="0,0,0,4">
+            <Run Text="ViewModel type:" FontWeight="SemiBold" />
+            <Run Text="Barbatos.Wpf.Samples.Shared.CrossAssembly.AccountSummaryPresenter" />
+        </TextBlock>
+
+        <Border Margin="0,12,0,0" Background="#F4F6FB" BorderBrush="#D8DEEA" BorderThickness="1" CornerRadius="8" Padding="16">
+            <StackPanel>
+                <!-- Bound straight to the route-paired ViewModel - if pairing had silently failed,
+                     DataContext would be null and these would simply render empty. -->
+                <TextBlock>
+                    <Run Text="Account id (from the /accounts/:id route param):" FontWeight="SemiBold" />
+                    <Run Text="{Binding AccountId, Mode=OneWay}" Foreground="#2050C0" />
+                </TextBlock>
+                <TextBlock Margin="0,6,0,0">
+                    <Run Text="ViewModel actually came from assembly:" FontWeight="SemiBold" />
+                    <Run Text="{Binding ResolvedFrom, Mode=OneWay}" Foreground="#2050C0" />
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" FontStyle="Italic" Foreground="#4A4A4A"
+                   Text="Both values are filled in by IOnRouteEnter on that cross-assembly ViewModel - so route params and the navigation hooks work exactly as they would for a ViewModel the View wired up itself." />
+    </StackPanel>
+</UserControl>

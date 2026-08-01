@@ -41,6 +41,8 @@ public sealed class RouteRecord
 {
     private IReadOnlyDictionary<string, Type>? _resolvedViews;
     private bool _resolvedViewsComputed;
+    private IReadOnlyDictionary<string, Type>? _resolvedViewModels;
+    private bool _resolvedViewModelsComputed;
 
     /// <summary>
     /// This record's own path contribution. Relative to its parent by default (no leading
@@ -73,6 +75,44 @@ public sealed class RouteRecord
     /// single-outlet shorthand.
     /// </summary>
     public IReadOnlyDictionary<string, Type>? Views { get; init; }
+
+    /// <summary>
+    /// The ViewModel type to assign as <see cref="View"/>'s <c>DataContext</c> - pairing the two
+    /// from the route table, without either of them having to know about the other. Shorthand for
+    /// <see cref="ViewModels"/> with a single <c>"default"</c> entry; set at most one of the two.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the option to reach for when you cannot edit the View.</b> Aquarius's usual
+    /// wiring (<c>aq:Setup.Enable</c>'s naming convention, or an explicit
+    /// <c>aq:Setup.ViewModel="{x:Type ...}"</c>) lives in the View's own XAML, which is fine for a
+    /// View you own - but not when the View ships inside a component library and the ViewModel
+    /// inside another, each under its own change control. Declaring the pair here keeps the
+    /// decision in the composition root, where the application author actually has authority, and
+    /// leaves both libraries untouched.
+    /// <code>
+    /// new RouteRecord
+    /// {
+    ///     Path = "/accounts/:id",
+    ///     Name = "account-summary",
+    ///     View = typeof(AccountSummaryView),          // from one library
+    ///     ViewModel = typeof(AccountSummaryPresenter), // from another - neither knows the other
+    /// }
+    /// </code>
+    /// Resolved the same way the View itself is - through <see cref="Barbatos.Wpf.Aquarius.Composition.Setup.ServiceProvider"/>
+    /// if one is set, else <see cref="Activator.CreateInstance(Type)"/> - so a constructor-injected
+    /// ViewModel just works. Assigned immediately after the View is constructed, which means it
+    /// <b>wins over</b> whatever that View's own <c>aq:Setup</c> resolved for itself (that runs
+    /// during construction, at <c>Initialized</c>); <c>Lifecycle</c>'s hooks still fire correctly
+    /// against it, since those are guaranteed at <c>Loaded</c>, well after this.
+    /// </remarks>
+    public Type? ViewModel { get; init; }
+
+    /// <summary>
+    /// Per-outlet ViewModel types, keyed the same way <see cref="Views"/> is - see
+    /// <see cref="ViewModel"/> for the common single-outlet shorthand and the full rationale.
+    /// Every key must name an outlet <see cref="Views"/>/<see cref="View"/> actually declares.
+    /// </summary>
+    public IReadOnlyDictionary<string, Type>? ViewModels { get; init; }
 
     /// <summary>Nested child records - see <see cref="Path"/> for how a child's path joins its parent's.</summary>
     public IReadOnlyList<RouteRecord>? Children { get; init; }
@@ -150,6 +190,24 @@ public sealed class RouteRecord
             }
 
             return _resolvedViews;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ViewModel"/> normalized into <see cref="ViewModels"/>' shape - the exact
+    /// counterpart of <see cref="ResolvedViews"/>, memoized for the same reason.
+    /// </summary>
+    internal IReadOnlyDictionary<string, Type>? ResolvedViewModels
+    {
+        get
+        {
+            if (!_resolvedViewModelsComputed)
+            {
+                _resolvedViewModels = ViewModels ?? (ViewModel is not null ? new Dictionary<string, Type> { ["default"] = ViewModel } : null);
+                _resolvedViewModelsComputed = true;
+            }
+
+            return _resolvedViewModels;
         }
     }
 }

@@ -27,6 +27,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Barbatos.Wpf.Aquarius\Barbatos.Wpf.Aquarius.csproj" />
+    <!-- Only for AccountSummaryPresenter's IOnRouteEnter - the cross-assembly ViewModel demo (see
+         its own remarks). A package reference, not a reference to another sample EXE, so the
+         "never wire two sample apps together" rule above still holds; Barbatos.Wpf.Aquarius.Sample
+         just carries an extra DLL it doesn't use. -->
+    <ProjectReference Include="..\..\src\Barbatos.Wpf.AquariusRouter\Barbatos.Wpf.AquariusRouter.csproj" />
   </ItemGroup>
 
 </Project>

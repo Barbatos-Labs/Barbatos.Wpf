@@ -43,6 +43,36 @@ namespace Barbatos.Wpf.AquariusRouter.Searching;
 public sealed class RouteSearchIndex(Router router)
 {
     /// <summary>
+    /// Folded text, keyed by the text it was folded from. Keying on content rather than on the
+    /// entry is what makes <see cref="TextResolver"/> safe: switching language produces different
+    /// strings, so they simply miss the cache and fold fresh - there is no stale entry to
+    /// invalidate, and switching back finds the earlier language still cached.
+    /// </summary>
+    private readonly Dictionary<string, string> _foldCache = [];
+
+    /// <summary>
+    /// Turns an entry's declared <see cref="RouteSearchEntry.Title"/>/<see cref="RouteSearchEntry.Keywords"/>
+    /// into the text actually shown and searched. Unset (the default) means they are used verbatim.
+    /// </summary>
+    /// <remarks>
+    /// This is how a localized app searches in the user's language. A route table is built once at
+    /// startup, so a <see cref="RouteSearchEntry.Title"/> baked in then would stay in whatever
+    /// language was current at the time - and would go stale the moment the user switched. Declare
+    /// resource keys instead and resolve them per query:
+    /// <code>
+    /// var index = new RouteSearchIndex(router) { TextResolver = key => localizer[key] };
+    /// </code>
+    /// Every <see cref="Query"/> re-resolves, so a language switch is picked up by the very next
+    /// keystroke with nothing to invalidate. <see cref="RouteSearchResult.Title"/> carries the
+    /// resolved text, so results display in the same language they matched in.
+    /// <para>
+    /// Keep it cheap and side-effect free - it runs once per entry per query. Returning the key
+    /// unchanged for a missing resource is fine; the entry then simply matches on its key.
+    /// </para>
+    /// </remarks>
+    public Func<string, string>? TextResolver { get; set; }
+
+    /// <summary>
     /// Every <see cref="RouteSearchEntry"/> across the whole route table that matches every term in
     /// <paramref name="query"/>, best match first. Empty (never <see langword="null"/>) for a
     /// <see langword="null"/>/blank/all-whitespace query - there is no meaningful "match everything"
@@ -64,8 +94,9 @@ public sealed class RouteSearchIndex(Router router)
         {
             foreach (var entry in record.Search ?? [])
             {
-                if (Rank(entry, terms, joined) is { } rank)
-                    matches.Add((rank, new RouteSearchResult { Record = record, Entry = entry }));
+                var title = Resolve(entry.Title);
+                if (Rank(title, entry.Keywords, terms, joined) is { } rank)
+                    matches.Add((rank, new RouteSearchResult { Record = record, Entry = entry, Title = title }));
             }
         }
 
@@ -75,22 +106,22 @@ public sealed class RouteSearchIndex(Router router)
     }
 
     /// <summary>
-    /// <see langword="null"/> if any of <paramref name="terms"/> appears nowhere in
-    /// <paramref name="entry"/>'s title+keywords combined; otherwise a rank where <b>lower is
-    /// better</b>: 0 = title equals the whole query exactly, 1 = title starts with it, 2 = every
-    /// term appears in the title (in any order), 3 = at least one term was only found via
-    /// <see cref="RouteSearchEntry.Keywords"/>.
+    /// <see langword="null"/> if any of <paramref name="terms"/> appears nowhere in the entry's
+    /// title+keywords combined; otherwise a rank where <b>lower is better</b>: 0 = title equals the
+    /// whole query exactly, 1 = title starts with it, 2 = every term appears in the title (in any
+    /// order), 3 = at least one term was only found via <paramref name="keywords"/>.
     /// </summary>
-    private static int? Rank(RouteSearchEntry entry, string[] terms, string joined)
+    private int? Rank(string resolvedTitle, string? keywords, string[] terms, string joined)
     {
-        var haystack = entry.FoldedHaystack;
+        var title = Fold(resolvedTitle);
+        var haystack = keywords is null ? title : $"{title} {Fold(Resolve(keywords))}";
+
         foreach (var term in terms)
         {
             if (!haystack.Contains(term, StringComparison.Ordinal))
                 return null;
         }
 
-        var title = entry.FoldedTitle;
         if (title.Equals(joined, StringComparison.Ordinal))
             return 0;
         if (title.StartsWith(joined, StringComparison.Ordinal))
@@ -103,5 +134,16 @@ public sealed class RouteSearchIndex(Router router)
         }
 
         return 2;
+    }
+
+    private string Resolve(string text) => TextResolver is { } resolver ? resolver(text) : text;
+
+    /// <summary>Folds through <see cref="_foldCache"/> - a search box re-queries on every keystroke, so re-folding every entry per character typed would dominate the cost of searching.</summary>
+    private string Fold(string text)
+    {
+        if (_foldCache.TryGetValue(text, out var folded))
+            return folded;
+
+        return _foldCache[text] = SearchText.Fold(text);
     }
 }

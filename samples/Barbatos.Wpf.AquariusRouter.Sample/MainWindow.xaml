@@ -46,6 +46,10 @@
             <!-- InfoCardView is defined in Barbatos.Wpf.Samples.Shared and reused unmodified in
                  Barbatos.Wpf.Aquarius.Sample too - see AppRoutes.cs's own remarks. -->
             <Button Content="Shared component" Style="{StaticResource NavLink}" aqr:RouterLink.To="/shared-demo" />
+            <!-- A View here whose ViewModel lives in Barbatos.Wpf.Samples.Shared under a different
+                 namespace and a non-conventional name - see AppRoutes.cs's "/accounts/:id". -->
+            <Button Content="Cross-assembly VM" Style="{StaticResource NavLink}"
+                    aqr:RouterLink.To="{aqr:RouteTo Name=account-summary, Params='id=SA-1234'}" />
             <!-- The same target written two ways: a literal path, and the {aqr:RouteTo} markup
                  extension resolving the "user" route BY NAME - so this link keeps working even if
                  that route's path is later changed in AppRoutes.cs. -->
@@ -91,7 +95,9 @@
                      Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVisibility}}">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Button Content="{Binding Entry.Title}" HorizontalContentAlignment="Left"
+                        <!-- Title, not Entry.Title: the former is what TextResolver produced, so a
+                             localized app shows the translated text rather than the resource key. -->
+                        <Button Content="{Binding Title}" HorizontalContentAlignment="Left"
                                 Background="Transparent" BorderThickness="0" Padding="6,3" Cursor="Hand"
                                 Command="{Binding DataContext.GoToSearchResultCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                 CommandParameter="{Binding}" />

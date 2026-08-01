@@ -85,8 +85,16 @@ public static class Lifecycle
         private readonly FrameworkElement _element = element;
         private INotifyPropertyChanged? _watchedDataContext;
         private bool _mounted;
-        private bool _createdInvoked;
-        private bool _beforeMountInvoked;
+
+        // Which DataContext each early-hook pass already ran for, rather than a bare "did it run"
+        // flag. A bare flag latches onto whichever DataContext happened to be there at Initialized -
+        // but this element's own DataContext is very often replaced between Initialized and Loaded
+        // (a parent's DataContext="{Binding ...}" at the usage site, or a router pairing a View
+        // with a ViewModel from its route table). With a flag, the create/beforeMount hooks would
+        // be spent on the ViewModel that got discarded, and the one actually mounted would get
+        // OnMounted with no OnCreated/OnBeforeMount before it - a half-initialized ViewModel.
+        private object? _createdFor;
+        private object? _beforeMountFor;
         private bool _visibleActivated;
         private bool _updateDirty;
         private bool _updateScheduled;
@@ -177,12 +185,13 @@ public static class Lifecycle
         /// </summary>
         private void TryInvokeCreateHooks()
         {
-            if (_createdInvoked)
+            var dataContext = _element.DataContext;
+            if (ReferenceEquals(_createdFor, dataContext))
                 return;
 
-            if (_element.DataContext is IOnBeforeCreate or IOnCreated or IOnBeforeCreateAsync or IOnCreatedAsync)
+            if (dataContext is IOnBeforeCreate or IOnCreated or IOnBeforeCreateAsync or IOnCreatedAsync)
             {
-                _createdInvoked = true;
+                _createdFor = dataContext;
                 InvokeHook<IOnBeforeCreate>(hook => hook.OnBeforeCreate());
                 InvokeHookAsync<IOnBeforeCreateAsync>(hook => hook.OnBeforeCreateAsync());
                 InvokeHook<IOnCreated>(hook => hook.OnCreated());
@@ -198,12 +207,13 @@ public static class Lifecycle
         /// </summary>
         private void TryInvokeBeforeMount()
         {
-            if (_beforeMountInvoked)
+            var dataContext = _element.DataContext;
+            if (ReferenceEquals(_beforeMountFor, dataContext))
                 return;
 
-            if (_element.DataContext is IOnBeforeMount or IOnBeforeMountAsync)
+            if (dataContext is IOnBeforeMount or IOnBeforeMountAsync)
             {
-                _beforeMountInvoked = true;
+                _beforeMountFor = dataContext;
                 InvokeHook<IOnBeforeMount>(hook => hook.OnBeforeMount());
                 InvokeHookAsync<IOnBeforeMountAsync>(hook => hook.OnBeforeMountAsync());
             }
@@ -213,9 +223,10 @@ public static class Lifecycle
         {
             // Reset so a later remount (e.g. `If.Condition` flipping true again, which
             // detaches and reattaches this same instance) fires the whole create/mount
-            // sequence again too - every mount is treated as fresh, never a resume.
-            _createdInvoked = false;
-            _beforeMountInvoked = false;
+            // sequence again too - every mount is treated as fresh, never a resume. Cleared
+            // rather than compared, so even the same ViewModel re-mounting runs them again.
+            _createdFor = null;
+            _beforeMountFor = null;
 
             InvokeHook<IOnBeforeUnmount>(hook => hook.OnBeforeUnmount());
             InvokeHookAsync<IOnBeforeUnmountAsync>(hook => hook.OnBeforeUnmountAsync());

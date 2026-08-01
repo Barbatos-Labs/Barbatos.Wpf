@@ -210,6 +210,139 @@ public class RouteSearchIndexTests
         Assert.Throws<InvalidOperationException>(() => result.To);
     }
 
+    /// <summary>
+    /// Japanese dakuten/handakuten are combining marks, so blanket mark-stripping silently rewrites
+    /// <c>だいがく</c> ("university") into <c>たいかく</c> ("physique") - and since the query is
+    /// folded the same way, that never surfaces as "nothing found", only as unrelated results
+    /// matching each other.
+    /// </summary>
+    [Fact]
+    public void JapaneseVoicedKanaStayDistinctFromTheirUnvoicedForm()
+    {
+        var router = new Router([
+            new RouteRecord { Path = "/university", Name = "university", View = StubView, Search = [new RouteSearchEntry { Title = "だいがく" }] },
+            new RouteRecord { Path = "/physique", Name = "physique", View = StubView, Search = [new RouteSearchEntry { Title = "たいかく" }] },
+        ]);
+        var index = new RouteSearchIndex(router);
+
+        Assert.Equal("university", index.Query("だいがく").Single().Record.Name);
+        Assert.Equal("physique", index.Query("たいかく").Single().Record.Name);
+    }
+
+    [Fact]
+    public void ThaiVowelSignsSurviveFolding()
+    {
+        var router = new Router([
+            new RouteRecord { Path = "/transfer", Name = "transfer", View = StubView, Search = [new RouteSearchEntry { Title = "โอนเงิน" }] },
+        ]);
+        var index = new RouteSearchIndex(router);
+
+        Assert.Single(index.Query("เงิน"));
+        // The vowel-less spelling is a different string and must not match.
+        Assert.Empty(index.Query("เงน"));
+    }
+
+    /// <summary>Cyrillic <c>й</c> decomposes to <c>и</c> + breve, but they are distinct letters.</summary>
+    [Fact]
+    public void CyrillicShortIStaysDistinctFromI()
+    {
+        var router = new Router([
+            new RouteRecord { Path = "/yogurt", Name = "yogurt", View = StubView, Search = [new RouteSearchEntry { Title = "йогурт" }] },
+        ]);
+        var index = new RouteSearchIndex(router);
+
+        Assert.Single(index.Query("йогурт"));
+        Assert.Empty(index.Query("иогурт"));
+    }
+
+    [Fact]
+    public void NonLatinScriptsWithoutCombiningMarksAreUnaffected()
+    {
+        var router = new Router([
+            new RouteRecord { Path = "/ko", Name = "ko", View = StubView, Search = [new RouteSearchEntry { Title = "계좌이체" }] },
+            new RouteRecord { Path = "/zh", Name = "zh", View = StubView, Search = [new RouteSearchEntry { Title = "转账" }] },
+        ]);
+        var index = new RouteSearchIndex(router);
+
+        Assert.Equal("ko", index.Query("계좌").Single().Record.Name);
+        Assert.Equal("zh", index.Query("转账").Single().Record.Name);
+    }
+
+    [Fact]
+    public void TextResolverLocalizesTheSearchableTitle()
+    {
+        var router = new Router([
+            new RouteRecord { Path = "/transfer", Name = "transfer", View = StubView, Search = [new RouteSearchEntry { Title = "nav.transfer" }] },
+        ]);
+        var vietnamese = new Dictionary<string, string> { ["nav.transfer"] = "Chuyển tiền" };
+        var index = new RouteSearchIndex(router) { TextResolver = key => vietnamese.GetValueOrDefault(key, key) };
+
+        var result = index.Query("chuyen tien").Single();
+
+        Assert.Equal("transfer", result.Record.Name);
+        Assert.Equal("Chuyển tiền", result.Title);
+        Assert.Equal("nav.transfer", result.Entry.Title);
+    }
+
+    /// <summary>A route table is built once at startup, so the language a query searches in has to come from the resolver, live - not from whatever was current when the table was built.</summary>
+    [Fact]
+    public void SwitchingLanguageTakesEffectOnTheVeryNextQuery()
+    {
+        var router = new Router([
+            new RouteRecord { Path = "/transfer", Name = "transfer", View = StubView, Search = [new RouteSearchEntry { Title = "nav.transfer" }] },
+        ]);
+
+        var language = "vi";
+        var strings = new Dictionary<string, Dictionary<string, string>>
+        {
+            ["vi"] = new() { ["nav.transfer"] = "Chuyển tiền" },
+            ["en"] = new() { ["nav.transfer"] = "Transfer money" },
+        };
+        var index = new RouteSearchIndex(router) { TextResolver = key => strings[language].GetValueOrDefault(key, key) };
+
+        Assert.Single(index.Query("chuyen tien"));
+        Assert.Empty(index.Query("transfer"));
+
+        language = "en";
+
+        Assert.Empty(index.Query("chuyen tien"));
+        Assert.Equal("Transfer money", index.Query("transfer").Single().Title);
+
+        // ...and switching back still works (the earlier language is simply still cached).
+        language = "vi";
+        Assert.Equal("Chuyển tiền", index.Query("chuyen").Single().Title);
+    }
+
+    [Fact]
+    public void TextResolverAlsoAppliesToKeywords()
+    {
+        var router = new Router([
+            new RouteRecord
+            {
+                Path = "/security", Name = "security", View = StubView,
+                Search = [new RouteSearchEntry { Title = "nav.security", Keywords = "nav.security.keywords" }],
+            },
+        ]);
+        var strings = new Dictionary<string, string>
+        {
+            ["nav.security"] = "Bảo mật",
+            ["nav.security.keywords"] = "đổi mật khẩu",
+        };
+        var index = new RouteSearchIndex(router) { TextResolver = key => strings.GetValueOrDefault(key, key) };
+
+        Assert.Single(index.Query("doi mat khau"));
+    }
+
+    [Fact]
+    public void ResultTitleIsTheDeclaredTitleWhenNoResolverIsSet()
+    {
+        var router = new Router([
+            new RouteRecord { Path = "/about", Name = "about", View = StubView, Search = [new RouteSearchEntry { Title = "About" }] },
+        ]);
+
+        Assert.Equal("About", new RouteSearchIndex(router).Query("about").Single().Title);
+    }
+
     [Fact]
     public void QueryReflectsRoutesAddedAfterConstruction()
     {

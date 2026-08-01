@@ -290,4 +290,56 @@ public class LifecycleTests
             element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
         });
     }
+
+    /// <summary>
+    /// An element's <c>DataContext</c> is very often replaced between <c>Initialized</c> and
+    /// <c>Loaded</c> - that is the whole reason the create/beforeMount hooks are attempted twice.
+    /// Whichever ViewModel is actually mounted must receive the complete sequence: tracking only
+    /// "did these already run" would spend them on the ViewModel that was then discarded, leaving
+    /// the live one with <c>OnMounted</c> and no <c>OnCreated</c>/<c>OnBeforeMount</c> before it.
+    /// </summary>
+    [Fact]
+    public void ReplacingDataContextBeforeMountGivesTheNewViewModelTheFullSequence()
+    {
+        StaThread.Run(() =>
+        {
+            var discarded = new FakeLifecycleViewModel();
+            var element = new ContentControl { DataContext = discarded };
+            Lifecycle.SetEnable(element, true);
+
+            // Initialized runs the first, best-effort pass against the ViewModel present now.
+            element.BeginInit();
+            element.EndInit();
+
+            var live = new FakeLifecycleViewModel();
+            element.DataContext = live;
+
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], live.Calls);
+            Assert.DoesNotContain("OnMounted", discarded.Calls);
+
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+        });
+    }
+
+    /// <summary>The same ViewModel must not have its create/beforeMount hooks run twice just because the two passes both saw it.</summary>
+    [Fact]
+    public void AnUnchangedDataContextStillOnlyRunsTheEarlyHooksOnce()
+    {
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel();
+            var element = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(element, true);
+
+            element.BeginInit();
+            element.EndInit();
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+
+            Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
+
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+        });
+    }
 }

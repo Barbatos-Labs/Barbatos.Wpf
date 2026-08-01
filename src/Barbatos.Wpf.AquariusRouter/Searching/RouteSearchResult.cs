@@ -20,6 +20,14 @@ public sealed record RouteSearchResult
     public required RouteSearchEntry Entry { get; init; }
 
     /// <summary>
+    /// The text to display for this result - <see cref="RouteSearchEntry.Title"/> after
+    /// <see cref="RouteSearchIndex.TextResolver"/> has run, so it is the localized string rather
+    /// than the resource key in an app that uses one. <b>Bind this, not <c>Entry.Title</c></b>;
+    /// with no resolver configured the two are identical anyway.
+    /// </summary>
+    public required string Title { get; init; }
+
+    /// <summary>
     /// Ready to pass straight to <see cref="Router.Push"/>/<see cref="Router.Replace"/>. Always
     /// navigates by <see cref="RouteRecord.Name"/> rather than a literal path - the only reliable
     /// way to target an arbitrary, possibly deeply-nested record regardless of where it lives in

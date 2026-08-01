@@ -373,14 +373,30 @@ public sealed class Router
                 // Mirrors Setup's own DI-first-else-Activator.CreateInstance resolution exactly -
                 // a routed View's own aq:Setup.Enable/ViewModel then resolves DataContext exactly
                 // like any other Aquarius View, with no separate mechanism needed here.
-                var instance = Setup.ServiceProvider?.GetService(viewType) ?? Activator.CreateInstance(viewType)!;
-                record.Instances[outletName] = (FrameworkElement)instance;
+                var element = (FrameworkElement)ResolveInstance(viewType);
+
+                // ...unless the route table pairs the two itself (RouteRecord.ViewModel), which is
+                // the only way to pair a View and a ViewModel that both ship inside libraries
+                // nobody here is allowed to edit. Assigned after construction, so it deliberately
+                // overrides whatever that View's own aq:Setup resolved during it.
+                if (record.ResolvedViewModels?.TryGetValue(outletName, out var viewModelType) is true)
+                    element.DataContext = ResolveInstance(viewModelType);
+
+                record.Instances[outletName] = element;
                 constructed.Add((record, outletName));
             }
         }
 
         return constructed;
     }
+
+    /// <summary>
+    /// The same DI-first-else-<see cref="Activator.CreateInstance(Type)"/> resolution
+    /// <see cref="Setup"/> applies to a ViewModel, so a routed View and a route-declared ViewModel
+    /// both come out of the app's own container when there is one.
+    /// </summary>
+    private static object ResolveInstance(Type type) =>
+        Setup.ServiceProvider?.GetService(type) ?? Activator.CreateInstance(type)!;
 
     /// <summary>
     /// Discards the Views <see cref="ConstructEnteringViews"/> just built, for a navigation that

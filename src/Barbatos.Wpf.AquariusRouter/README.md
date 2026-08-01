@@ -21,6 +21,7 @@ active-state styling - built directly on [Barbatos.Wpf.Aquarius](https://github.
   * [Introduction](#introduction)
   * [Quick Start](#quick-start)
 * **[The Route Table](#the-route-table)**
+  * [Pairing a View with its ViewModel](#pairing-a-view-with-its-viewmodel)
 * **[The Router](#the-router)**
 * **[RouterView](#routerview)**
   * [Named Outlets](#named-outlets)
@@ -167,6 +168,10 @@ new RouteRecord
   `Children` and no `View`/`Views` is a pure grouping/layout record (it still participates in
   nested routing, just renders nothing of its own - the same as Vue Router's own
   component-less-parent pattern); a record with only `Redirect` needs neither either.
+- **`ViewModel`** / **`ViewModels`** - the ViewModel type to assign as the View's `DataContext`,
+  pairing the two from the route table so neither has to know about the other. See
+  [Pairing a View with its ViewModel](#pairing-a-view-with-its-viewmodel) - this is the option for
+  when the View ships inside a library you cannot edit.
 - **`Children`** - nested child records, joined onto this one's `Path` per the rule above.
 - **`Redirect`** - `Func<RouteLocation, RouteLocationRaw>`. When set, navigating to this record
   immediately resolves to a different target instead, *before any navigation guard runs* - only
@@ -225,6 +230,67 @@ var router = new Router(routes, history: null, pathOptions: null);
   independent per-window navigation stacks can skip this and set `RouterView.Router`/
   `RouterLink.Router` explicitly per window instead - a real WPF-specific capability with no Vue
   Router equivalent, since a web SPA only ever has one router.
+
+### Pairing a View with its ViewModel
+
+There are three ways to give a routed View its `DataContext`. Pick by **how much of the code you
+are allowed to change**:
+
+| Your situation | Use |
+| --- | --- |
+| You own the View, names follow the convention | `aq:Setup.Enable="True"` in the View |
+| You own the View, names/namespaces differ | `aq:Setup.ViewModel="{x:Type ...}"` in the View |
+| **You own neither** - both ship inside libraries | **`RouteRecord.ViewModel`** in the route table |
+
+The first two are Aquarius's own wiring and live in the View's XAML. The third exists because that
+is exactly what a component library denies you: `AccountSummaryView` ships in one library,
+`AccountSummaryPresenter` in another, both under change control, and neither may be edited to
+mention the other. Declare the pairing where you *do* have authority - the route table:
+
+```csharp
+new RouteRecord
+{
+    Path = "/accounts/:id",
+    Name = "account-summary",
+    View = typeof(AccountSummaryView),           // from one library, no aq:Setup wiring at all
+    ViewModel = typeof(AccountSummaryPresenter), // from another - neither knows the other exists
+}
+```
+
+That is the whole job. `Router` constructs the View, then assigns the ViewModel as its
+`DataContext`, resolving it through `Setup.ServiceProvider` when one is set - so a
+constructor-injected ViewModel works normally. Nothing downstream changes: route params,
+`IOnRouteEnter`, and every guard interface reach the paired ViewModel exactly as they would one the
+View wired up itself.
+
+Use **`ViewModels`** (a `Dictionary<string, Type>` keyed by outlet name) to pair
+[named outlets](#named-outlets) individually; outlets you leave out keep whatever their own View
+resolved. A route-declared ViewModel is assigned after the View is constructed, so it deliberately
+**wins over** that View's own `aq:Setup` - which is the point when the View's built-in wiring names
+a ViewModel this particular route doesn't want.
+
+Two mistakes are rejected while the route table is built, rather than surfacing later as a blank
+outlet: setting both `ViewModel` and `ViewModels`, and declaring a ViewModel for an outlet that has
+no View.
+
+> **One limit to know.** Aquarius's mount hooks (`IOnMounted`, `IOnBeforeUnmount`, …) are opt-in
+> *per View*, via `aq:Lifecycle.Enable` in the View's own XAML - and pairing a ViewModel from the
+> route table does not change that. A ViewModel paired onto a View that never opted in still gets
+> everything **the router itself** dispatches (`IOnRouteEnter`/`IOnRouteUpdate` and every guard
+> interface), but no mount hooks, because nothing is dispatching them for that View. If you need
+> both and cannot edit the View, do the loading from `IOnRouteEnter` instead.
+
+> **Know the convention's actual rule before relying on it.** `aq:Setup.Enable` matches on the
+> *namespace-qualified* name (`Some.Ns.FooView` → `Some.Ns.FooViewModel`), checking the View's own
+> assembly first and then every **already-loaded** assembly. So a different assembly on its own is
+> fine; a different **namespace** or a different **name** is not. And when it finds nothing the
+> default is to leave `DataContext` null rather than throw - the View just renders empty. Set
+> `Setup.ThrowOnUnresolved = true` to make that loud.
+
+`samples/Barbatos.Wpf.AquariusRouter.Sample`'s `/accounts/:id` route is a working example of the
+third row: the View is compiled into the sample with no wiring of any kind, its
+`AccountSummaryPresenter` ViewModel into `Barbatos.Wpf.Samples.Shared` - different assembly,
+different namespace, non-conventional name.
 
 ---
 
@@ -522,6 +588,30 @@ if (results.Count > 0)
   `RouteRecord.Name` (the only reliable way to target an arbitrary, possibly deeply-nested record) -
   it throws immediately, rather than silently resolving a wrong/relative navigation, if the matched
   route has no `Name`.
+
+### Searching in more than one language
+
+A route table is built once at startup, so a `Title` baked in then would stay in whatever language
+was current at that moment. Declare **resource keys** instead and resolve them per query:
+
+```csharp
+var index = new RouteSearchIndex(router) { TextResolver = key => localizer[key] };
+```
+
+`TextResolver` runs on `Title` and `Keywords` alike, on every `Query`, so switching language is
+picked up by the very next keystroke with nothing to invalidate. Bind
+**`RouteSearchResult.Title`** (the resolved text) rather than `Entry.Title` (the key) - with no
+resolver configured the two are identical.
+
+**Folding is script-aware**: a combining mark is only stripped when it sits on a Latin letter. That
+keeps Vietnamese, French, German, Nordic, Polish and Turkish behaving as intended, while leaving
+every other script intact - important because several scripts encode *letters*, not decorations,
+as combining marks: Japanese dakuten (`だ` decomposes to `た` + a mark, so blanket stripping turns
+"university" into "physique"), Thai vowel signs, and Cyrillic `й`/Ukrainian `ї`. Since query and
+title are folded identically, that kind of damage never looks like "nothing found" - it looks like
+unrelated results quietly matching, which is harder to notice. The trade-off: Arabic harakat and
+Hebrew niqqud are no longer stripped either; put the unvowelled spelling in `Keywords` if a title
+carries them.
 
 **Why no ready-made search box control**: a results dropdown/popup genuinely manages its own
 visibility and child content - exactly the kind of concern this library family reserves for a real

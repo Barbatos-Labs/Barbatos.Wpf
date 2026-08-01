@@ -108,6 +108,8 @@ a worked example.
 | `Name` | `string?` | Unique navigation key. |
 | `View` | `Type?` | The default-outlet View. Shorthand for `Views["default"]`. Setting both this and `Views` throws when the route is registered. |
 | `Views` | `IReadOnlyDictionary<string, Type>?` | Named outlets. |
+| `ViewModel` | `Type?` | ViewModel assigned as the View's `DataContext`, pairing the two from the route table - the option when neither file may be edited. Shorthand for `ViewModels["default"]`; setting both throws at registration. Overrides the View's own `aq:Setup`. |
+| `ViewModels` | `IReadOnlyDictionary<string, Type>?` | Per-outlet ViewModels. Every key must name an outlet `View`/`Views` declares, or registration throws. |
 | `Children` | `IReadOnlyList<RouteRecord>?` | Nested child records. |
 | `Redirect` | `Func<RouteLocation, RouteLocationRaw>?` | Resolved before any guard runs - see README. |
 | `Alias` | `IReadOnlyList<string>?` | Alternate paths resolving to this same record. |
@@ -257,8 +259,8 @@ route into search (unset means not searchable).
 
 | Member | Type | Meaning |
 | --- | --- | --- |
-| `Title` | `required string` | Display text, and the primary text matched against a query. |
-| `Keywords` | `string?` | Extra, unshown terms that also match a query - synonyms/abbreviations that don't belong in `Title` itself. |
+| `Title` | `required string` | Display text, and the primary text matched against a query - or the resource key for it, see `RouteSearchIndex.TextResolver`. |
+| `Keywords` | `string?` | Extra, unshown terms that also match a query - synonyms/abbreviations that don't belong in `Title` itself. Also goes through `TextResolver`. |
 
 ### `RouteSearchResult` (sealed record)
 
@@ -268,6 +270,7 @@ One match returned by `RouteSearchIndex.Query`.
 | --- | --- | --- |
 | `Record` | `required RouteRecord` | The route this result would navigate to. |
 | `Entry` | `required RouteSearchEntry` | Which of `Record.Search`'s entries matched. |
+| `Title` | `required string` | The text to display - `Entry.Title` after `RouteSearchIndex.TextResolver`. Bind this, not `Entry.Title`. |
 | `To` | `RouteLocationRaw` | Ready to pass to `Router.Push`/`Replace` - resolves by `Record.Name`. **Throws `InvalidOperationException`** if `Record.Name` is `null`. |
 
 ### `RouteSearchIndex` (sealed class)
@@ -275,7 +278,13 @@ One match returned by `RouteSearchIndex.Query`.
 | Member | Signature | Meaning |
 | --- | --- | --- |
 | Constructor | `RouteSearchIndex(Router router)` | |
-| `Query` | `IReadOnlyList<RouteSearchResult> Query(string? query)` | Every entry matching every space-separated term in `query` (AND semantics), best match first. Empty for a `null`/blank query. Case- and Vietnamese-diacritic-insensitive. Always re-reads `router.GetRoutes()` fresh - never stale after `Router.AddRoute`/`RemoveRoute`. |
+| `TextResolver` | `Func<string, string>? { get; set; }` | Turns an entry's declared `Title`/`Keywords` into the text shown and searched - set it to a localizer lookup to treat them as resource keys. Runs per entry per query, so a language switch takes effect on the next keystroke. Unset means verbatim. |
+| `Query` | `IReadOnlyList<RouteSearchResult> Query(string? query)` | Every entry matching every space-separated term in `query` (AND semantics), best match first. Empty for a `null`/blank query. Case-insensitive; accent-insensitive for Latin script only (see below). Always re-reads `router.GetRoutes()` fresh - never stale after `Router.AddRoute`/`RemoveRoute`. |
+
+Folding strips a combining mark **only when it sits on a Latin letter**, so Vietnamese/French/
+German/Nordic behave accent-insensitively while Japanese dakuten, Thai vowel signs and Cyrillic
+`й` - which are letters, not decorations - stay intact. Arabic harakat and Hebrew niqqud are
+therefore preserved too; put the unvowelled spelling in `Keywords` if a title carries them.
 
 Ranking (lower is better; ties preserve registration order): `0` = `Title` equals the query
 exactly, `1` = `Title` starts with the query, `2` = every term found in `Title` (any order), `3` =

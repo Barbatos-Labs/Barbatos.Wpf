@@ -34,29 +34,18 @@ namespace Barbatos.Wpf.AquariusRouter.Searching;
 /// </remarks>
 public sealed class RouteSearchEntry
 {
-    private string? _foldedTitle;
-    private string? _foldedHaystack;
-
-    /// <summary>The display text shown for this entry, and the primary text matched against a query - see <see cref="RouteSearchIndex"/>.</summary>
+    /// <summary>
+    /// The text shown for this entry and matched against a query - or, in a localized app, the
+    /// resource <i>key</i> for that text: see <see cref="RouteSearchIndex.TextResolver"/>.
+    /// </summary>
     public required string Title { get; init; }
 
     /// <summary>
     /// Extra, unshown terms that also match a query - synonyms/abbreviations a user might type
     /// that don't belong in the displayed <see cref="Title"/> itself (e.g. <c>"đổi mật khẩu"</c>
     /// alongside a <see cref="Title"/> of <c>"Security settings"</c>). Free-form, space-separated;
-    /// no fixed delimiter syntax is enforced.
+    /// no fixed delimiter syntax is enforced. Goes through
+    /// <see cref="RouteSearchIndex.TextResolver"/> as well, so it can be a resource key too.
     /// </summary>
     public string? Keywords { get; init; }
-
-    /// <summary>
-    /// <see cref="Title"/> in <see cref="SearchText.Fold"/>ed form, computed once on first use.
-    /// This type is immutable (every property is <c>init</c>-only), so the folded text can never
-    /// go stale - and a search box re-queries on every keystroke, so re-folding each entry's text
-    /// per character typed would dominate the cost of searching entirely.
-    /// </summary>
-    internal string FoldedTitle => _foldedTitle ??= SearchText.Fold(Title);
-
-    /// <summary><see cref="FoldedTitle"/> plus <see cref="Keywords"/>, the single string a query's terms are searched in. Cached for the same reason.</summary>
-    internal string FoldedHaystack =>
-        _foldedHaystack ??= Keywords is null ? FoldedTitle : $"{FoldedTitle} {SearchText.Fold(Keywords)}";
 }

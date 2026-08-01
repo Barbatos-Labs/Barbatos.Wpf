@@ -1,5 +1,6 @@
 using Barbatos.Wpf.AquariusRouter.Sample.Views.About;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Admin;
+using Barbatos.Wpf.AquariusRouter.Sample.Views.CrossAssembly;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Dashboard;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Home;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Login;
@@ -9,6 +10,7 @@ using Barbatos.Wpf.AquariusRouter.Sample.Views.Settings;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Users;
 using Barbatos.Wpf.AquariusRouter.Searching;
 using Barbatos.Wpf.Samples.Shared;
+using Barbatos.Wpf.Samples.Shared.CrossAssembly;
 
 namespace Barbatos.Wpf.AquariusRouter.Sample.Routing;
 
@@ -82,6 +84,22 @@ public static class AppRoutes
         {
             Path = "/shared-demo", Name = "shared-demo", View = typeof(InfoCardView),
             Search = [new RouteSearchEntry { Title = "Shared component demo" }],
+        },
+
+        // The "neither file may be edited" demo. AccountSummaryView carries no aq:Setup wiring at
+        // all and names no ViewModel; AccountSummaryPresenter is in ANOTHER assembly
+        // (Barbatos.Wpf.Samples.Shared), under another namespace, named "...Presenter" rather than
+        // "...ViewModel" so Setup's naming convention could never guess it, and it names no View
+        // either. Both stand in for types shipped inside libraries under strict change control.
+        // RouteRecord.ViewModel pairs them from here - the composition root, the one place the
+        // application author actually owns - and everything downstream (route params,
+        // IOnRouteEnter, every guard interface) behaves exactly as if the View had wired itself up.
+        new RouteRecord
+        {
+            Path = "/accounts/:id", Name = "account-summary",
+            View = typeof(AccountSummaryView),
+            ViewModel = typeof(AccountSummaryPresenter),
+            Search = [new RouteSearchEntry { Title = "Account summary", Keywords = "cross assembly viewmodel" }],
         },
 
         // A static redirect - resolved before any guard runs; "/old-home" itself is never
