@@ -3,6 +3,7 @@
   "symbolInfo": [
     { "id": "IncludeAquarius", "isVisible": true },
     { "id": "IncludeAquariusRouter", "isVisible": true },
+    { "id": "IncludeValee", "isVisible": true },
     { "id": "IncludeI18n", "isVisible": true },
     { "id": "IncludeSingleInstance", "isVisible": true },
     { "id": "IncludeRunOnStartup", "isVisible": true },

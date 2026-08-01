@@ -18,8 +18,44 @@
 <!--#if (IncludeAquariusRouter) -->
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Center" Margin="16,16,16,0">
+            <!-- A literal path, and the same kind of target expressed by route *name*:
+                 {aqr:RouteTo} builds the RouteLocationRaw from XAML, so a nav bar never has to
+                 hardcode where a named route currently lives (add Params='id=42' for a
+                 parameterized one). -->
             <Button Content="Home" aqr:RouterLink.To="/" Padding="12,4" Margin="0,0,8,0" />
-            <Button Content="About (routed)" aqr:RouterLink.To="/about" Padding="12,4" />
+            <Button Content="About (routed)" aqr:RouterLink.To="{aqr:RouteTo Name=about}" Padding="12,4" />
+<!--#if (IncludeValee) -->
+            <Button Content="Sign up" aqr:RouterLink.To="{aqr:RouteTo Name=signup}" Padding="12,4" Margin="8,0,0,0" />
+<!--#endif -->
+        </StackPanel>
+        <!-- In-app route search: RouteSearchIndex queries the Search entries declared in
+             AppRoutes.cs, so a user can jump straight to a feature instead of walking the menu.
+             AquariusRouter ships the query engine only - this list is ordinary WPF, deliberately,
+             so it can look like the rest of your app rather than like the library. -->
+        <StackPanel DockPanel.Dock="Top" Width="280" HorizontalAlignment="Center" Margin="16,12,16,0">
+            <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" Padding="4" />
+            <ListBox ItemsSource="{Binding SearchResults}" MaxHeight="120" Margin="0,4,0,0">
+                <ListBox.Style>
+                    <Style TargetType="ListBox">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasSearchResults}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListBox.Style>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!-- Title, not Entry.Title: the former is what RouteSearchIndex.TextResolver
+                             produced, so a localized app shows translated text, not a resource key. -->
+                        <Button Content="{Binding Title}" HorizontalContentAlignment="Left" Padding="6,3"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                Command="{Binding DataContext.GoToSearchResultCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                CommandParameter="{Binding}" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </StackPanel>
         <StackPanel DockPanel.Dock="Top" HorizontalAlignment="Center" Margin="16">
 <!--#else -->
@@ -46,6 +82,12 @@
 <!--#endif -->
 <!--#if (IncludeDialogs) -->
         <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="12,4" Margin="16,16,16,0" HorizontalAlignment="Center" />
+<!--#endif -->
+<!--#if (IncludeValee && !IncludeAquariusRouter) -->
+        <!-- With AquariusRouter also enabled, this same View is reached as the "/signup" route
+             instead of being hosted inline here - see AppRoutes.cs. Either way its ViewModel is
+             found by its own aq:Setup.Enable, not by anything set here. -->
+        <local:SignUpView />
 <!--#endif -->
 <!--#if (IncludeAquariusRouter) -->
         </StackPanel>

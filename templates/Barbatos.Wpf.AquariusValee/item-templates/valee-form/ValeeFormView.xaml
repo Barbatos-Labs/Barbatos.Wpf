@@ -1,0 +1,52 @@
+<UserControl x:Class="ValeeTemplateNamespace.ValeeFormView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             xmlns:aqv="http://schemas.barbatos.co/aquariusvalee/2026/xaml"
+             aq:Setup.Enable="True"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+    <!-- aqv:Valee.Form goes on the container, once: it makes the form discoverable to the fields
+         below (and to aqv:Valee.For, if you prefer naming fields over binding them), focuses
+         whichever control holds the first invalid field when a submit fails, and suppresses WPF's
+         own red-border adorner on this panel - Form implements INotifyDataErrorInfo, so without
+         that the whole panel would light up rather than just the offending control. -->
+    <StackPanel aqv:Valee.Form="{Binding Form}" Margin="24" MaxWidth="320" HorizontalAlignment="Left">
+        <TextBlock Text="Email" FontWeight="SemiBold" />
+        <TextBox aqv:Valee.Field="{Binding Email}" Padding="4" />
+        <TextBlock Text="{Binding Email.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,2,0,8" TextWrapping="Wrap" />
+
+        <!-- PasswordBox needs its own attached property: WPF never exposes Password as a bindable
+             DependencyProperty (deliberately - a bound password would sit in memory as a plain
+             string), so Valee.PasswordField pushes the value across by hand instead of binding. -->
+        <TextBlock Text="Password" FontWeight="SemiBold" />
+        <PasswordBox aqv:Valee.PasswordField="{Binding Password}" Padding="4" />
+        <TextBlock Text="{Binding Password.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,2,0,8" TextWrapping="Wrap" />
+
+        <TextBlock Text="Confirm password" FontWeight="SemiBold" />
+        <PasswordBox aqv:Valee.PasswordField="{Binding ConfirmPassword}" Padding="4" />
+        <TextBlock Text="{Binding ConfirmPassword.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,2,0,8" TextWrapping="Wrap" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <Button Content="Submit" Command="{Binding SubmitCommand}" Padding="12,6" />
+            <!-- Form.Meta exposes Touched/Dirty/Pending/Valid across every field at once; each is
+                 computed fresh on read, never cached. -->
+            <TextBlock Text="checking..." Margin="8,0,0,0" VerticalAlignment="Center" FontStyle="Italic">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Form.Meta.Pending}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </StackPanel>
+
+        <TextBlock Text="{Binding StatusMessage}" FontWeight="SemiBold" Margin="0,12,0,0" TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

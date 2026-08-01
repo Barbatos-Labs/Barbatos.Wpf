@@ -16,6 +16,9 @@
 <!--#if (IncludeAquariusRouter) -->
     <PackageReference Include="Barbatos.Wpf.AquariusRouter" Version="2.3.0" />
 <!--#endif -->
+<!--#if (IncludeValee) -->
+    <PackageReference Include="Barbatos.Wpf.AquariusValee" Version="2.3.0" />
+<!--#endif -->
 <!--#if (IncludeI18n) -->
     <PackageReference Include="Barbatos.i18n.Wpf" Version="1.1.4" />
     <PackageReference Include="Barbatos.i18n.DependencyInjection" Version="1.1.4" />

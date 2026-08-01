@@ -4,7 +4,7 @@
   "classifications": [ "WPF", "Barbatos.Wpf", "Aquarius", "Core", "i18n", "MVVM" ],
   "identity": "Barbatos.Wpf.Templates.CombinedApp",
   "name": "Barbatos.Wpf App (Aquarius + Core + i18n)",
-  "description": "A starter WPF app referencing Barbatos.Wpf.Core, and optionally Barbatos.Wpf.Aquarius, Barbatos.Wpf.AquariusRouter, and Barbatos.i18n, wired together - tick the modules you want (Visual Studio) or pass --Include* flags (CLI/Rider).",
+  "description": "A starter WPF app referencing Barbatos.Wpf.Core, and optionally Barbatos.Wpf.Aquarius, Barbatos.Wpf.AquariusRouter, Barbatos.Wpf.AquariusValee, and Barbatos.i18n, wired together - tick the modules you want (Visual Studio) or pass --Include* flags (CLI/Rider).",
   "shortName": "barbatos-wpf-app",
   "tags": {
     "language": "C#",
@@ -18,7 +18,7 @@
       "datatype": "text",
       "replaces": "2.3.0",
       "defaultValue": "2.3.0",
-      "description": "Version of Barbatos.Wpf.Core/Aquarius/AquariusRouter to reference - override with --PackageVersion if it has moved on from the default by the time you use this. Not yet published to nuget.org as of this writing - see templates/README.md."
+      "description": "Version of Barbatos.Wpf.Core/Aquarius/AquariusRouter/AquariusValee to reference - override with --PackageVersion if it has moved on from the default by the time you use this. Not yet published to nuget.org as of this writing - see templates/README.md."
     },
     "IncludeAquarius": {
       "type": "parameter",
@@ -32,11 +32,18 @@
       "datatype": "bool",
       "defaultValue": "false",
       "displayName": "AquariusRouter (page navigation)",
-      "description": "Adds Barbatos.Wpf.AquariusRouter: a minimal Home/About route table, RouterView outlet, RouterLink nav. Requires Aquarius - automatically included even if 'Aquarius' above is left unchecked."
+      "description": "Adds Barbatos.Wpf.AquariusRouter: a minimal Home/About route table, RouterView outlet, RouterLink nav, and an in-app route search box. Requires Aquarius - automatically included even if 'Aquarius' above is left unchecked."
+    },
+    "IncludeValee": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Valee (form validation)",
+      "description": "Adds Barbatos.Wpf.AquariusValee: a SignUpView whose Form/Field state drives DataAnnotations validation, with Valee.Field/PasswordField/Mask/Numeric bound to real controls. Requires Aquarius - automatically included even if 'Aquarius' above is left unchecked."
     },
     "AquariusEffective": {
       "type": "computed",
-      "value": "(IncludeAquarius || IncludeAquariusRouter)"
+      "value": "(IncludeAquarius || IncludeAquariusRouter || IncludeValee)"
     },
     "IncludeI18n": {
       "type": "parameter",
@@ -141,6 +148,10 @@
             "HomeView.xaml", "HomeView.xaml.cs", "HomeViewModel.cs",
             "AboutView.xaml", "AboutView.xaml.cs", "AboutViewModel.cs"
           ]
+        },
+        {
+          "condition": "(!IncludeValee)",
+          "exclude": [ "SignUpView.xaml", "SignUpView.xaml.cs", "SignUpViewModel.cs" ]
         }
       ]
     }

@@ -1,0 +1,44 @@
+<UserControl x:Class="BarbatosWpfApp.SignUpView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml"
+             xmlns:aqv="http://schemas.barbatos.co/aquariusvalee/2026/xaml"
+             aq:Setup.Enable="True">
+    <!-- aqv:Valee.Form is set once, on the container: it makes the form discoverable to every
+         field below (and to aqv:Valee.For, if you name fields instead of binding them), and it
+         focuses whichever control holds the first invalid field when a submit fails. It also
+         suppresses WPF's own red-border adorner on this panel - Form implements
+         INotifyDataErrorInfo, so without it the whole panel would light up, not just the
+         offending control. -->
+    <StackPanel aqv:Valee.Form="{Binding SignUpForm}" MaxWidth="320" Margin="0,16,0,0">
+        <TextBlock Text="Sign up" FontSize="18" FontWeight="Bold" Margin="0,0,0,8" />
+
+        <TextBlock Text="Email" FontWeight="SemiBold" />
+        <TextBox aqv:Valee.Field="{Binding Email}" Padding="4" />
+        <TextBlock Text="{Binding Email.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,2,0,8" TextWrapping="Wrap" />
+
+        <!-- PasswordBox needs its own attached property: WPF never exposes Password as a bindable
+             DependencyProperty (deliberately - a bound password would sit in memory as a plain
+             string), so Valee.PasswordField pushes the value across by hand instead of binding. -->
+        <TextBlock Text="Password" FontWeight="SemiBold" />
+        <PasswordBox aqv:Valee.PasswordField="{Binding Password}" Padding="4" />
+        <TextBlock Text="{Binding Password.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,2,0,8" TextWrapping="Wrap" />
+
+        <!-- Valee.Mask formats as you type from a positional mask (0 = digit) - it inserts the
+             literals, refuses characters that fit no slot, and caps the length. It guides typing
+             only; SignUpViewModel's PatternAttribute is what actually validates. -->
+        <TextBlock Text="Phone (optional)" FontWeight="SemiBold" />
+        <TextBox aqv:Valee.Field="{Binding Phone}" aqv:Valee.Mask="(000) 000-0000" Padding="4" />
+        <TextBlock Text="{Binding Phone.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,2,0,8" TextWrapping="Wrap" />
+
+        <!-- Valee.Numeric filters typing down to a valid numeric prefix and clamps to the bounds
+             on LostFocus (never mid-keystroke, which would fight the user). The bounds come from
+             the field's own [Range] here; aqv:Valee.Minimum/Maximum can override them per control. -->
+        <TextBlock Text="Age" FontWeight="SemiBold" />
+        <TextBox aqv:Valee.Field="{Binding Age}" aqv:Valee.Numeric="Integer" Padding="4" />
+        <TextBlock Text="{Binding Age.ErrorMessage}" Foreground="Red" FontSize="11" Margin="0,2,0,8" TextWrapping="Wrap" />
+
+        <Button Content="Submit" Command="{Binding SubmitCommand}" Padding="12,6" HorizontalAlignment="Left" />
+        <TextBlock Text="{Binding StatusMessage}" Foreground="Green" FontWeight="SemiBold" Margin="0,8,0,0" TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

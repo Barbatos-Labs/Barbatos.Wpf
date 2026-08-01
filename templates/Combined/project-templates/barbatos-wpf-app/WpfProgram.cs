@@ -106,11 +106,24 @@ public static class WpfProgram
 #if (IncludePushNotifications)
         // Disabled by default - no real push server exists for a fresh starter.
         builder.ConfigurePushNotifications(
-            options => options.Enabled = false,
+            options =>
+            {
+                options.Enabled = false;
+                // A server that re-sends until acknowledged will occasionally deliver a duplicate
+                // (when the acknowledgement is lost to a dropped connection); this is how many
+                // receipt ids are remembered so that stays invisible. 0 disables de-duplication.
+                options.DeduplicationHistorySize = 256;
+            },
             configureSignalR: options =>
             {
                 options.ServerUrl = "https://localhost:5443/hubs/notifications";
                 options.AppId = "BarbatosWpfApp";
+                // Sent with the handshake, so a server can target a subset of devices instead of
+                // broadcasting to every one of them.
+                options.Tags["channel"] = "stable";
+                // Also available: AppKey (+ AppKeyHeaderName) if the server authenticates the
+                // app, and AcknowledgeMethodName - set that to null for a server that doesn't
+                // track delivery, so nothing is sent back.
             });
 #endif
 #if (IncludePeriodicServices)
@@ -137,19 +150,38 @@ public static class WpfProgram
         builder.ConfigureDialogs();
 #endif
 #if (IncludeMcp)
-        builder.ConfigureMcp(options => options.Servers.Add(new McpServerDescriptor
-        {
-            Name = "NuGet",
-            TransportKind = McpTransportKind.Stdio,
-            Command = "dotnet",
-            Arguments = { "dnx", "NuGet.Mcp.Server", "--version", "1.4.16", "--yes" },
-        }));
+        builder.ConfigureMcp(
+            options => options.Servers.Add(new McpServerDescriptor
+            {
+                Name = "NuGet",
+                TransportKind = McpTransportKind.Stdio,
+                Command = "dotnet",
+                Arguments = { "dnx", "NuGet.Mcp.Server", "--version", "1.4.16", "--yes" },
+            }),
+            configureAgent: agent =>
+            {
+                // The Microsoft Agent Framework layer, registered alongside the one-shot
+                // IAiChatService rather than replacing it: IAiAgentFactory builds an AIAgent that
+                // remembers the conversation across turns, and IAiSessionStore can persist that
+                // conversation across app restarts. No API key is baked in either way - the end
+                // user brings their own (BYOK).
+                agent.Name = "BarbatosWpfAppAssistant";
+                agent.Instructions = "You are a helpful assistant inside a WPF desktop app.";
+                // ToolApproval is deliberately left at its default, AiToolApprovalMode.Always:
+                // an agent run pauses and hands the pending MCP tool call back to you, so the app
+                // can ask the end user before anything actually runs.
+            });
 #endif
 
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainWindow>();
 #if (IncludeDialogs)
         builder.Services.AddTransient<AboutWindow>();
+#endif
+#if (IncludeValee)
+        // Transient, so navigating back to the form starts it blank rather than re-showing
+        // whatever the last visit left in it. Resolved by SignUpView's own aq:Setup.Enable.
+        builder.Services.AddTransient<SignUpViewModel>();
 #endif
 #if (IncludeAquariusRouter)
         builder.Services.AddSingleton(_ => new Router(AppRoutes.Build()));

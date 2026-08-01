@@ -130,12 +130,13 @@ dotnet add package Barbatos.Wpf.AquariusValee
 ## Templates
 
 Scaffold new code instead of typing every `DataContext`/`PackageReference` line by hand -
-`dotnet new` templates for both packages live in [`templates/`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md).
+`dotnet new` templates for these packages live in [`templates/`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md).
 
 Install once, from the repo root:
 
 ```powershell
 dotnet new install ./templates/Barbatos.Wpf.Aquarius/item-templates/aquarius-view
+dotnet new install ./templates/Barbatos.Wpf.AquariusValee/item-templates/valee-form
 dotnet new install ./templates/Combined/project-templates/barbatos-wpf-app
 ```
 
@@ -143,19 +144,27 @@ Then use from the CLI - this works identically inside Visual Studio 2022's or Je
 Rider's own integrated terminal, or a plain terminal:
 
 ```powershell
-# A whole new starter app, referencing Barbatos.Wpf.Core, Barbatos.Wpf.Aquarius, and Barbatos.i18n:
+# A whole new starter app - tick the modules you want, or take the defaults
+# (Barbatos.Wpf.Core + Barbatos.Wpf.Aquarius + Barbatos.i18n):
 dotnet new barbatos-wpf-app -n MyApp
+
+# ...or with page navigation and form validation switched on too:
+dotnet new barbatos-wpf-app -n MyApp --IncludeAquariusRouter true --IncludeValee true
 
 # A View + ViewModel pair inside an existing project:
 dotnet new aq-view -n Dashboard --namespace MyApp.Features.Dashboard
+
+# A validated form (View + ViewModel + model) inside an existing project:
+dotnet new aqv-form -n Checkout --namespace MyApp.Features.Checkout
 ```
 
 Both Visual Studio 2022 and Rider also index installed `dotnet new` templates into their
 own GUI dialogs:
 - **Visual Studio 2022**: the project template shows up under **File > New > Project** -
-  search for "Barbatos.Wpf" or its short name, `barbatos-wpf-app`. The item template
-  should appear under **Add > New Item** (right-click a project in Solution Explorer) the
-  same way - search for "Aquarius" or `aq-view`.
+  search for "Barbatos.Wpf" or its short name, `barbatos-wpf-app` - and its per-module
+  checkboxes are rendered natively there. The item templates should appear under
+  **Add > New Item** (right-click a project in Solution Explorer) the same way - search for
+  "Aquarius", `aq-view`, or `aqv-form`.
 - **Rider**: **File > New Solution** lists installed project templates alongside Rider's
   own; an installed item template is reachable via right-clicking a folder and choosing
   **New**, which lists templates by name.
