@@ -85,6 +85,7 @@ public sealed class RouterView : ContentControl
 
     private int _depth;
     private IDisposable? _watchHandle;
+    private RoutingRouter? _effectiveRouter;
 
     /// <summary>Creates a <see cref="RouterView"/>.</summary>
     public RouterView()
@@ -106,8 +107,6 @@ public sealed class RouterView : ContentControl
         get => (string)GetValue(OutletNameProperty);
         set => SetValue(OutletNameProperty, value);
     }
-
-    private RoutingRouter? _effectiveRouter;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {

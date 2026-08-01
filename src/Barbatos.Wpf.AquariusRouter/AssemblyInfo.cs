@@ -12,5 +12,6 @@ using System.Windows.Markup;
 // Aquarius's own `aq:` is deliberate - both are commonly used together in the same XAML file.
 [assembly: XmlnsDefinition("http://schemas.barbatos.co/aquariusrouter/2026/xaml", "Barbatos.Wpf.AquariusRouter.Matching")]
 [assembly: XmlnsDefinition("http://schemas.barbatos.co/aquariusrouter/2026/xaml", "Barbatos.Wpf.AquariusRouter.Routing")]
+[assembly: XmlnsDefinition("http://schemas.barbatos.co/aquariusrouter/2026/xaml", "Barbatos.Wpf.AquariusRouter.Searching")]
 [assembly: XmlnsDefinition("http://schemas.barbatos.co/aquariusrouter/2026/xaml", "Barbatos.Wpf.AquariusRouter.Xaml")]
 [assembly: XmlnsPrefix("http://schemas.barbatos.co/aquariusrouter/2026/xaml", "aqr")]

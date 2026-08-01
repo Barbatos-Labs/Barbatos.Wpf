@@ -9,15 +9,14 @@
         xmlns:profile="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.ProfileEdit"
         xmlns:customrules="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.CustomRules"
         xmlns:showcase="clr-namespace:Barbatos.Wpf.AquariusValee.Sample.Views.Showcase"
-        xmlns:i18n="http://schemas.barbatos.co/i18n/2026/xaml"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=local:MainViewModel}"
-        Title="{i18n:StringLocalizer Text='MainWindow.Title'}"
+        Title="{local:SafeStringLocalizer Text='MainWindow.Title'}"
         Height="720"
         Width="620">
     <DockPanel Margin="8">
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
-            <TextBlock Text="{i18n:StringLocalizer Text='MainWindow.Language'}" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBlock Text="{local:SafeStringLocalizer Text='MainWindow.Language'}" VerticalAlignment="Center" Margin="0,0,6,0" />
             <ComboBox ItemsSource="{Binding SupportedCultures}" SelectedItem="{Binding SelectedCulture}"
                       DisplayMemberPath="NativeName" Width="160" />
         </StackPanel>
@@ -27,27 +26,27 @@
             sample's own TabControl shell in this repo - this shell only wires each tab's
             DataContext to its own property on MainViewModel. The x:Name markers let
             MainWindow.xaml.cs rebuild each tab's View (not its ViewModel/Form - so typed-in
-            values survive) when the language switches, since a plain {i18n:StringLocalizer}
+            values survive) when the language switches, since a plain {local:SafeStringLocalizer}
             binding with no BindArg only ever evaluates once and won't refresh on its own.
         -->
         <TabControl>
-            <TabItem x:Name="LoginTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabLogin'}">
+            <TabItem x:Name="LoginTabItem" Header="{local:SafeStringLocalizer Text='MainWindow.TabLogin'}">
                 <login:LoginView DataContext="{Binding LoginDemo}" />
             </TabItem>
 
-            <TabItem x:Name="SignupTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabSignup'}">
+            <TabItem x:Name="SignupTabItem" Header="{local:SafeStringLocalizer Text='MainWindow.TabSignup'}">
                 <signup:SignupView DataContext="{Binding SignupDemo}" />
             </TabItem>
 
-            <TabItem x:Name="ProfileTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabProfile'}">
+            <TabItem x:Name="ProfileTabItem" Header="{local:SafeStringLocalizer Text='MainWindow.TabProfile'}">
                 <profile:ProfileEditView DataContext="{Binding ProfileEditDemo}" />
             </TabItem>
 
-            <TabItem x:Name="CustomRulesTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabCustomRules'}">
+            <TabItem x:Name="CustomRulesTabItem" Header="{local:SafeStringLocalizer Text='MainWindow.TabCustomRules'}">
                 <customrules:CustomRulesView DataContext="{Binding CustomRulesDemo}" />
             </TabItem>
 
-            <TabItem x:Name="ShowcaseTabItem" Header="{i18n:StringLocalizer Text='MainWindow.TabShowcase'}">
+            <TabItem x:Name="ShowcaseTabItem" Header="{local:SafeStringLocalizer Text='MainWindow.TabShowcase'}">
                 <showcase:ShowcaseView DataContext="{Binding ShowcaseDemo}" />
             </TabItem>
         </TabControl>

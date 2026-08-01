@@ -158,4 +158,105 @@ public class FormFromModelTests
         Assert.True(form.Fields["ReadOnlyField"].IsReadOnly);
         Assert.False(form.Fields["PlainField"].IsReadOnly);
     }
+
+    private sealed class PriceRangeModel
+    {
+        public int MinPrice { get; set; } = 10;
+        public int MaxPrice { get; set; } = 100;
+
+        [PropertyRange(nameof(MinPrice), nameof(MaxPrice))]
+        public int Price { get; set; } = 50;
+    }
+
+    [Fact]
+    public async Task PropertyRangeAttributeValidatesAgainstSiblingFieldsCurrentValuesInFromModelMode()
+    {
+        var form = Form.FromModel(new PriceRangeModel());
+
+        await form.Fields["Price"].ValidateAsync();
+        Assert.Empty(form.Fields["Price"].Errors);
+
+        form.SetFieldValue("Price", 5);
+        await form.Fields["Price"].ValidateAsync();
+        Assert.NotEmpty(form.Fields["Price"].Errors);
+
+        form.SetFieldValue("Price", 500);
+        await form.Fields["Price"].ValidateAsync();
+        Assert.NotEmpty(form.Fields["Price"].Errors);
+    }
+
+    [Fact]
+    public async Task FromModelAutoWiresDependsOnForIDependsOnPropertiesAttributesWithNoManualWiring()
+    {
+        var form = Form.FromModel(new PriceRangeModel());
+        await form.Fields["Price"].ValidateAsync();
+        Assert.Empty(form.Fields["Price"].Errors);
+
+        // Price itself is never touched here - only its declared dependencies (MinPrice/MaxPrice)
+        // change, proving Form.FromModel wired Field.DependsOn automatically from the attribute.
+        form.SetFieldValue("MinPrice", 60);
+        await Task.Delay(20);
+        Assert.NotEmpty(form.Fields["Price"].Errors);
+
+        form.SetFieldValue("MinPrice", 10);
+        await Task.Delay(20);
+        Assert.Empty(form.Fields["Price"].Errors);
+
+        form.SetFieldValue("MaxPrice", 40);
+        await Task.Delay(20);
+        Assert.NotEmpty(form.Fields["Price"].Errors);
+    }
+
+    private sealed class BadDependencyModel
+    {
+        [PropertyRange("ThisPropertyDoesNotExist", "NeitherDoesThisOne")]
+        public int Price { get; set; } = 50;
+    }
+
+    [Fact]
+    public void FromModelThrowsImmediatelyWhenAnIDependsOnPropertiesAttributeNamesAnUnknownProperty()
+    {
+        // Fails at FromModel-call time (typically ViewModel construction), not lazily on first
+        // validation - the earliest point that can catch a hand-typed (non-nameof) typo.
+        Assert.Throws<InvalidOperationException>(() => Form.FromModel(new BadDependencyModel()));
+    }
+
+    [Fact]
+    public async Task DependsOnTriggeredRevalidationOnAFromModelFieldSeesTheSourcesAlreadyWrittenBackModelValue()
+    {
+        // Field.HandleChange used to set its own reactive _value BEFORE calling WriteBackToModel -
+        // harmless for an untouched field, but DependsOn's watcher fires synchronously the instant
+        // _value changes, so a dependent field re-validating (by reflecting into the live model,
+        // like PropertyRangeAttribute/CompareAttribute do) would still see the model's OLD value.
+        // Regression coverage for that exact ordering bug, independent of PropertyRange's own
+        // comparison logic.
+        var model = new PriceRangeModel();
+        var form = Form.FromModel(model);
+        var observedMinPrice = -1;
+
+        ((Field<int>)form.Fields["Price"]).AddRule(_ =>
+        {
+            observedMinPrice = model.MinPrice;
+            return null;
+        });
+
+        await form.Fields["Price"].ValidateAsync();
+        form.SetFieldValue("MinPrice", 60);
+
+        Assert.Equal(60, observedMinPrice);
+    }
+
+    [Fact]
+    public void ResetWritesTheResetValueBackOntoTheModelToo()
+    {
+        var model = new PriceRangeModel();
+        var form = Form.FromModel(model);
+
+        form.SetFieldValue("Price", 999);
+        Assert.Equal(999, model.Price);
+
+        ((Field<int>)form.Fields["Price"]).Reset();
+
+        Assert.Equal(50, model.Price);
+    }
 }

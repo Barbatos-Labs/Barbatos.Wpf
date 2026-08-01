@@ -17,8 +17,10 @@
          arbitrary TModel; IL2060 covers the matching MakeGenericMethod call. IL2067 is only
          precautionary here (FromModel takes an already-constructed instance, not
          Activator.CreateInstance(Type) the way Setup/RouterView's own resolution does) - kept for
-         consistency with the identical suppression block both sibling packages already carry. -->
-    <NoWarn>$(NoWarn);IL2026;IL3050;IL2075;IL2067;IL2090;IL2060</NoWarn>
+         consistency with the identical suppression block both sibling packages already carry.
+         IL2070 covers WireDeclaredDependencies's GetProperty(sourceName) call on the same
+         reflected TModel, for IDependsOnProperties auto-wiring (e.g. PropertyRangeAttribute). -->
+    <NoWarn>$(NoWarn);IL2026;IL3050;IL2075;IL2067;IL2090;IL2060;IL2070</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

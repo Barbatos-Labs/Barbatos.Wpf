@@ -148,7 +148,11 @@ public sealed class Router
             return null;
 
         var from = CurrentRoute.Value;
-        var to = Resolve(new RouteLocationRaw { Path = targetPath });
+
+        // A history entry is a serialized FullPath, so it can carry "?query#hash" - feeding that
+        // whole string back as a bare Path would ask the matcher to match a route against it
+        // verbatim, which no route's regex can accept.
+        var to = Resolve(RouteLocationRaw.Parse(targetPath));
         _pendingLocation = to;
 
         var outcome = await RunGuardPipeline(to, from).ConfigureAwait(true);
@@ -301,13 +305,23 @@ public sealed class Router
         if (await RunStage(beforeEnterGuards, to, from).ConfigureAwait(true) is { } beforeEnterResult)
             return beforeEnterResult;
 
-        ConstructEnteringViews(entering);
+        // From here on the entering Views really exist, so every remaining early-return has to
+        // undo them (see ReleaseConstructedViews) - Vue Router never creates the component at all
+        // when a guard rejects, and a leftover instance here would be silently reused by the next
+        // attempt instead of being constructed fresh.
+        var constructed = ConstructEnteringViews(entering);
         InvokeDataHooks<IOnRouteEnter>(entering, static (hook, t, f) => hook.OnRouteEnter(t, f), to, from);
         if (await RunStage(EnterGuardsFor(entering), to, from).ConfigureAwait(true) is { } enterResult)
+        {
+            ReleaseConstructedViews(constructed);
             return enterResult;
+        }
 
         if (await RunStage(_beforeResolveGuards, to, from).ConfigureAwait(true) is { } beforeResolveResult)
+        {
+            ReleaseConstructedViews(constructed);
             return beforeResolveResult;
+        }
 
         // Every guard passed, and the commit below is unconditional from here - safe to release
         // the leaving records' instances now. A RouterView never reads a leaving record's own
@@ -336,8 +350,15 @@ public sealed class Router
         return IsStillPending(to) ? null : GuardPipelineOutcome.Cancelled;
     }
 
-    private void ConstructEnteringViews(IEnumerable<RouteRecord> entering)
+    /// <summary>
+    /// Builds every not-yet-constructed View for <paramref name="entering"/>, returning exactly
+    /// the ones this call created so a later-rejecting guard can undo precisely those (and not
+    /// some pre-existing instance it didn't build) via <see cref="ReleaseConstructedViews"/>.
+    /// </summary>
+    private static List<(RouteRecord Record, string OutletName)> ConstructEnteringViews(IEnumerable<RouteRecord> entering)
     {
+        var constructed = new List<(RouteRecord, string)>();
+
         foreach (var record in entering)
         {
             var views = record.ResolvedViews;
@@ -354,8 +375,23 @@ public sealed class Router
                 // like any other Aquarius View, with no separate mechanism needed here.
                 var instance = Setup.ServiceProvider?.GetService(viewType) ?? Activator.CreateInstance(viewType)!;
                 record.Instances[outletName] = (FrameworkElement)instance;
+                constructed.Add((record, outletName));
             }
         }
+
+        return constructed;
+    }
+
+    /// <summary>
+    /// Discards the Views <see cref="ConstructEnteringViews"/> just built, for a navigation that
+    /// then got cancelled/redirected/superseded. Nothing was ever mounted (no
+    /// <see cref="Xaml.RouterView"/> reads a record until <see cref="CurrentRoute"/> commits), so
+    /// dropping the reference is the whole of the cleanup.
+    /// </summary>
+    private static void ReleaseConstructedViews(List<(RouteRecord Record, string OutletName)> constructed)
+    {
+        foreach (var (record, outletName) in constructed)
+            record.Instances.Remove(outletName);
     }
 
     private static void InvokeDataHooks<THook>(IEnumerable<RouteRecord> records, Action<THook, RouteLocation, RouteLocation> invoke, RouteLocation to, RouteLocation from)

@@ -220,6 +220,54 @@ public class ValeeXamlTests
     }
 
     [Fact]
+    public void ValeeFormDoesNotWrapItsOwnElementInWpfsNativeValidationAdornerWhenAFieldIsInvalid()
+    {
+        // Regression test: Form implements INotifyDataErrorInfo (Form.HasErrors aggregates every
+        // field), and Valee.Form's value arrives via a real WPF Binding, whose
+        // ValidatesOnNotifyDataErrors defaults to true for any Binding - not just ones on editing
+        // controls. Without OnFormChanged suppressing it, WPF's own native red-border adorner
+        // would wrap the WHOLE panel Valee.Form is set on the instant any single field anywhere in
+        // the form is invalid, not just the offending control - confirmed by a real user
+        // screenshot showing the entire form outlined in red from one bad field.
+        StaThread.Run(() =>
+        {
+            var form = new Form();
+            var email = form.DefineField("Email", "", new RequiredAttribute());
+
+            var emailBox = new TextBox();
+            Valee.SetField(emailBox, email);
+
+            var panel = new StackPanel();
+            Valee.SetForm(panel, form);
+            panel.Children.Add(emailBox);
+
+            var window = new Window { Content = panel };
+            try
+            {
+                window.Show();
+                StaThread.PumpDispatcher();
+
+                email.HandleBlur(); // touches + validates - Email is required and empty, so this fails.
+                StaThread.PumpDispatcher();
+
+                Assert.True(System.Windows.Controls.Validation.GetHasError(emailBox));
+                // Whether/when WPF's binding engine propagates Form.HasErrors into
+                // Validation.HasError on panel itself is a validation-timing detail this test
+                // doesn't need to pin down - what must never happen is a VISIBLE adorner there,
+                // which an empty ErrorTemplate suppresses regardless of that timing.
+                // OnFormChanged sets this synchronously the moment Valee.Form is assigned, so it
+                // is a real (non-null) template distinguishing "explicitly suppressed" from the
+                // default null (never-touched) state - not dependent on validation having run yet.
+                Assert.NotNull(System.Windows.Controls.Validation.GetErrorTemplate(panel));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void FieldsNativeINotifyDataErrorInfoImplementationDrivesWpfsOwnValidationAdorner()
     {
         StaThread.Run(() =>

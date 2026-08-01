@@ -48,16 +48,14 @@ public partial class MainWindow : Window
             CustomRulesTabItem.Content = new CustomRulesView { DataContext = _viewModel.CustomRulesDemo };
             ShowcaseTabItem.Content = new ShowcaseView { DataContext = _viewModel.ShowcaseDemo };
 
-            // Every other field's ErrorMessage is a Barbatos.i18n lookup key resolved by
-            // LocalizeConverter at display time, so rebuilding the View above already refreshes
-            // it to the new language for free. CustomRulesViewModel's Username is the one
-            // exception - its rule delegates resolve real localized text eagerly (needed for the
-            // "Taken" message's dynamic username argument, which a converter has no way to pass) -
-            // so it needs an explicit re-validation to pick up the new language. Gated on
-            // Meta.Validated so a pristine, never-touched field doesn't suddenly show an error.
-            var username = _viewModel.CustomRulesDemo.Username;
-            if (username.Meta.Validated)
-                _ = username.ValidateAsync();
+            // Every other tab's ErrorMessage is a Barbatos.i18n lookup key resolved by
+            // SafeMessageConverter at display time, so rebuilding the View above already refreshes
+            // it to the new language for free. The Custom rules tab is the exception - its rule
+            // delegates resolve real localized text eagerly (needed for messages that interpolate
+            // a runtime value, which a converter has no way to supply) - so it re-validates
+            // whatever is already on screen. The ViewModel owns that list rather than this handler
+            // naming fields one by one, so adding a field there can't silently miss this path.
+            _ = _viewModel.CustomRulesDemo.RefreshLocalizedMessagesAsync();
         }
     }
 }

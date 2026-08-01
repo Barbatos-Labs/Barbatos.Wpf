@@ -116,7 +116,13 @@ public static partial class Valee
         });
 
         element.SetValue(AssociatedFieldProperty, field);
+
+        // Detach first: both Valee.Field and Valee.For route through here, so an element carrying
+        // both (or one rebound at runtime) would otherwise accumulate handlers and call
+        // HandleBlur once per subscription on a single loss of focus.
+        element.LostFocus -= OnFieldControlLostFocus;
         element.LostFocus += OnFieldControlLostFocus;
+
         ElementsByField.AddOrUpdate(field, element);
     }
 

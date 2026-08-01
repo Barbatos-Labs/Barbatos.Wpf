@@ -2,6 +2,40 @@ namespace Barbatos.Wpf.AquariusValee.UnitTests;
 
 public class FormTests
 {
+    [Fact]
+    public async Task RevalidateValidatedAsyncRefreshesAnAlreadyShownMessageButLeavesPristineFieldsAlone()
+    {
+        // Models the real "user switched language" case: a rule that resolves its text eagerly
+        // captured the old language, and only a re-run picks up the new one.
+        var language = "en";
+        var form = new Form();
+        var touched = form.DefineField("Touched", "", _ => language == "en" ? "Required." : "Bat buoc.");
+        var pristine = form.DefineField("Pristine", "", _ => language == "en" ? "Required." : "Bat buoc.");
+
+        await touched.ValidateAsync();
+        Assert.Equal("Required.", touched.ErrorMessage);
+        Assert.Empty(pristine.Errors);
+
+        language = "vi";
+        await form.RevalidateValidatedAsync();
+
+        Assert.Equal("Bat buoc.", touched.ErrorMessage);
+        Assert.Empty(pristine.Errors);
+        Assert.False(pristine.Meta.Validated);
+    }
+
+    [Fact]
+    public async Task RevalidateValidatedAsyncIsANoOpOnAFormNobodyHasValidatedYet()
+    {
+        var form = new Form();
+        var field = form.DefineField("Email", "", _ => "always fails");
+
+        await form.RevalidateValidatedAsync();
+
+        Assert.Empty(field.Errors);
+        Assert.False(field.Meta.Validated);
+    }
+
     private static (Form form, Field<string> email, Field<string> password) BuildLoginForm()
     {
         var form = new Form();

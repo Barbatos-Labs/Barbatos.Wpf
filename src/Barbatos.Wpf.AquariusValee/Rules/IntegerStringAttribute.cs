@@ -27,22 +27,11 @@ public sealed class IntegerStringAttribute : ValidationAttribute
         if (string.IsNullOrEmpty(text))
             return true;
 
-        var start = 0;
+        var digits = text.AsSpan();
 
-        if (text[0] == '-')
-        {
-            if (text.Length == 1)
-                return false;
+        if (digits[0] == '-')
+            digits = digits[1..];
 
-            start = 1;
-        }
-
-        for (var i = start; i < text.Length; i++)
-        {
-            if (text[i] is < '0' or > '9')
-                return false;
-        }
-
-        return true;
+        return digits.Length > 0 && !digits.ContainsAnyExcept(AsciiSets.Digits);
     }
 }

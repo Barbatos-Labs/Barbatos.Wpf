@@ -30,14 +30,12 @@ public sealed class AlphaSpacesAttribute : ValidationAttribute
         if (string.IsNullOrEmpty(text))
             return true;
 
+        if (AsciiOnly)
+            return AsciiSets.ContainsOnly(text, AsciiSets.LettersOrAsciiWhitespace);
+
         foreach (var c in text)
         {
-            if (char.IsWhiteSpace(c))
-                continue;
-
-            var ok = AsciiOnly ? c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' : char.IsLetter(c);
-
-            if (!ok)
+            if (!char.IsWhiteSpace(c) && !char.IsLetter(c))
                 return false;
         }
 

@@ -30,16 +30,12 @@ public sealed class AlphaDashAttribute : ValidationAttribute
         if (string.IsNullOrEmpty(text))
             return true;
 
+        if (AsciiOnly)
+            return AsciiSets.ContainsOnly(text, AsciiSets.LettersDigitsDashUnderscore);
+
         foreach (var c in text)
         {
-            if (c is '_' or '-')
-                continue;
-
-            var ok = AsciiOnly
-                ? c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9'
-                : char.IsLetterOrDigit(c);
-
-            if (!ok)
+            if (c is not ('_' or '-') && !char.IsLetterOrDigit(c))
                 return false;
         }
 

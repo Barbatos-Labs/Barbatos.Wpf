@@ -26,9 +26,11 @@ active-state styling - built directly on [Barbatos.Wpf.Aquarius](https://github.
   * [Named Outlets](#named-outlets)
   * [Nested Routes](#nested-routes)
 * **[RouterLink](#routerlink)**
+  * [RouteTo](#routeto)
 * **[Navigation Guards](#navigation-guards)**
   * [The Full Pipeline Order](#the-full-pipeline-order)
 * **[Navigation Failures](#navigation-failures)**
+* **[In-App Search](#in-app-search)**
 * **[Path Matching](#path-matching)**
 * **[History](#history)**
 * **[Deliberately Out of Scope](#deliberately-out-of-scope)**
@@ -73,6 +75,13 @@ package parse and route an actual incoming protocol-activation URI, not just an 
 navigation key. `Query`/`Hash`/`FullPath` stay on every resolved location for exactly this reason,
 even though there's no address bar to display them in - registering the URI scheme with Windows
 itself is an application concern, outside this package's own scope.
+
+`RouteLocationRaw.Parse` is the piece that turns such an incoming string into a navigation target:
+
+```csharp
+var uri = new Uri(activationArgument);          // myapp://users/42?ref=mail#detail
+await router.Push(RouteLocationRaw.Parse(uri.PathAndQuery + uri.Fragment));
+```
 
 ### Quick Start
 
@@ -283,7 +292,7 @@ navigation trigger, with live active-state tracking.
 
 ```xml
 <Button Content="About" aqr:RouterLink.To="/about" />
-<Hyperlink aqr:RouterLink.To="{aqr:RouteTo Name=user, Params={...}}">Profile</Hyperlink>
+<Hyperlink aqr:RouterLink.To="{aqr:RouteTo Name=user, Params='id=42'}">Profile</Hyperlink>
 ```
 
 A set of attached properties on an *existing* clickable element - deliberately not a new templated
@@ -292,7 +301,8 @@ behavior to an existing element"; a new control is reserved for something that m
 content/visibility/lifecycle, which a link does not). Click-wiring itself is built on Aquarius's
 own `Directives.Event`/`Directives.Command`, not a second hand-rolled event mechanism.
 
-- **`To`** - a `string` path or a `RouteLocationRaw`.
+- **`To`** - a `string` path, or a `RouteLocationRaw` (bind it for a target that changes at
+  runtime, or write one inline with the `{aqr:RouteTo ...}` markup extension below).
 - **`Replace`** - navigates via `Router.Replace` instead of `Router.Push` when `true`.
 - **`Router`** - an explicit override, same fallback-to-`Router.Current` shape as `RouterView.Router`.
 - **`IsActive`/`IsExactActive`** - live bindable booleans, the native-WPF mapping of Vue Router's
@@ -321,6 +331,36 @@ own `Directives.Event`/`Directives.Command`, not a second hand-rolled event mech
 so the browser's native anchor behavior takes over) - a WPF `Click` event carries no modifier-key
 or mouse-button information to guard on in the first place, and there's no "native behavior" to
 fall back to. A documented "not applicable," not a gap.
+
+### RouteTo
+
+`Barbatos.Wpf.AquariusRouter.Xaml.RouteTo` - a markup extension that builds a `RouteLocationRaw`
+inline, so a link can target a *named* route instead of hardcoding a path. The XAML counterpart of
+Vue Router's own `:to="{ name: 'user', params: { id: 42 }}"`:
+
+```xml
+<!-- By name, no params - never hardcodes where that route currently lives: -->
+<Button aqr:RouterLink.To="{aqr:RouteTo Name=settings-security}" Content="Security" />
+
+<!-- By name, with params (quote the value - '=' and ',' are XAML's own separators): -->
+<Button aqr:RouterLink.To="{aqr:RouteTo Name=user, Params='id=42'}" Content="Profile" />
+
+<!-- Several params/query values, and a repeatable param: -->
+<Button aqr:RouterLink.To="{aqr:RouteTo Name=user, Params='id=42;tab=billing', Query='ref=nav'}" />
+<Button aqr:RouterLink.To="{aqr:RouteTo Name=files, Params='segments=docs,2026,report'}" />
+```
+
+`Params`/`Query` are `key=value` pairs separated by `;` (not `,`, which already separates a markup
+extension's own arguments); a comma *within* a `Params` value splits it into the string list a
+repeatable param (`:segments+`/`:segments*`) expects. `Hash`, `Replace`, and `Force` map straight
+onto their `RouteLocationRaw` counterparts. Setting neither `Name` nor `Path` - or both - throws
+at parse time rather than resolving something surprising.
+
+**For a target that changes at runtime, bind `To` to a `RouteLocationRaw` property on your
+ViewModel instead.** A markup extension is evaluated once when the XAML is parsed, so a `{Binding}`
+nested inside one of its properties would be captured as a `Binding` object rather than its value -
+`RouteTo` is deliberately for targets that are constant in the markup, which is the overwhelmingly
+common case for a nav bar.
 
 ---
 
@@ -424,6 +464,72 @@ Duplicated = 16`, matching Vue Router's own real bit values, not sequential ints
 throws a genuine `Exception` is **not** wrapped as one of these - it propagates as-is, the same
 real distinction Vue Router itself draws between a guard returning `false`/redirecting and a guard
 throwing.
+
+---
+
+## In-App Search
+
+`Barbatos.Wpf.AquariusRouter.Searching` - no Vue Router equivalent to port; new surface this
+library adds on its own. In a super-app or a banking app, a feature you need can easily be buried
+several menu levels deep - a search box that jumps straight to it, skipping the nav structure
+entirely, is a real, common pattern in that kind of app. This is the query/ranking engine behind
+one; it deliberately does **not** ship a ready-made search box control (see below).
+
+Opt a route into search by giving it one or more `RouteSearchEntry`:
+
+```csharp
+new RouteRecord
+{
+    Path = "security", Name = "settings-security", View = typeof(SettingsSecurityView),
+    Search =
+    [
+        new RouteSearchEntry { Title = "Security settings" },
+        new RouteSearchEntry { Title = "Change password", Keywords = "security password" },
+    ],
+}
+```
+
+`Search` is a **list**, not a single entry - so one route can be found under several different
+phrasings (synonyms a real user might actually type) without needing a second route just to carry
+a different title. A route with no `Search` entries at all is simply never returned - it's
+opt-in, not automatic (a raw `/users/:id`-style route wouldn't have a meaningful search title
+anyway).
+
+Then query it - typically from a ViewModel backing your own search box:
+
+```csharp
+var index = new RouteSearchIndex(router);
+
+IReadOnlyList<RouteSearchResult> results = index.Query("doi mat khau");
+if (results.Count > 0)
+    await router.Push(results[0].To);
+```
+
+- **Matching** splits the query into space-separated terms and requires *every* term to appear
+  somewhere in an entry's `Title` or `Keywords` combined (AND semantics - each extra word narrows
+  the results, the way most real search boxes behave). Comparison is case-insensitive and,
+  deliberately, **Vietnamese-diacritic-insensitive**: `"chuyen tien"`/`"dang nhap"` match
+  `"Chuyển tiền"`/`"Đăng nhập"` just as well as the fully-accented spelling (including `đ`/`Đ`,
+  which Unicode models as a distinct base letter rather than a combining mark, so it needs its own
+  explicit fold) - matching how a large share of real Vietnamese users actually type into a search
+  box.
+- **Ranking** prefers whichever entries matched via `Title` itself over ones that only matched via
+  `Keywords`, with an exact/prefix title match ranked above a same-tier match; ties preserve
+  registration order. Always re-reads `Router.GetRoutes()` on every `Query` call rather than
+  snapshotting the route table once, so a route added/removed later via `Router.AddRoute`/
+  `RemoveRoute` is reflected on the very next query.
+- **`RouteSearchResult.To`** is a ready-to-`Push` `RouteLocationRaw`, always resolved by
+  `RouteRecord.Name` (the only reliable way to target an arbitrary, possibly deeply-nested record) -
+  it throws immediately, rather than silently resolving a wrong/relative navigation, if the matched
+  route has no `Name`.
+
+**Why no ready-made search box control**: a results dropdown/popup genuinely manages its own
+visibility and child content - exactly the kind of concern this library family reserves for a real
+templated control (see `RouterLink`'s own reasoning for why *it* is deliberately not one). Building
+that control means committing to a lot of decisions (positioning, keyboard navigation, default
+styling, theming, accessibility) that vary a lot per app. Shipping just the engine keeps that choice
+with you; see `samples/Barbatos.Wpf.AquariusRouter.Sample` for one complete, working way to build
+the UI on top of it (a plain `TextBox` + results `ListBox` in the nav bar).
 
 ---
 

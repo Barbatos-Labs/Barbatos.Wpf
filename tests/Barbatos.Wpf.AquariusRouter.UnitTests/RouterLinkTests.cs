@@ -230,4 +230,88 @@ public class RouterLinkTests
             }
         });
     }
+
+    /// <summary>
+    /// Active-state is computed from <c>Loaded</c>, i.e. from deep inside WPF's own render
+    /// pipeline, where a synchronous throw takes the process down instead of surfacing catchably
+    /// (see <c>RouterView</c>'s own regression test for that hazard). Resolving a target no route
+    /// matches must therefore leave the link merely inactive, not blow up the window showing it -
+    /// the same thing Vue Router does for a <c>&lt;router-link&gt;</c> pointing nowhere.
+    /// </summary>
+    [Fact]
+    public void ATargetNoRouteMatchesLeavesTheLinkInactiveInsteadOfTakingDownTheWindow()
+    {
+        StaThread.Run(() =>
+        {
+            var router = BuildRouter();
+            Assert.Null(router.Start("/about").GetAwaiter().GetResult());
+
+            var link = new Button();
+            RouterLink.SetRouter(link, router);
+            RouterLink.SetTo(link, "/no/such/route");
+
+            var window = new Window { Content = link };
+            try
+            {
+                window.Show();
+                StaThread.PumpDispatcher();
+
+                Assert.False(RouterLink.GetIsActive(link));
+                Assert.False(RouterLink.GetIsExactActive(link));
+
+                // ...and a link that DOES resolve still tracks normally afterwards.
+                RouterLink.SetTo(link, "/about");
+                StaThread.PumpDispatcher();
+                Assert.True(RouterLink.GetIsActive(link));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>
+    /// <c>To</c> is documented as bindable, so it can legitimately change after the element is
+    /// already loaded (a bound target, or an <c>ItemsControl</c> recycling containers). Wiring the
+    /// active-state watch only from <c>Loaded</c> would silently stop tracking from then on, since
+    /// <c>Loaded</c> never fires again for an already-loaded element.
+    /// </summary>
+    [Fact]
+    public void ChangingToWhileAlreadyLoadedKeepsTrackingActiveState()
+    {
+        StaThread.Run(() =>
+        {
+            var router = BuildRouter();
+            Assert.Null(router.Start("/users/42").GetAwaiter().GetResult());
+
+            var link = new Button();
+            RouterLink.SetRouter(link, router);
+            RouterLink.SetTo(link, "/about");
+
+            var window = new Window { Content = link };
+            try
+            {
+                window.Show();
+                StaThread.PumpDispatcher();
+                Assert.False(RouterLink.GetIsActive(link));
+
+                // Rebind to the route that IS current, while loaded.
+                RouterLink.SetTo(link, "/users/42");
+                StaThread.PumpDispatcher();
+
+                Assert.True(RouterLink.GetIsActive(link));
+
+                // ...and the CurrentRoute watch must still be live for the NEW target too.
+                Assert.Null(router.Push("/users").GetAwaiter().GetResult());
+                StaThread.PumpDispatcher();
+
+                Assert.False(RouterLink.GetIsExactActive(link));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
 }

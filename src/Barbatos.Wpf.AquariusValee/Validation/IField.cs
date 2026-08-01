@@ -52,6 +52,23 @@ public interface IField : INotifyPropertyChanged, INotifyDataErrorInfo
     /// <summary>Whether the user should be able to edit this field - mirrors <c>[Editable(false)]</c> when built via <see cref="Form.FromModel{TModel}"/>. Defaults to <see langword="true"/>; Valee's own attached properties do not enforce this themselves (see remarks on <see cref="Xaml.Valee.FieldProperty"/>), it is a hint for your own templates/converters to react to.</summary>
     bool IsReadOnly { get; }
 
+    /// <summary>
+    /// The lowest value this field should accept - mirrors <c>[Range]</c>'s lower bound when built
+    /// via <see cref="Form.FromModel{TModel}"/>, or when a <see cref="RangeAttribute"/> is passed
+    /// to <see cref="Field{T}"/>'s constructor. <see langword="null"/> when unbounded below or
+    /// non-numeric.
+    /// </summary>
+    /// <remarks>
+    /// Input-layer metadata only - it is <b>not</b> what validates the value. <c>[Range]</c> (or
+    /// whatever rule set the bound) remains the verdict; this simply lets
+    /// <see cref="Xaml.Valee.NumericProperty"/> know which keystrokes are pointless and where to
+    /// clamp on blur, without the bound having to be repeated in XAML.
+    /// </remarks>
+    double? Minimum { get; }
+
+    /// <summary>The highest value this field should accept - the counterpart of <see cref="Minimum"/>, with the same "metadata, not validation" caveat.</summary>
+    double? Maximum { get; }
+
     /// <summary>This field's reactive validation state.</summary>
     FieldMeta Meta { get; }
 

@@ -56,4 +56,73 @@ public sealed record RouteLocationRaw
 
     /// <summary>Shorthand for <c>new RouteLocationRaw { Path = path }</c>.</summary>
     public static implicit operator RouteLocationRaw(string path) => new() { Path = path };
+
+    /// <summary>
+    /// Splits a serialized <c>path[?query][#hash]</c> string - a <see cref="RouteLocation.FullPath"/> -
+    /// back into its parts, percent-decoding the query. The exact inverse of how
+    /// <see cref="Router.Resolve"/> composes one.
+    /// </summary>
+    /// <remarks>
+    /// Two things need this. <see cref="Router.Go"/>/<see cref="Router.Back"/>/<see cref="Router.Forward"/>
+    /// use it internally, because <see cref="IRouterHistory"/> stores each entry as its full path
+    /// string - moving back to an entry that carried a query means parsing that string, not
+    /// matching it as though the whole thing were a path.
+    /// <para>
+    /// The other is protocol activation: a WPF app registered as a custom URI-scheme handler is
+    /// handed something like <c>myapp://users/42?ref=mail#detail</c> on startup, and this is what
+    /// turns it into something <see cref="Router.Push"/> accepts. Strip the scheme/host with
+    /// <see cref="Uri"/> first - the fragment is not part of <see cref="Uri.PathAndQuery"/>:
+    /// </para>
+    /// <code>
+    /// var uri = new Uri(activationArgument);
+    /// await router.Push(RouteLocationRaw.Parse(uri.PathAndQuery + uri.Fragment));
+    /// </code>
+    /// </remarks>
+    /// <param name="fullPath">e.g. <c>"/search?q=hello%20world#results"</c>.</param>
+    public static RouteLocationRaw Parse(string fullPath)
+    {
+        ArgumentNullException.ThrowIfNull(fullPath);
+
+        var rest = fullPath;
+        string? hash = null;
+        Dictionary<string, string?>? query = null;
+
+        // Hash first: it is appended last, so everything after the first '#' is the fragment.
+        // A '#' or '?' *inside* a query value was percent-encoded on the way out, so neither
+        // split can be fooled by one.
+        var hashIndex = rest.IndexOf('#', StringComparison.Ordinal);
+        if (hashIndex >= 0)
+        {
+            hash = rest[(hashIndex + 1)..];
+            rest = rest[..hashIndex];
+        }
+
+        var queryIndex = rest.IndexOf('?', StringComparison.Ordinal);
+        if (queryIndex >= 0)
+        {
+            query = ParseQuery(rest[(queryIndex + 1)..]);
+            rest = rest[..queryIndex];
+        }
+
+        return new RouteLocationRaw { Path = rest, Query = query, Hash = hash };
+    }
+
+    private static Dictionary<string, string?> ParseQuery(string query)
+    {
+        var parsed = new Dictionary<string, string?>();
+
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = pair.IndexOf('=', StringComparison.Ordinal);
+
+            // No '=' at all is a valueless key, which is exactly how a null-valued Query entry is
+            // serialized - round-tripping it back to null rather than "" keeps the two distinct.
+            if (separator < 0)
+                parsed[Uri.UnescapeDataString(pair)] = null;
+            else
+                parsed[Uri.UnescapeDataString(pair[..separator])] = Uri.UnescapeDataString(pair[(separator + 1)..]);
+        }
+
+        return parsed;
+    }
 }

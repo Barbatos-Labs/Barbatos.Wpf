@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Barbatos.Wpf.AquariusValee.UnitTests;
 
 public class RulesTests
@@ -104,4 +106,100 @@ public class RulesTests
     [InlineData("12.45", false)]
     public void IntegerStringAllowsAnOptionalLeadingMinusSign(string? value, bool expected) =>
         Assert.Equal(expected, new IntegerStringAttribute().IsValid(value));
+
+    [Theory]
+    [InlineData("abc", true)]
+    [InlineData("abc123", false)]  // MustMatchEntireValue defaults to true - a partial match is not enough
+    [InlineData("", true)]
+    [InlineData(null, true)]
+    public void PatternMatchesTheWholeValueByDefault(string? value, bool expected) =>
+        Assert.Equal(expected, new PatternAttribute("[a-z]+").IsValid(value));
+
+    [Fact]
+    public void PatternExposesRegexOptionsWhichIsExactlyWhatTheBclAttributeCannotDo()
+    {
+        // The whole reason this attribute exists alongside RegularExpressionAttribute: the BCL one
+        // has no RegexOptions property at all (confirmed empirically), so case-insensitivity is
+        // only reachable by smuggling an inline (?i) into the pattern string.
+        Assert.Null(typeof(RegularExpressionAttribute).GetProperty("RegexOptions"));
+        Assert.False(new RegularExpressionAttribute("^[a-z]+$").IsValid("ABC"));
+
+        Assert.True(new PatternAttribute("[a-z]+") { Options = RegexOptions.IgnoreCase }.IsValid("ABC"));
+        Assert.False(new PatternAttribute("[a-z]+").IsValid("ABC"));
+    }
+
+    [Fact]
+    public void PatternCanBeRelaxedToASubstringSearch()
+    {
+        var anywhere = new PatternAttribute(@"\d{4}") { MustMatchEntireValue = false };
+
+        Assert.True(anywhere.IsValid("order 1234 shipped"));
+        Assert.False(anywhere.IsValid("order 123 shipped"));
+        Assert.False(new PatternAttribute(@"\d{4}").IsValid("order 1234 shipped"));
+    }
+
+    [Fact]
+    public void PatternTreatsACatastrophicallyBacktrackingMatchAsInvalidRatherThanThrowing()
+    {
+        // A pathological pattern/input pair must fail the field, never tear down the UI thread.
+        var evil = new PatternAttribute("(a+)+$") { MatchTimeoutInMilliseconds = 1 };
+
+        var result = evil.IsValid(new string('a', 50) + "!");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void PatternRejectsANullOrEmptyPatternUpFront()
+    {
+        Assert.Throws<ArgumentNullException>(() => new PatternAttribute(null!));
+        Assert.Throws<ArgumentException>(() => new PatternAttribute(""));
+    }
+
+    private sealed class PriceModel
+    {
+        public int MinPrice { get; set; } = 10;
+        public int MaxPrice { get; set; } = 100;
+        public int Price { get; set; } = 50;
+    }
+
+    // PropertyRangeAttribute overrides the ValidationContext-aware IsValid(object?, ValidationContext)
+    // overload, not the simple IsValid(object?) every other attribute in this file uses - the base
+    // ValidationAttribute.IsValid(object?) throws NotImplementedException unless overridden, so a
+    // real ValidationContext wrapping a real model instance (via GetValidationResult) is required,
+    // exactly like CompareAttribute itself needs.
+    [Fact]
+    public void PropertyRangeReflectsSiblingPropertiesCurrentValuesNotFixedConstants()
+    {
+        var model = new PriceModel();
+        var attribute = new PropertyRangeAttribute(nameof(PriceModel.MinPrice), nameof(PriceModel.MaxPrice));
+        var context = new ValidationContext(model) { MemberName = nameof(PriceModel.Price) };
+
+        Assert.Equal(ValidationResult.Success, attribute.GetValidationResult(50, context));
+        Assert.NotEqual(ValidationResult.Success, attribute.GetValidationResult(5, context));
+        Assert.NotEqual(ValidationResult.Success, attribute.GetValidationResult(500, context));
+
+        // Same value (5), but the bound itself moved - proves it reads MinPrice live, not a
+        // snapshot taken when the attribute was constructed.
+        model.MinPrice = 0;
+        Assert.Equal(ValidationResult.Success, attribute.GetValidationResult(5, context));
+    }
+
+    [Fact]
+    public void PropertyRangeThrowsWhenItReferencesAPropertyThatDoesNotExist()
+    {
+        var model = new PriceModel();
+        var attribute = new PropertyRangeAttribute("NoSuchMinProperty", nameof(PriceModel.MaxPrice));
+        var context = new ValidationContext(model) { MemberName = nameof(PriceModel.Price) };
+
+        Assert.Throws<InvalidOperationException>(() => attribute.GetValidationResult(50, context));
+    }
+
+    [Fact]
+    public void PropertyRangeDeclaresBothBoundsAsDependenciesViaIDependsOnProperties()
+    {
+        IDependsOnProperties attribute = new PropertyRangeAttribute(nameof(PriceModel.MinPrice), nameof(PriceModel.MaxPrice));
+
+        Assert.Equal([nameof(PriceModel.MinPrice), nameof(PriceModel.MaxPrice)], attribute.DependsOnPropertyNames);
+    }
 }

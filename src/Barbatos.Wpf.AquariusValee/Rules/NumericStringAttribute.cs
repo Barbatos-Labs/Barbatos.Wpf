@@ -29,12 +29,6 @@ public sealed class NumericStringAttribute : ValidationAttribute
         if (string.IsNullOrEmpty(text))
             return true;
 
-        foreach (var c in text)
-        {
-            if (c is < '0' or > '9')
-                return false;
-        }
-
-        return true;
+        return AsciiSets.ContainsOnly(text, AsciiSets.Digits);
     }
 }

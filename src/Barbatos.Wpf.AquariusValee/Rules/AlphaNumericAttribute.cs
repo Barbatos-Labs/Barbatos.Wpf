@@ -30,13 +30,12 @@ public sealed class AlphaNumericAttribute : ValidationAttribute
         if (string.IsNullOrEmpty(text))
             return true;
 
+        if (AsciiOnly)
+            return AsciiSets.ContainsOnly(text, AsciiSets.LettersOrDigits);
+
         foreach (var c in text)
         {
-            var ok = AsciiOnly
-                ? c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9'
-                : char.IsLetterOrDigit(c);
-
-            if (!ok)
+            if (!char.IsLetterOrDigit(c))
                 return false;
         }
 

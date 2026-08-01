@@ -35,15 +35,6 @@ public sealed class DigitsAttribute : ValidationAttribute
         if (string.IsNullOrEmpty(text))
             return true;
 
-        if (text.Length != Length)
-            return false;
-
-        foreach (var c in text)
-        {
-            if (c is < '0' or > '9')
-                return false;
-        }
-
-        return true;
+        return text.Length == Length && AsciiSets.ContainsOnly(text, AsciiSets.Digits);
     }
 }

@@ -8,7 +8,6 @@ namespace Barbatos.Wpf.AquariusValee.Sample.Models;
 public sealed class ProfileEditModel
 {
     [Required(ErrorMessage = "Validation.Required")]
-    [Display(Name = "Display name")]
     [MaxLength(40, ErrorMessage = "Validation.DisplayNameTooLong")]
     public string DisplayName { get; set; } = "Alex Rivera";
 

@@ -22,6 +22,20 @@ public sealed class LoggedInVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// The inverse of <see cref="LoggedInVisibilityConverter"/>: visible only while logged out. Bound
+/// onto the one nav entry that must stay reachable precisely when every other <c>RouterLink</c> is
+/// hidden - "Log In" - so there is still a way to reach <c>/login</c> instead of a dead end.
+/// </summary>
+public sealed class LoggedOutVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException($"{nameof(LoggedOutVisibilityConverter)} is one-way.");
+}
+
+/// <summary>
 /// <see langword="bool"/> <c>IsEnabled</c> for a premium-only <c>RouterLink</c>: <see langword="true"/>
 /// only once both bound values - <see cref="AuthState.IsLoggedIn"/> and <see cref="AuthState.IsPremium"/> -
 /// are <see langword="true"/>. A <see cref="MultiBinding"/> rather than two separate converters

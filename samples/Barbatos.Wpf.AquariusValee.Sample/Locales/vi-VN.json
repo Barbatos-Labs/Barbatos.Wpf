@@ -51,21 +51,29 @@
     "Checking": "Đang kiểm tra...",
     "Required": "Vui lòng nhập tên đăng nhập.",
     "NoSpaces": "Tên đăng nhập không được chứa khoảng trắng.",
-    "Taken": "'{0}' đã được sử dụng - hãy thử admin/root/test/user để thấy lỗi này."
+    "Taken": "'{0}' đã được sử dụng - hãy thử admin/root/test/user để thấy lỗi này.",
+    "RangeHeader": "Giá nằm trong khoảng động",
+    "RangeDescription": "Giá phải nằm giữa Giá thấp nhất và Giá cao nhất - cả hai đều là trường bình thường, không phải hằng số cố định, nên attribute kiểu [Range(13, 120)] hoàn toàn không thể diễn đạt được điều này (tham số của attribute trong C# bắt buộc phải là hằng số biết trước khi biên dịch). Field.DependsOn trên cả hai trường, cộng với một quy tắc đọc giá trị hiện tại của chúng, chính là cách làm được việc này - đổi Giá thấp nhất hoặc Giá cao nhất thì Giá sẽ kiểm tra lại ngay theo giới hạn mới.",
+    "MinPriceLabel": "Giá thấp nhất",
+    "MaxPriceLabel": "Giá cao nhất",
+    "PriceLabel": "Giá",
+    "PriceTooLow": "Phải lớn hơn hoặc bằng {0}.",
+    "PriceTooHigh": "Phải nhỏ hơn hoặc bằng {0}."
   },
   "Showcase": {
     "Header": "Giới thiệu các attribute",
-    "Description": "Mọi trường bên dưới đều được FieldTemplateSelector hiển thị, không phải XAML viết tay - control thực tế (dropdown cho Plan/Theme, ô nhiều dòng cho Notes, ô văn bản thường cho các trường còn lại) được chọn cho từng trường dựa trên [UIHint]/[DataType], còn dòng chữ xám nhỏ dưới mỗi trường là [Display(Prompt = \"...\")] - văn bản gợi ý riêng biệt, không phải lựa chọn control. Hãy thử 'admin' (DeniedValues), tên đăng nhập bắt đầu bằng chữ số (CustomValidation), số điện thoại/thẻ không hợp lệ, hoặc mã quốc gia không đủ 2 ký tự (Length) - rồi gửi form khi vẫn còn trường chưa hợp lệ để thấy tiêu điểm nhảy đến trường lỗi đầu tiên.",
+    "Description": "Mọi trường bên dưới đều được FieldTemplateSelector hiển thị, không phải XAML viết tay - control thực tế (dropdown cho Plan/Theme, ô nhiều dòng cho Notes, ô văn bản thường cho các trường còn lại) được chọn cho từng trường dựa trên [UIHint]/[DataType]. Chữ mờ màu xám (bên trong ô nhập liệu) hoặc dòng gợi ý (dưới dropdown) là [Display(Prompt = \"...\")] - văn bản gợi ý riêng biệt, không phải lựa chọn control. Hãy thử 'admin' (DeniedValues), tên đăng nhập bắt đầu bằng chữ số (CustomValidation), số điện thoại/thẻ không hợp lệ, hoặc mã quốc gia không đủ 2 ký tự (Length) - rồi gửi form khi vẫn còn trường chưa hợp lệ để thấy tiêu điểm nhảy đến trường lỗi đầu tiên.",
     "Submit": "Gửi",
-    "Success": "Tốt - mọi trường đều hợp lệ."
+    "Success": "Tốt - mọi trường đều hợp lệ.",
+    "PriceRangeNote": "MinPrice/MaxPrice/Price ở trên dùng PropertyRangeAttribute - một validation attribute tự reflect vào property khác và tự động wire re-validate - nhưng khác với mọi message khác trên trang này, message lỗi của nó vẫn giữ nguyên tiếng Anh dù đổi ngôn ngữ, vì attribute không có quyền truy cập string localizer. Xem tab 'Custom rules' để thấy phiên bản viết tay tương đương, dịch được đầy đủ."
   },
   "Field": {
     "Username": "Tên đăng nhập",
     "UsernamePrompt": "Không phải 'admin', 'root', hoặc 'administrator'.",
     "PhoneNumber": "Số điện thoại",
-    "PhoneNumberPrompt": "Ví dụ: +1 555 123 4567",
+    "PhoneNumberPrompt": "Tối đa 15 chữ số, ví dụ: +123 456 789",
     "CardNumber": "Số thẻ",
-    "CardNumberPrompt": "16 chữ số, không có khoảng trắng hay dấu gạch ngang",
+    "CardNumberPrompt": "16 chữ số - dấu cách được tự động thêm vào",
     "Plan": "Gói dịch vụ",
     "PlanPrompt": "Chọn gói đăng ký của bạn",
     "Theme": "Giao diện",
@@ -73,7 +81,15 @@
     "CountryCode": "Mã quốc gia",
     "CountryCodePrompt": "2 ký tự, ví dụ US hoặc VN",
     "Notes": "Ghi chú",
-    "NotesPrompt": "Không bắt buộc, tối đa 280 ký tự"
+    "NotesPrompt": "Không bắt buộc, tối đa 280 ký tự",
+    "Sku": "Mã SKU",
+    "SkuPrompt": "3 chữ cái, dấu gạch ngang, 4 chữ số - ví dụ ABC-1234",
+    "MinPrice": "Giá thấp nhất",
+    "MinPricePrompt": "Giới hạn dưới mà Price phải tuân theo",
+    "MaxPrice": "Giá cao nhất",
+    "MaxPricePrompt": "Giới hạn trên mà Price phải tuân theo",
+    "Price": "Giá",
+    "PricePrompt": "Phải nằm giữa Giá thấp nhất và Giá cao nhất"
   },
   "Validation": {
     "Required": "Trường này là bắt buộc.",
@@ -90,6 +106,7 @@
     "InvalidCreditCard": "Đây không phải là một số thẻ hợp lệ.",
     "InvalidPlan": "Vui lòng chọn một gói hợp lệ.",
     "InvalidTheme": "Vui lòng chọn một giao diện hợp lệ.",
-    "InvalidCountryCodeLength": "Vui lòng dùng mã quốc gia gồm 2 ký tự, ví dụ US hoặc VN."
+    "InvalidCountryCodeLength": "Vui lòng dùng mã quốc gia gồm 2 ký tự, ví dụ US hoặc VN.",
+    "InvalidSku": "Vui lòng nhập theo định dạng ABC-1234 (3 chữ cái, gạch ngang, 4 chữ số)."
   }
 }

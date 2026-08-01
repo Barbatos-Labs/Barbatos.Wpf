@@ -10,6 +10,7 @@
              but disabled once logged in on the free plan - see PremiumAccessConverter below and
              AuthState's own remarks. -->
         <services:LoggedInVisibilityConverter x:Key="LoggedInVisibility" />
+        <services:LoggedOutVisibilityConverter x:Key="LoggedOutVisibility" />
         <services:PremiumAccessConverter x:Key="PremiumAccess" />
         <Style x:Key="NavLink" TargetType="Button">
             <Setter Property="Margin" Value="0,0,10,0" />
@@ -27,17 +28,29 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <!-- The exact inverse of NavLink's Visibility - the one nav entry that must stay reachable
+             precisely when every other RouterLink above is hidden, so logging in is actually
+             possible instead of a dead end. -->
+        <Style x:Key="NavLinkLoggedOut" TargetType="Button" BasedOn="{StaticResource NavLink}">
+            <Setter Property="Visibility" Value="{Binding AuthState.IsLoggedIn, Converter={StaticResource LoggedOutVisibility}}" />
+        </Style>
     </Window.Resources>
 
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="12" VerticalAlignment="Center">
+            <!-- The one link every other NavLink's Visibility rule can't show while logged out -
+                 without this, there would be no way back to /login at all. -->
+            <Button Content="Log In" Style="{StaticResource NavLinkLoggedOut}" aqr:RouterLink.To="/login" />
             <Button Content="Home" Style="{StaticResource NavLink}" aqr:RouterLink.To="/" />
             <Button Content="About" Style="{StaticResource NavLink}" aqr:RouterLink.To="/about" />
             <!-- InfoCardView is defined in Barbatos.Wpf.Samples.Shared and reused unmodified in
                  Barbatos.Wpf.Aquarius.Sample too - see AppRoutes.cs's own remarks. -->
             <Button Content="Shared component" Style="{StaticResource NavLink}" aqr:RouterLink.To="/shared-demo" />
+            <!-- The same target written two ways: a literal path, and the {aqr:RouteTo} markup
+                 extension resolving the "user" route BY NAME - so this link keeps working even if
+                 that route's path is later changed in AppRoutes.cs. -->
             <Button Content="User 1" Style="{StaticResource NavLink}" aqr:RouterLink.To="/users/1" />
-            <Button Content="User 2" Style="{StaticResource NavLink}" aqr:RouterLink.To="/users/2" />
+            <Button Content="User 2" Style="{StaticResource NavLink}" aqr:RouterLink.To="{aqr:RouteTo Name=user, Params='id=2'}" />
             <Button Content="Dashboard" Style="{StaticResource NavLink}" aqr:RouterLink.To="/dashboard" />
             <Button Content="Preferences" Style="{StaticResource NavLink}" aqr:RouterLink.To="/preferences" />
             <!-- The one premium-gated link (see AppRoutes' "/settings" Meta) - stays visible once
@@ -56,10 +69,35 @@
             <Button Content="Broken Link (404)" Style="{StaticResource NavLink}" aqr:RouterLink.To="/nonexistent/path" />
             <TextBlock Margin="20,0,0,0" VerticalAlignment="Center" FontStyle="Italic"
                        Text="{Binding AuthState.IsLoggedIn, StringFormat='Logged in: {0}'}" />
+            <Button Content="Log Out" Style="{StaticResource NavLink}" Margin="12,0,0,0"
+                    Command="{Binding AuthState.LogOutCommand}" />
             <!-- Flipped around the awaited delay inside the global BeforeResolve guard - see
                  MainViewModel.IsNavigating / AppNavigationGuards.Register. -->
             <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="Bold" Foreground="#C05000"
                        Text="Resolving..." Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+
+        <!-- The in-app-search demo: a plain TextBox + results ListBox, not a library-provided
+             control - RouteSearchIndex is just the query/ranking engine (see its own remarks for
+             why). Try "about", "security", or the Vietnamese-diacritic-insensitive "doi mat khau" -
+             see AppRoutes.cs's own remarks for the full set of searchable routes. -->
+        <StackPanel DockPanel.Dock="Top" Orientation="Vertical" Margin="12,0,12,12" Width="280" HorizontalAlignment="Left">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,6,0" Text="Search:" />
+                <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" />
+            </DockPanel>
+            <ListBox Margin="0,4,0,0" MaxHeight="140" BorderThickness="1" BorderBrush="#DDDDDD"
+                     ItemsSource="{Binding SearchResults}"
+                     Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVisibility}}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Button Content="{Binding Entry.Title}" HorizontalContentAlignment="Left"
+                                Background="Transparent" BorderThickness="0" Padding="6,3" Cursor="Hand"
+                                Command="{Binding DataContext.GoToSearchResultCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                CommandParameter="{Binding}" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </StackPanel>
 
         <Border DockPanel.Dock="Top" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0" />

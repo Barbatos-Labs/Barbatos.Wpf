@@ -4,6 +4,7 @@
 // All Rights Reserved.
 
 using System.Windows;
+using Barbatos.Wpf.AquariusRouter.Searching;
 
 namespace Barbatos.Wpf.AquariusRouter.Routing;
 
@@ -38,6 +39,9 @@ namespace Barbatos.Wpf.AquariusRouter.Routing;
 /// </remarks>
 public sealed class RouteRecord
 {
+    private IReadOnlyDictionary<string, Type>? _resolvedViews;
+    private bool _resolvedViewsComputed;
+
     /// <summary>
     /// This record's own path contribution. Relative to its parent by default (no leading
     /// <c>/</c> - joined onto the parent's own resolved path); a leading <c>/</c> makes it
@@ -105,6 +109,14 @@ public sealed class RouteRecord
     public NavigationGuard? BeforeEnter { get; init; }
 
     /// <summary>
+    /// Opt-in in-app-search entries for this record - unset (the default) means this route is
+    /// simply not searchable. A list, not a single entry, so one route can be found under several
+    /// different phrasings without a second route just to carry a different title - see
+    /// <see cref="RouteSearchIndex"/>.
+    /// </summary>
+    public IReadOnlyList<RouteSearchEntry>? Search { get; init; }
+
+    /// <summary>
     /// The View instance currently mounted for this record, per outlet name (<c>"default"</c>
     /// for the unnamed outlet). Runtime bookkeeping, not part of the route table's own
     /// configuration - written by <see cref="Router"/> (on construction, during navigation) and
@@ -120,6 +132,24 @@ public sealed class RouteRecord
     /// Vue Router applies to its own <c>component</c> shorthand. <see langword="null"/> for a
     /// pure grouping/redirect record with neither set.
     /// </summary>
-    internal IReadOnlyDictionary<string, Type>? ResolvedViews =>
-        Views ?? (View is not null ? new Dictionary<string, Type> { ["default"] = View } : null);
+    /// <remarks>
+    /// Computed once and kept: <see cref="View"/>/<see cref="Views"/> are both <c>init</c>-only so
+    /// the answer can never go stale, and this is read on genuinely hot paths - every
+    /// <see cref="Xaml.RouterView"/>'s own skip-loop on every navigation, plus
+    /// <see cref="Router"/>'s construction pass - where rebuilding the shorthand's dictionary each
+    /// time would allocate for nothing.
+    /// </remarks>
+    internal IReadOnlyDictionary<string, Type>? ResolvedViews
+    {
+        get
+        {
+            if (!_resolvedViewsComputed)
+            {
+                _resolvedViews = Views ?? (View is not null ? new Dictionary<string, Type> { ["default"] = View } : null);
+                _resolvedViewsComputed = true;
+            }
+
+            return _resolvedViews;
+        }
+    }
 }

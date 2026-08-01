@@ -62,6 +62,10 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     private readonly List<IDisposable> _dependencyHandles = [];
     private Ref<T> _value = null!;
     private T _initialValue = default!;
+    private ValidationContext? _attributeContext;
+
+    /// <summary>Used when a <see cref="ValidationResult"/> carries no message of its own - shared so the wording cannot drift between the ad-hoc and <see cref="Form.FromModel{TModel}"/> paths.</summary>
+    internal const string InvalidValueFallbackMessage = "The value is invalid.";
 
     // Deliberately Cancel()'d, never Dispose()'d - see ValidateInternal's own comment for why
     // disposing it here would race an older, still-in-flight call reading cts.Token elsewhere.
@@ -87,6 +91,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     {
         Initialize(name, initialValue);
         _attributeRules.AddRange(rules);
+        (Minimum, Maximum) = RangeMetadata.From(rules.OfType<RangeAttribute>().FirstOrDefault());
         _ = ValidateInternal(ValidationWriteMode.Silent);
     }
 
@@ -155,6 +160,12 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     /// <inheritdoc/>
     public bool IsReadOnly { get; set; }
 
+    /// <inheritdoc cref="IField.Minimum"/>
+    public double? Minimum { get; set; }
+
+    /// <inheritdoc cref="IField.Maximum"/>
+    public double? Maximum { get; set; }
+
     /// <inheritdoc/>
     public FieldMeta Meta { get; private set; } = null!;
 
@@ -184,13 +195,21 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     /// submit, or explicit <see cref="ValidateAsync"/> call), so typing into a pristine field
     /// doesn't surface an error before the user has had a chance to finish.
     /// </summary>
+    /// <remarks>
+    /// <see cref="WriteBackToModel"/> runs <b>before</b> <c>_value.Value</c> is updated, not after -
+    /// the assignment is what synchronously fires any <see cref="DependsOn{TSource}"/> watcher (the
+    /// default <see cref="Barbatos.Wpf.Aquarius.Reactivity.WatchFlush.Sync"/>), and a dependent
+    /// field created via <see cref="Form.FromModel{TModel}"/> re-validates by reflecting into the
+    /// live model - it must see this field's new value already written there, not the value from
+    /// before this change.
+    /// </remarks>
     public void HandleChange(T value, bool shouldValidate = true)
     {
         if (EqualityComparer<T>.Default.Equals(_value.Value, value))
             return;
 
-        _value.Value = value;
         WriteBackToModel?.Invoke(value);
+        _value.Value = value;
         OnPropertyChanged(nameof(Value));
         Meta.NotifyDirtyChanged();
 
@@ -296,6 +315,11 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         _validationCts?.Cancel();
         _validationCts = null;
 
+        // The cancelled pass returns before its own `Pending = false`, and nothing else will run
+        // to lower it - so a field disposed mid-flight would otherwise report Pending forever,
+        // and keep its whole Form reporting Pending with it.
+        Meta.Pending = false;
+
         foreach (var handle in _dependencyHandles)
             handle.Dispose();
 
@@ -311,6 +335,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         if (rebaseInitial)
             _initialValue = value;
 
+        WriteBackToModel?.Invoke(value);
         _value.Value = value;
         OnPropertyChanged(nameof(Value));
         Meta.NotifyDirtyChanged();
@@ -332,7 +357,12 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         var cts = new CancellationTokenSource();
         _validationCts = cts;
 
-        if (mode != ValidationWriteMode.Silent)
+        // Only a field with asynchronous rules can actually be "pending" - a synchronous-only pass
+        // finishes before anyone could observe the flag, so raising it (and lowering it again) per
+        // keystroke is two wasted notifications that propagate all the way up to FormMeta.
+        var tracksPending = mode != ValidationWriteMode.Silent && _asyncRules.Count > 0;
+
+        if (tracksPending)
             Meta.Pending = true;
 
         List<string> messages;
@@ -373,7 +403,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         if (cts.Token.IsCancellationRequested || !ReferenceEquals(cts, _validationCts))
             return;
 
-        if (mode != ValidationWriteMode.Silent)
+        if (tracksPending)
             Meta.Pending = false;
 
         // Updated on every pass regardless of mode - this is what lets Meta.Valid stay accurate
@@ -398,18 +428,57 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         if (_attributeRules.Count == 0)
             return [];
 
-        var context = new ValidationContext(this) { MemberName = Name, DisplayName = Label ?? Name };
+        // Built once and reused. Constructing a ValidationContext is not free (it resolves a
+        // display name and sets up service-provider/items plumbing), and this runs on every
+        // keystroke; the only part that can change between passes is DisplayName, which tracks
+        // the settable Label.
+        _attributeContext ??= new ValidationContext(this) { MemberName = Name };
+        _attributeContext.DisplayName = Label ?? Name;
+
         var results = new List<ValidationResult>();
-        Validator.TryValidateValue(value!, context, results, _attributeRules);
-        return [.. results.Select(r => r.ErrorMessage ?? "The value is invalid.")];
+        Validator.TryValidateValue(value!, _attributeContext, results, _attributeRules);
+
+        if (results.Count == 0)
+            return [];
+
+        var messages = new string[results.Count];
+
+        for (var i = 0; i < results.Count; i++)
+            messages[i] = results[i].ErrorMessage ?? InvalidValueFallbackMessage;
+
+        return messages;
     }
 
+    /// <summary>
+    /// Swaps in a new error list, raising change notifications only when the list actually
+    /// differs. Validation re-runs on every keystroke and usually produces the identical result,
+    /// and <see cref="ErrorsChanged"/> in particular is not free - WPF re-evaluates its native
+    /// validation adorner for every binding on the field, and <see cref="Form"/> re-raises it at
+    /// form level - so notifying unconditionally would churn the UI on each character typed.
+    /// </summary>
     private void ReplaceErrors(IReadOnlyList<string> newErrors)
     {
+        if (SameAsCurrentErrors(newErrors))
+            return;
+
         _errors.Clear();
         _errors.AddRange(newErrors);
         OnPropertyChanged(nameof(Errors));
         OnPropertyChanged(nameof(ErrorMessage));
         ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(nameof(Value)));
+    }
+
+    private bool SameAsCurrentErrors(IReadOnlyList<string> newErrors)
+    {
+        if (newErrors.Count != _errors.Count)
+            return false;
+
+        for (var i = 0; i < newErrors.Count; i++)
+        {
+            if (!string.Equals(newErrors[i], _errors[i], StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
     }
 }

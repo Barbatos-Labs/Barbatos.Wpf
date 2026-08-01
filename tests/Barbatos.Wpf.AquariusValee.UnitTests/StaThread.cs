@@ -36,6 +36,16 @@ internal static class StaThread
             throw failure;
     }
 
+    /// <summary>Overload for a body that produces a value to assert on back on the test thread.</summary>
+    public static T Run<T>(Func<T> body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        var result = default(T)!;
+        Run(() => { result = body(); });
+        return result;
+    }
+
     /// <summary>
     /// Blocks until every dispatcher operation queued at <see cref="DispatcherPriority.Background"/>
     /// or higher (which includes WPF's own internal <c>Loaded</c>-priority tree-connection work,

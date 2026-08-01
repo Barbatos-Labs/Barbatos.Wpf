@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Barbatos.Wpf.AquariusRouter.Sample.Services;
 
@@ -23,4 +24,12 @@ public sealed partial class AuthState : ObservableObject
 
     [ObservableProperty]
     private bool _isPremium;
+
+    /// <summary>
+    /// Bound to <c>MainWindow.xaml</c>'s "Log Out" button - the counterpart of the "Log In"
+    /// RouterLink, so the nav bar's logged-out state (see <c>LoggedOutVisibilityConverter</c>) is
+    /// actually reachable again without restarting the app.
+    /// </summary>
+    [RelayCommand]
+    private void LogOut() => IsLoggedIn = false;
 }

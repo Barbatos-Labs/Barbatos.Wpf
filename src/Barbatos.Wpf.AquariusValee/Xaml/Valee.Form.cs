@@ -58,7 +58,21 @@ public static partial class Valee
 
         if (e.NewValue is Form newForm)
             newForm.SubmitInvalid += FocusField;
+
+        // Form implements INotifyDataErrorInfo (Form.HasErrors aggregates every field's own
+        // HasErrors) and this property's value arrives via a real WPF Binding - ValidatesOnNotifyDataErrors
+        // defaults to true for any Binding, not just ones on editing controls - so without this,
+        // WPF's own native validation adorner (a red border) would wrap the WHOLE element
+        // Valee.Form is set on (typically the form's root panel) the instant any single field
+        // anywhere in the form is invalid, not just the offending control. An empty ErrorTemplate
+        // suppresses only the ADORNER; Validation.HasError/GetErrors on this element still
+        // correctly reflect Form.HasErrors for anyone who wants that (e.g. a form-level "there are
+        // errors" banner).
+        if (d is FrameworkElement element)
+            System.Windows.Controls.Validation.SetErrorTemplate(element, NoAdornerTemplate);
     }
+
+    private static readonly System.Windows.Controls.ControlTemplate NoAdornerTemplate = new();
 
     private static void FocusField(IField field)
     {

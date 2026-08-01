@@ -32,7 +32,15 @@ public static partial class Valee
 
         element.Loaded -= OnForElementLoaded;
 
-        if (e.NewValue is not null)
+        if (e.NewValue is null)
+            return;
+
+        // Loaded has already been and gone when this property is assigned from code-behind, or on
+        // an element that is being re-parented rather than created - subscribing alone would then
+        // wait for an event that never fires again and the field would silently never bind.
+        if (element.IsLoaded)
+            OnForElementLoaded(element, new RoutedEventArgs(FrameworkElement.LoadedEvent));
+        else
             element.Loaded += OnForElementLoaded;
     }
 

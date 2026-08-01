@@ -38,14 +38,15 @@ public sealed class AlphaAttribute : ValidationAttribute
         if (string.IsNullOrEmpty(text))
             return true;
 
+        if (AsciiOnly)
+            return AsciiSets.ContainsOnly(text, AsciiSets.Letters);
+
         foreach (var c in text)
         {
-            if (AsciiOnly ? !IsAsciiLetter(c) : !char.IsLetter(c))
+            if (!char.IsLetter(c))
                 return false;
         }
 
         return true;
     }
-
-    private static bool IsAsciiLetter(char c) => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
 }

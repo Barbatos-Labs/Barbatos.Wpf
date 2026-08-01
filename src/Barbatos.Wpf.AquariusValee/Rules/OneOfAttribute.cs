@@ -26,10 +26,16 @@ public sealed class OneOfAttribute : ValidationAttribute
 {
     private readonly object?[] _allowedValues;
 
+    // The string form of each allowed value, rendered once here rather than on every validation
+    // pass - the loose cross-type comparison needs it for every candidate, and the allowed set
+    // never changes after construction.
+    private readonly string?[] _allowedStrings;
+
     /// <summary>Creates the attribute with the allowed literal values.</summary>
     public OneOfAttribute(params object?[] allowedValues)
     {
-        _allowedValues = allowedValues;
+        _allowedValues = allowedValues ?? [];
+        _allowedStrings = Array.ConvertAll(_allowedValues, allowed => allowed?.ToString());
         ErrorMessage ??= "The {0} field must be one of the allowed values.";
     }
 
@@ -37,9 +43,19 @@ public sealed class OneOfAttribute : ValidationAttribute
     public IReadOnlyList<object?> AllowedValues => _allowedValues;
 
     /// <inheritdoc/>
-    public override bool IsValid(object? value) =>
-        value is null || _allowedValues.Any(allowed => Matches(value, allowed));
+    public override bool IsValid(object? value)
+    {
+        if (value is null)
+            return true;
 
-    private static bool Matches(object? value, object? allowed) =>
-        Equals(value, allowed) || string.Equals(value?.ToString(), allowed?.ToString(), StringComparison.Ordinal);
+        var asString = value.ToString();
+
+        for (var i = 0; i < _allowedValues.Length; i++)
+        {
+            if (Equals(value, _allowedValues[i]) || string.Equals(asString, _allowedStrings[i], StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
 }

@@ -22,10 +22,15 @@ public sealed class NotOneOfAttribute : ValidationAttribute
 {
     private readonly object?[] _disallowedValues;
 
+    // Rendered once at construction rather than on every validation pass - see
+    // <see cref="OneOfAttribute"/>, which mirrors this.
+    private readonly string?[] _disallowedStrings;
+
     /// <summary>Creates the attribute with the disallowed literal values.</summary>
     public NotOneOfAttribute(params object?[] disallowedValues)
     {
-        _disallowedValues = disallowedValues;
+        _disallowedValues = disallowedValues ?? [];
+        _disallowedStrings = Array.ConvertAll(_disallowedValues, disallowed => disallowed?.ToString());
         ErrorMessage ??= "The {0} field must not be one of the disallowed values.";
     }
 
@@ -33,9 +38,19 @@ public sealed class NotOneOfAttribute : ValidationAttribute
     public IReadOnlyList<object?> DisallowedValues => _disallowedValues;
 
     /// <inheritdoc/>
-    public override bool IsValid(object? value) =>
-        value is null || !_disallowedValues.Any(disallowed => Matches(value, disallowed));
+    public override bool IsValid(object? value)
+    {
+        if (value is null)
+            return true;
 
-    private static bool Matches(object? value, object? disallowed) =>
-        Equals(value, disallowed) || string.Equals(value?.ToString(), disallowed?.ToString(), StringComparison.Ordinal);
+        var asString = value.ToString();
+
+        for (var i = 0; i < _disallowedValues.Length; i++)
+        {
+            if (Equals(value, _disallowedValues[i]) || string.Equals(asString, _disallowedStrings[i], StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
 }

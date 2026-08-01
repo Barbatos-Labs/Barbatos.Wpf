@@ -24,6 +24,7 @@
     <Using Include="Xunit" />
     <Using Include="Barbatos.Wpf.AquariusRouter.Matching" />
     <Using Include="Barbatos.Wpf.AquariusRouter.Routing" />
+    <Using Include="Barbatos.Wpf.AquariusRouter.Searching" />
     <Using Include="Barbatos.Wpf.AquariusRouter.Xaml" />
   </ItemGroup>
 

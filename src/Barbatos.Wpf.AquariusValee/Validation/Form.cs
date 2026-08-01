@@ -59,11 +59,56 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
 
     /// <summary>Creates an empty form - add fields via <c>DefineField</c>.</summary>
     public Form() =>
-        Meta = new FormMeta(
-            computeTouched: () => _fields.Values.Any(f => f.Meta.Touched),
-            computeDirty: () => _fields.Values.Any(f => f.Meta.Dirty),
-            computePending: () => _fields.Values.Any(f => f.Meta.Pending),
-            computeValid: () => _fields.Values.All(f => f.Meta.Valid));
+        Meta = new FormMeta(AnyFieldTouched, AnyFieldDirty, AnyFieldPending, EveryFieldValid);
+
+    // Plain loops over the ordered list, not LINQ over Dictionary.Values: all four are recomputed
+    // on every read (never cached - see FormMeta's own remarks on why), and every read through
+    // Enumerable.Any/All boxes the enumerator. These run on each of the four batched notifications
+    // and again for each binding that re-reads them, so keeping them allocation-free matters more
+    // here than the terser call would be worth.
+    private bool AnyFieldTouched()
+    {
+        foreach (var field in _fieldOrder)
+        {
+            if (field.Meta.Touched)
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool AnyFieldDirty()
+    {
+        foreach (var field in _fieldOrder)
+        {
+            if (field.Meta.Dirty)
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool AnyFieldPending()
+    {
+        foreach (var field in _fieldOrder)
+        {
+            if (field.Meta.Pending)
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool EveryFieldValid()
+    {
+        foreach (var field in _fieldOrder)
+        {
+            if (!field.Meta.Valid)
+                return false;
+        }
+
+        return true;
+    }
 
     /// <summary>This form's aggregated reactive state.</summary>
     public FormMeta Meta { get; }
@@ -121,24 +166,63 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     /// <c>[DataType(...)]</c> becomes <see cref="IField.DataTypeHint"/>; <c>[Editable(false)]</c>
     /// becomes <see cref="IField.IsReadOnly"/>. See <see cref="Xaml.FieldTemplateSelector"/> for
     /// using <c>UIHint</c>/<c>DataTypeHint</c> to auto-select the right control per field.
+    /// Any attribute implementing <see cref="IDependsOnProperties"/> (e.g.
+    /// <see cref="Rules.PropertyRangeAttribute"/>) is auto-wired via
+    /// <see cref="Field{T}.DependsOn{TSource}"/> once every field exists, so declaration order does
+    /// not matter and application code never has to wire this by hand.
     /// </remarks>
     public static Form FromModel<TModel>(TModel instance) where TModel : notnull
     {
         ArgumentNullException.ThrowIfNull(instance);
 
         var form = new Form { _model = instance };
+        var properties = typeof(TModel).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0)
+            .ToArray();
 
-        foreach (var property in typeof(TModel).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var property in properties)
         {
-            if (!property.CanRead || !property.CanWrite || property.GetIndexParameters().Length > 0)
-                continue;
-
             var generic = CreateModelFieldMethod.MakeGenericMethod(property.PropertyType);
             var field = (IField)generic.Invoke(null, [instance, property])!;
             form.Register(property.Name, field);
         }
 
+        foreach (var property in properties)
+            form.WireDeclaredDependencies(typeof(TModel), property);
+
         return form;
+    }
+
+    /// <summary>
+    /// Auto-wires <see cref="Field{T}.DependsOn{TSource}"/> for every property attribute
+    /// implementing <see cref="IDependsOnProperties"/>, so a dynamic-bound field (e.g. a price
+    /// range) re-validates the instant its declared dependency changes, with no hand-written
+    /// wiring. Runs as its own pass, after every field already exists, so declaration order within
+    /// the model does not matter.
+    /// </summary>
+    private void WireDeclaredDependencies(Type modelType, PropertyInfo property)
+    {
+        var dependencyNames = property.GetCustomAttributes(inherit: true)
+            .OfType<IDependsOnProperties>()
+            .SelectMany(a => a.DependsOnPropertyNames)
+            .Distinct();
+
+        foreach (var sourceName in dependencyNames)
+        {
+            var sourceProperty = modelType.GetProperty(sourceName, BindingFlags.Public | BindingFlags.Instance);
+            if (sourceProperty is null)
+                throw new InvalidOperationException(
+                    $"A validation attribute on '{property.Name}' declares a dependency on '{sourceName}', but '{modelType.Name}' has no such property.");
+
+            var dependentField = _fields[property.Name];
+            var sourceField = _fields[sourceName];
+
+            var dependsOnMethod = typeof(Field<>).MakeGenericType(property.PropertyType)
+                .GetMethod(nameof(Field<object>.DependsOn))!
+                .MakeGenericMethod(sourceProperty.PropertyType);
+
+            dependsOnMethod.Invoke(dependentField, [sourceField]);
+        }
     }
 
     private static Field<TProp> CreateModelField<TProp>(object model, PropertyInfo property)
@@ -157,12 +241,28 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
             var context = new ValidationContext(model) { MemberName = propertyName, DisplayName = label ?? propertyName };
             var results = new List<ValidationResult>();
             Validator.TryValidateProperty(value, context, results);
-            return [.. results.Select(r => r.ErrorMessage ?? "The value is invalid.")];
+
+            if (results.Count == 0)
+                return [];
+
+            var messages = new string[results.Count];
+
+            for (var i = 0; i < results.Count; i++)
+                messages[i] = results[i].ErrorMessage ?? Field<TProp>.InvalidValueFallbackMessage;
+
+            return messages;
         }
 
         void WriteBack(TProp value) => property.SetValue(model, value);
 
-        return new Field<TProp>(propertyName, initialValue, label, prompt, uiHint, dataTypeHint, isReadOnly, Validate, WriteBack);
+        var field = new Field<TProp>(propertyName, initialValue, label, prompt, uiHint, dataTypeHint, isReadOnly, Validate, WriteBack);
+
+        // Set after construction rather than threaded through the constructor: these are metadata
+        // for the input layer, never consulted by validation (the property's own [Range] still
+        // does that), so the silent first pass above does not need them.
+        (field.Minimum, field.Maximum) = RangeMetadata.From(property.GetCustomAttribute<RangeAttribute>());
+
+        return field;
     }
 
     /// <summary>Returns the model instance this form was built from via <see cref="FromModel{TModel}"/> - always reflects the current field values, since each field writes back to it live.</summary>
@@ -233,6 +333,40 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
             RunModelLevelValidation();
 
         return Meta.Valid;
+    }
+
+    /// <summary>
+    /// Re-runs validation on only the fields that have already been validated at least once,
+    /// leaving pristine fields untouched - so no error appears on a field the user has never
+    /// interacted with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The intended use is <b>refreshing already-displayed messages after the UI language
+    /// changes</b>. A rule that resolves its text eagerly - anything that returns real display
+    /// text rather than a lookup key, which is unavoidable when the message interpolates a runtime
+    /// value - captured that text in the caller's language at the moment it ran, and nothing about
+    /// a later culture switch re-runs it. vee-validate has exactly the same characteristic and
+    /// documents the same remedy: change the locale, then re-validate.
+    /// </para>
+    /// <para>
+    /// Unnecessary for a message that is stored as a lookup key and resolved at display time by a
+    /// converter - re-reading the binding already picks up the new language for those.
+    /// </para>
+    /// </remarks>
+    public async Task RevalidateValidatedAsync()
+    {
+        var revalidated = _fieldOrder.Where(field => field.Meta.Validated).ToArray();
+
+        await Task.WhenAll(revalidated.Select(field => field.ValidateAsync()));
+
+        // A field's own pass REPLACES its errors, which would wipe any message
+        // IValidatableObject had layered on top - so the model-level pass has to run again too,
+        // or a cross-field error silently disappears the first time the language is switched.
+        // Restricted to the fields that were already showing errors, so re-running this cannot
+        // surface a model-level message on a field the user has never touched.
+        if (_model is not null)
+            RunModelLevelValidation(revalidated);
     }
 
     /// <summary>Sets a field's value directly, bypassing whatever control it may be bound to.</summary>
@@ -329,7 +463,13 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     /// here, since <see cref="ValidateAllAsync"/> already ran each field's own attributes
     /// individually just above.
     /// </summary>
-    private void RunModelLevelValidation()
+    /// <param name="only">
+    /// When non-<see langword="null"/>, restricts which fields may receive a message - used by
+    /// <see cref="RevalidateValidatedAsync"/> so re-running this cannot surface a model-level
+    /// error on a field the user has never touched. <see langword="null"/> means every field, the
+    /// right behavior for <see cref="ValidateAllAsync"/>, which has just touched them all anyway.
+    /// </param>
+    private void RunModelLevelValidation(IReadOnlyCollection<IField>? only = null)
     {
         var context = new ValidationContext(_model!);
         var results = new List<ValidationResult>();
@@ -341,7 +481,7 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
 
             foreach (var memberName in result.MemberNames)
             {
-                if (_fields.TryGetValue(memberName, out var field))
+                if (_fields.TryGetValue(memberName, out var field) && (only is null || only.Contains(field)))
                     field.AppendError(message);
             }
         }

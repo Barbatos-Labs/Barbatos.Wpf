@@ -51,21 +51,29 @@
     "Checking": "Checking availability...",
     "Required": "Username is required.",
     "NoSpaces": "Username cannot contain spaces.",
-    "Taken": "'{0}' is already taken - try admin/root/test/user to see this."
+    "Taken": "'{0}' is already taken - try admin/root/test/user to see this.",
+    "RangeHeader": "Price within a dynamic range",
+    "RangeDescription": "Price must stay between Min price and Max price - both are ordinary sibling fields, not fixed constants, so [Range(13, 120)]-style attributes can't express this at all (C# attribute arguments must be compile-time constants). Field.DependsOn on both, plus a rule that reads their current values, is what makes this work - change Min or Max and Price re-validates against the new bound immediately.",
+    "MinPriceLabel": "Min price",
+    "MaxPriceLabel": "Max price",
+    "PriceLabel": "Price",
+    "PriceTooLow": "Must be at least {0}.",
+    "PriceTooHigh": "Must be at most {0}."
   },
   "Showcase": {
     "Header": "Attribute showcase",
-    "Description": "Every field below is rendered by FieldTemplateSelector, not hand-authored XAML - the control itself (a dropdown for Plan/Theme, a multi-line box for Notes, a plain box otherwise) is chosen per field from [UIHint]/[DataType], and the small gray line under each field is [Display(Prompt = \"...\")] - separate guidance text, not a control choice. Try 'admin' (DeniedValues), a username starting with a digit (CustomValidation), an invalid phone/card number, or a country code that isn't 2 letters (Length) - then submit with something still invalid to see focus jump to the first broken field.",
+    "Description": "Every field below is rendered by FieldTemplateSelector, not hand-authored XAML - the control itself (a dropdown for Plan/Theme, a multi-line box for Notes, a plain box otherwise) is chosen per field from [UIHint]/[DataType]. The gray watermark text (inside text boxes) or hint line (under dropdowns) is [Display(Prompt = \"...\")] - separate guidance text, not a control choice. Try 'admin' (DeniedValues), a username starting with a digit (CustomValidation), an invalid phone/card number, or a country code that isn't 2 letters (Length) - then submit with something still invalid to see focus jump to the first broken field.",
     "Submit": "Submit",
-    "Success": "Looks good - every field passed."
+    "Success": "Looks good - every field passed.",
+    "PriceRangeNote": "MinPrice/MaxPrice/Price above use PropertyRangeAttribute, a validation attribute that reflects into sibling properties and auto-wires live re-validation - but unlike every other message on this page, its error text stays in plain English even when you switch language, since a reflected attribute has no access to the string localizer. See the 'Custom rules' tab for the fully-localized, hand-written equivalent of the same idea."
   },
   "Field": {
     "Username": "Username",
     "UsernamePrompt": "Not 'admin', 'root', or 'administrator'.",
     "PhoneNumber": "Phone number",
-    "PhoneNumberPrompt": "e.g. +1 555 123 4567",
+    "PhoneNumberPrompt": "Up to 15 digits, e.g. +123 456 789",
     "CardNumber": "Card number",
-    "CardNumberPrompt": "16 digits, no spaces or dashes",
+    "CardNumberPrompt": "16 digits - spaces added automatically",
     "Plan": "Plan",
     "PlanPrompt": "Choose your subscription tier",
     "Theme": "Theme",
@@ -73,7 +81,15 @@
     "CountryCode": "Country code",
     "CountryCodePrompt": "2 letters, e.g. US or VN",
     "Notes": "Notes",
-    "NotesPrompt": "Optional, up to 280 characters"
+    "NotesPrompt": "Optional, up to 280 characters",
+    "Sku": "SKU",
+    "SkuPrompt": "3 letters, a dash, 4 digits - e.g. ABC-1234",
+    "MinPrice": "Min price",
+    "MinPricePrompt": "The lower bound Price must respect",
+    "MaxPrice": "Max price",
+    "MaxPricePrompt": "The upper bound Price must respect",
+    "Price": "Price",
+    "PricePrompt": "Must stay between Min price and Max price"
   },
   "Validation": {
     "Required": "This field is required.",
@@ -90,6 +106,7 @@
     "InvalidCreditCard": "That doesn't look like a valid card number.",
     "InvalidPlan": "Choose a valid plan.",
     "InvalidTheme": "Choose a valid theme.",
-    "InvalidCountryCodeLength": "Use a 2-letter country code, e.g. US or VN."
+    "InvalidCountryCodeLength": "Use a 2-letter country code, e.g. US or VN.",
+    "InvalidSku": "Use the format ABC-1234 (3 letters, a dash, 4 digits)."
   }
 }

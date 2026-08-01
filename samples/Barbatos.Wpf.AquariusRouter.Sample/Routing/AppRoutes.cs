@@ -7,6 +7,7 @@ using Barbatos.Wpf.AquariusRouter.Sample.Views.NotFound;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Preferences;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Settings;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Users;
+using Barbatos.Wpf.AquariusRouter.Searching;
 using Barbatos.Wpf.Samples.Shared;
 
 namespace Barbatos.Wpf.AquariusRouter.Sample.Routing;
@@ -52,6 +53,11 @@ namespace Barbatos.Wpf.AquariusRouter.Sample.Routing;
 /// <c>RouterLink</c> is hidden while logged out, and the ones into this subtree specifically stay
 /// visible-but-disabled once logged in on the free plan - see <c>Services.LoggedInVisibilityConverter</c>/
 /// <c>Services.PremiumAccessConverter</c> and <see cref="AuthState.IsPremium"/>.
+/// <c>settings-security</c> also carries two <see cref="RouteSearchEntry"/> entries rather than
+/// one - the in-app-search synonym demo: searching either "security" or the fully-Vietnamese
+/// "đổi mật khẩu" (or its unaccented spelling, "doi mat khau" - see <see cref="RouteSearchIndex"/>'s
+/// own remarks on diacritic-insensitive matching) finds the same route. Try the search box in
+/// <c>MainWindow.xaml</c>'s nav bar.
 /// </remarks>
 public static class AppRoutes
 {
@@ -59,7 +65,11 @@ public static class AppRoutes
     [
         new RouteRecord { Path = "/", Name = "home", View = typeof(HomeView) },
 
-        new RouteRecord { Path = "/about", Name = "about", View = typeof(AboutView), Alias = ["/aboutus"] },
+        new RouteRecord
+        {
+            Path = "/about", Name = "about", View = typeof(AboutView), Alias = ["/aboutus"],
+            Search = [new RouteSearchEntry { Title = "About" }],
+        },
 
         // InfoCardView is defined once in Barbatos.Wpf.Samples.Shared and reused, unmodified,
         // from Barbatos.Wpf.Aquarius.Sample too (see its own MainWindow.xaml's "Shared" tab) -
@@ -68,7 +78,11 @@ public static class AppRoutes
         // drop into either sample's very different composition style. Router only ever
         // constructs the View type itself for a route (see Router.cs's own remarks) - a routed
         // View always needs to resolve its own DataContext this way, never Router's.
-        new RouteRecord { Path = "/shared-demo", Name = "shared-demo", View = typeof(InfoCardView) },
+        new RouteRecord
+        {
+            Path = "/shared-demo", Name = "shared-demo", View = typeof(InfoCardView),
+            Search = [new RouteSearchEntry { Title = "Shared component demo" }],
+        },
 
         // A static redirect - resolved before any guard runs; "/old-home" itself is never
         // rendered and has no guards of its own to run in the first place.
@@ -85,6 +99,7 @@ public static class AppRoutes
                 ["default"] = typeof(DashboardView),
                 ["sidebar"] = typeof(DashboardSidebarView),
             },
+            Search = [new RouteSearchEntry { Title = "Dashboard" }],
         },
 
         // Guarded globally, via Meta - PreferencesViewModel has no guard interface of its own at
@@ -95,6 +110,7 @@ public static class AppRoutes
             Name = "preferences",
             View = typeof(PreferencesView),
             Meta = new Dictionary<string, object?> { ["requiresAuth"] = true },
+            Search = [new RouteSearchEntry { Title = "Preferences" }],
         },
 
         // Guarded per-route - AdminViewModel has no guard interface of its own either; the check
@@ -138,8 +154,23 @@ public static class AppRoutes
             Children =
             [
                 new RouteRecord { Path = "", Name = "settings-profile", View = typeof(SettingsProfileView) },
-                new RouteRecord { Path = "notifications", Name = "settings-notifications", View = typeof(SettingsNotificationsView) },
-                new RouteRecord { Path = "security", Name = "settings-security", View = typeof(SettingsSecurityView) },
+                new RouteRecord
+                {
+                    Path = "notifications", Name = "settings-notifications", View = typeof(SettingsNotificationsView),
+                    Search = [new RouteSearchEntry { Title = "Notification settings", Keywords = "alerts" }],
+                },
+                // Two entries, deliberately - the in-app-search synonym demo (see this type's own
+                // remarks): "security" and the fully-Vietnamese "đổi mật khẩu" (or its unaccented
+                // "doi mat khau" spelling) both find this same route.
+                new RouteRecord
+                {
+                    Path = "security", Name = "settings-security", View = typeof(SettingsSecurityView),
+                    Search =
+                    [
+                        new RouteSearchEntry { Title = "Security settings" },
+                        new RouteSearchEntry { Title = "Đổi mật khẩu" },
+                    ],
+                },
             ],
         },
 

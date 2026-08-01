@@ -230,4 +230,82 @@ public class RouterRedirectAndFailureTests
             Assert.Same(failure, observed);
         });
     }
+
+    /// <summary>
+    /// Entering Views are constructed <i>before</i> <see cref="IOnBeforeRouteEnter"/>/
+    /// <c>BeforeResolve</c> run (see <see cref="Router"/>'s own remarks on why), so a guard that
+    /// then cancels must not leave those never-mounted instances behind in
+    /// <see cref="RouteRecord.Instances"/> - Vue Router never creates the component at all in
+    /// this case, and a leftover instance here would be silently reused by the next attempt.
+    /// </summary>
+    [Fact]
+    public void ACancelledNavigationLeavesNoConstructedViewInstancesBehind()
+    {
+        StaThread.Run(() =>
+        {
+            var dashboard = new RouteRecord { Path = "/dashboard", Name = "dashboard", View = typeof(RecordingViewA) };
+            var router = new Router([new RouteRecord { Path = "/", Name = "home", View = typeof(RecordingViewB) }, dashboard]);
+            Assert.Null(router.Start("/").GetAwaiter().GetResult());
+
+            using var guard = router.BeforeResolve((_, _) => Task.FromResult(NavigationGuardResult.Cancel));
+
+            var failure = router.Push("/dashboard").GetAwaiter().GetResult();
+
+            Assert.NotNull(failure);
+            Assert.Equal(NavigationFailureType.Aborted, failure.Type);
+            Assert.Empty(dashboard.Instances);
+        });
+    }
+
+    [Fact]
+    public void ARedirectedNavigationLeavesNoConstructedViewInstancesBehind()
+    {
+        StaThread.Run(() =>
+        {
+            var dashboard = new RouteRecord { Path = "/dashboard", Name = "dashboard", View = typeof(RecordingViewA) };
+            var router = new Router([
+                new RouteRecord { Path = "/", Name = "home", View = typeof(RecordingViewB) },
+                new RouteRecord { Path = "/login", Name = "login", View = typeof(RecordingViewC) },
+                dashboard,
+            ]);
+            Assert.Null(router.Start("/").GetAwaiter().GetResult());
+
+            using var guard = router.BeforeResolve((to, _) =>
+                Task.FromResult(to.Name == "dashboard" ? NavigationGuardResult.Redirect("/login") : NavigationGuardResult.Continue));
+
+            Assert.Null(router.Push("/dashboard").GetAwaiter().GetResult());
+
+            Assert.Equal("/login", router.CurrentRoute.Value.Path);
+            Assert.Empty(dashboard.Instances);
+        });
+    }
+
+    /// <summary>The observable consequence of the leak above: a retried navigation must build a genuinely fresh View, not silently reuse the aborted attempt's instance.</summary>
+    [Fact]
+    public void RetryingAfterACancelledNavigationConstructsAFreshView()
+    {
+        StaThread.Run(() =>
+        {
+            var dashboard = new RouteRecord { Path = "/dashboard", Name = "dashboard", View = typeof(RecordingViewA) };
+            var router = new Router([new RouteRecord { Path = "/", Name = "home", View = typeof(RecordingViewB) }, dashboard]);
+            Assert.Null(router.Start("/").GetAwaiter().GetResult());
+
+            object? abortedAttemptView = null;
+            var shouldCancel = true;
+            using var guard = router.BeforeResolve((_, _) =>
+            {
+                if (shouldCancel && dashboard.Instances.TryGetValue("default", out var pending))
+                    abortedAttemptView = pending;
+                return Task.FromResult(shouldCancel ? NavigationGuardResult.Cancel : NavigationGuardResult.Continue);
+            });
+
+            Assert.NotNull(router.Push("/dashboard").GetAwaiter().GetResult());
+            Assert.NotNull(abortedAttemptView);
+
+            shouldCancel = false;
+            Assert.Null(router.Push("/dashboard").GetAwaiter().GetResult());
+
+            Assert.NotSame(abortedAttemptView, dashboard.Instances["default"]);
+        });
+    }
 }

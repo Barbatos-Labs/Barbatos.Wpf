@@ -282,4 +282,155 @@ public class RouteMatcherTests
 
         Assert.Equal(2, matcher.GetRoutes().Count);
     }
+
+    /// <summary>
+    /// An alias shares its <see cref="RouteRecord"/> - and therefore its <c>Name</c> - with the
+    /// record it aliases, so registering alias nodes by name too would overwrite the canonical
+    /// one (aliases register last), silently making a by-name navigation resolve to the ALIAS
+    /// path instead of the real one.
+    /// </summary>
+    [Fact]
+    public void ResolvingByNameUsesTheCanonicalPathNotAnAlias()
+    {
+        var matcher = new RouteMatcher([
+            new RouteRecord { Path = "/about", Name = "about", View = StubView, Alias = ["/aboutus"] },
+        ]);
+
+        Assert.Equal("/about", matcher.Resolve(new RouteLocationRaw { Name = "about" }).Path);
+
+        // ...and the alias itself still resolves by path, onto that same record.
+        Assert.Equal("about", matcher.Resolve(new RouteLocationRaw { Path = "/aboutus" }).Name);
+    }
+
+    /// <summary>
+    /// A child added at runtime lives only in the matcher's own node tree, never in its parent's
+    /// <see cref="RouteRecord.Children"/> (which is <c>init</c>-only) - so removal has to walk the
+    /// node tree, or a dynamically-added child outlives its parent and keeps matching.
+    /// </summary>
+    [Fact]
+    public void RemovingAParentAlsoRemovesChildrenAddedDynamically()
+    {
+        var parent = new RouteRecord { Path = "/settings", Name = "settings", View = StubView };
+        var matcher = new RouteMatcher([parent]);
+        matcher.AddRoute("settings", new RouteRecord { Path = "security", Name = "settings-security", View = StubView });
+
+        Assert.True(matcher.HasRoute("settings-security"));
+
+        matcher.RemoveRoute(parent);
+
+        Assert.False(matcher.HasRoute("settings"));
+        Assert.False(matcher.HasRoute("settings-security"));
+        Assert.Throws<InvalidOperationException>(() => matcher.Resolve(new RouteLocationRaw { Path = "/settings/security" }));
+    }
+
+    [Fact]
+    public void RemovingAParentAlsoRemovesItsStaticallyDeclaredChildren()
+    {
+        var parent = new RouteRecord
+        {
+            Path = "/settings",
+            Name = "settings",
+            View = StubView,
+            Children = [new RouteRecord { Path = "security", Name = "settings-security", View = StubView }],
+        };
+        var matcher = new RouteMatcher([parent]);
+
+        matcher.RemoveRoute(parent);
+
+        Assert.False(matcher.HasRoute("settings-security"));
+        Assert.Empty(matcher.GetRoutes());
+    }
+
+    /// <summary>
+    /// Resolution skips a route whose first path segment is a literal that can't be what the
+    /// incoming path starts with, rather than running its regex. That shortcut has to agree with
+    /// how the regex itself was compiled - case-insensitively by default - or it would prune a
+    /// route the regex would have accepted.
+    /// </summary>
+    [Fact]
+    public void PathMatchingStaysCaseInsensitiveByDefault()
+    {
+        var matcher = new RouteMatcher([
+            new RouteRecord { Path = "/users/:id", Name = "user", View = StubView },
+            new RouteRecord { Path = "/about", Name = "about", View = StubView },
+        ]);
+
+        Assert.Equal("user", matcher.Resolve(new RouteLocationRaw { Path = "/USERS/42" }).Name);
+        Assert.Equal("about", matcher.Resolve(new RouteLocationRaw { Path = "/AbOuT" }).Name);
+    }
+
+    [Fact]
+    public void SensitiveOptionStillRejectsAMiscasedPath()
+    {
+        var matcher = new RouteMatcher(
+            [new RouteRecord { Path = "/Users", Name = "users", View = StubView }],
+            new PathParserOptions { Sensitive = true });
+
+        Assert.Equal("users", matcher.Resolve(new RouteLocationRaw { Path = "/Users" }).Name);
+        Assert.Throws<InvalidOperationException>(() => matcher.Resolve(new RouteLocationRaw { Path = "/users" }));
+    }
+
+    /// <summary>A segment mixing a literal prefix with a param has no fixed first segment to prune on - it must still be reached.</summary>
+    [Fact]
+    public void AMixedLiteralAndParamFirstSegmentStillResolves()
+    {
+        var matcher = new RouteMatcher([new RouteRecord { Path = "/:year-:month", Name = "archive", View = StubView }]);
+
+        var location = matcher.Resolve(new RouteLocationRaw { Path = "/2026-08" });
+
+        Assert.Equal("archive", location.Name);
+        Assert.Equal("2026", location.Params["year"]);
+        Assert.Equal("08", location.Params["month"]);
+    }
+
+    /// <summary>A catch-all's first segment is a param, so it can never be pruned away - it stays the last-resort match for any path.</summary>
+    [Fact]
+    public void TheCatchAllStillMatchesAPathSharingNoLiteralWithAnyRoute()
+    {
+        var matcher = new RouteMatcher([
+            new RouteRecord { Path = "/users/:id", Name = "user", View = StubView },
+            new RouteRecord { Path = "/:pathMatch(.*)*", Name = "not-found", View = StubView },
+        ]);
+
+        Assert.Equal("not-found", matcher.Resolve(new RouteLocationRaw { Path = "/totally/unknown" }).Name);
+        Assert.Equal("user", matcher.Resolve(new RouteLocationRaw { Path = "/users/42" }).Name);
+    }
+
+    /// <summary>
+    /// <c>Views</c> already covers the single-outlet case as its <c>"default"</c> entry, so setting
+    /// <c>View</c> as well is always a mistake - and one that would otherwise be silent, since
+    /// <c>Views</c> simply wins and the <c>View</c> never renders. Surfaces while the route table
+    /// is being built, not on some later navigation.
+    /// </summary>
+    [Fact]
+    public void ARecordSettingBothViewAndViewsIsRejectedWhenRegistered()
+    {
+        var record = new RouteRecord
+        {
+            Path = "/dashboard",
+            Name = "dashboard",
+            View = StubView,
+            Views = new Dictionary<string, Type> { ["sidebar"] = StubView },
+        };
+
+        Assert.Throws<InvalidOperationException>(() => new RouteMatcher([record]));
+    }
+
+    /// <summary>A grouping record with no name/views/redirect of its own never enters the matchable list, but its children do - removing it must still take them with it.</summary>
+    [Fact]
+    public void RemovingAPureGroupingParentAlsoRemovesItsChildren()
+    {
+        var parent = new RouteRecord
+        {
+            Path = "/group",
+            Children = [new RouteRecord { Path = "child", Name = "group-child", View = StubView }],
+        };
+        var matcher = new RouteMatcher([parent]);
+        Assert.True(matcher.HasRoute("group-child"));
+
+        matcher.RemoveRoute(parent);
+
+        Assert.False(matcher.HasRoute("group-child"));
+        Assert.Empty(matcher.GetRoutes());
+    }
 }

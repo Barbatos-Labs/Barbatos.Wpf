@@ -308,9 +308,10 @@ Two mechanisms, matching whichever `Form` mode you're in - **they are not interc
 the one that matches your form**:
 
 - **Schema mode** (`Form.FromModel`) - `[Compare(nameof(Password))]` on the model property,
-  or `IValidatableObject.Validate(...)` for anything a single attribute can't express. Both are
-  DataAnnotations' own native mechanisms, and both work because validation reflects into the
-  real, live model instance.
+  `[PropertyRange(nameof(Min), nameof(Max))]` for a dynamic bound (see below), or
+  `IValidatableObject.Validate(...)` for anything a single attribute can't express. All three are
+  DataAnnotations-native (the latter two ship with this package), and all work because validation
+  reflects into the real, live model instance.
 - **Ad-hoc mode** (`Form.DefineField`) - `Field<T>.DependsOn<TSource>(Field<TSource> source)` plus
   a hand-written rule that reads the other field's `.Value` directly:
 
@@ -326,6 +327,59 @@ the one that matches your form**:
   `Watch.On` specifically (not `Watch.Effect`) - `Watch.On` only reacts to the source's *value*
   changing, never to `Errors`/`Meta` changes a validation pass itself causes, which is what keeps
   two mutually-dependent fields from infinite-looping.
+
+  `DependsOn` isn't limited to one dependency or to equality checks - call it once per source to
+  validate against a **dynamic bound driven by other fields**, e.g. a price that must stay between
+  a min and a max the user can also edit:
+
+  ```csharp
+  Price = form.DefineField(nameof(Price), 50,
+      value => value < MinPrice.Value ? $"Must be at least {MinPrice.Value}." : null,
+      value => value > MaxPrice.Value ? $"Must be at most {MaxPrice.Value}." : null);
+  Price.DependsOn(MinPrice);
+  Price.DependsOn(MaxPrice);
+  ```
+
+  `[Range(MinPrice, MaxPrice)]` cannot express this at all - C# attribute constructor arguments
+  must be compile-time constants - so for an **ad-hoc** field, `DependsOn` plus a closure like
+  above is the only option. Changing either `MinPrice` or `MaxPrice` re-validates `Price` against
+  the *current* value of both, even though `Price` itself wasn't touched. See the sample's
+  "Custom rules" tab for a live demo.
+
+### The schema-mode equivalent: `PropertyRangeAttribute` and `IDependsOnProperties`
+
+For a `Form.FromModel` field, the declarative equivalent is
+[`PropertyRangeAttribute`](API-REFERENCE.md#rules), which reflects two named sibling properties'
+*current* values the same way `[Compare]` reflects one:
+
+```csharp
+public int MinPrice { get; set; } = 10;
+public int MaxPrice { get; set; } = 100;
+
+[PropertyRange(nameof(MinPrice), nameof(MaxPrice))]
+public int Price { get; set; } = 50;
+```
+
+No manual `DependsOn` call is needed here - `PropertyRangeAttribute` implements
+`IDependsOnProperties`, and `Form.FromModel` scans every property's attributes for it after every
+field already exists, calling `Field<T>.DependsOn<TSource>` automatically for each named
+dependency. Any custom `ValidationAttribute` can opt into the same auto-wiring by implementing
+`IDependsOnProperties` itself - it is not specific to `PropertyRangeAttribute`.
+
+Two things this attribute-based form gives up, both because a `ValidationAttribute` is plain
+reflected metadata with no dependency-injection access, unlike a hand-written rule closure:
+
+- **It only works in `Form.FromModel` mode.** It reflects `ValidationContext.ObjectInstance` - the
+  real model - which an ad-hoc `Field<T>` never has (see [`Field.AddRule(ValidationAttribute)`](API-REFERENCE.md#field)'s
+  own remarks).
+- **Its message cannot resolve an i18n key.** `ErrorMessage` is a plain
+  `string.Format`-style template (`{0}` = display name, `{1}`/`{2}` = the live min/max), not a
+  localizer lookup - there is no service container reachable from inside an attribute. The
+  sample's Showcase tab uses this attribute and explicitly does *not* translate this one message,
+  contrasting with "Custom rules"' fully-localized ad-hoc version of the identical Price/MinPrice/MaxPrice idea.
+
+Pick ad-hoc `DependsOn` when the message needs full i18n/DI; pick `PropertyRangeAttribute` when
+the field already lives on a `FromModel` model and a plain-text message is acceptable.
 
 ---
 
@@ -402,6 +456,133 @@ carries: "must be set before first navigation").
 Setting `Valee.Form` also wires the automatic "focus the first invalid field on submit" behavior
 - see [Focusing the first invalid field on submit](#focusing-the-first-invalid-field-on-submit).
 
+`Form` itself implements `INotifyDataErrorInfo` (`Form.HasErrors` aggregates every field), and
+`aqv:Valee.Form="{Binding LoginForm}"` is a real WPF `Binding` under the hood -
+`ValidatesOnNotifyDataErrors` defaults to `true` for *any* `Binding`, not just ones on editing
+controls. Left alone, that would make WPF's own native validation adorner (a red border) wrap the
+*whole panel* the instant a single field anywhere in the form is invalid, not just the offending
+control. Setting `Valee.Form` suppresses that adorner on its own element (an empty
+`Validation.ErrorTemplate`) - `Validation.HasError`/`GetErrors` on that element are left intact for
+anyone who wants them (e.g. a form-level "there are errors" banner), only the *visual* is
+suppressed. Each individual field's own adorner (from `Valee.Field`/`Valee.PasswordField`, see
+[error display](#already-native-error-display)) is unaffected.
+
+### `Valee.Mask` - guiding what gets typed
+
+A validation attribute gives a verdict *after the fact*. `Valee.Mask` shapes the value *as it is
+being typed* - separators appear on their own, characters that cannot go in the next slot are
+ignored, and the caret always sits where the next character will actually land:
+
+```xml
+<TextBox aqv:Valee.Field="{Binding Sku}" aqv:Valee.Mask=">AAA-0000" />
+```
+
+| Mask character | Meaning |
+| --- | --- |
+| `0` | a required digit |
+| `A` | a required letter |
+| `*` | a required letter or digit |
+| `>` / `<` | upper-case / lower-case everything that follows |
+| `\` | treat the next character as a literal (`\0` is a literal zero) |
+| anything else | a literal, inserted automatically once the slots before it are filled |
+
+Typing `abc1234` into `>AAA-0000` produces `A`, `AB`, `ABC-` (the dash arrives by itself, caret
+after it), `ABC-1`, … `ABC-1234`. A `@` aimed at a letter slot, a letter aimed at a digit slot, or
+anything past the end of the mask is swallowed before it can appear on screen. Backspacing over a
+separator deletes through it rather than letting it reappear, and pasted text is filtered through
+the mask instead of rejected. The **formatted** text is what reaches the bound `Field<T>`, so the
+model sees `"ABC-1234"`.
+
+#### A mask guides; an attribute decides
+
+Keep the real rule on the model - a mask is deliberately permissive (a half-typed `"AB"` is a fine
+intermediate state, and the user can always tab away early), so pair it with
+[`PatternAttribute`](#patternattribute---regex-and-why-regularexpression-isnt-always-enough) or any
+other attribute for the actual verdict:
+
+```csharp
+[Pattern(@"[A-Z]{3}-\d{4}", Options = RegexOptions.IgnoreCase)]
+public string Sku { get; set; } = "";
+```
+
+**The two cannot be collapsed into one**, and it is worth being precise about why, because "just
+use the regex to filter keystrokes" is the obvious first instinct:
+
+- A regex is **not positional**. It cannot answer "what may I type at index 3?" - `[A-Z]{3}` and
+  `[A-Z]+` give no fixed index for the dash that follows.
+- Running the **full** pattern per keystroke rejects every prefix. Against `^[A-Z]{3}-\d{4}$`, the
+  string `"A"` does not match, nor `"AB"`, nor `"ABC"` - so all eight keystrokes of `ABC-1234`
+  would be blocked and the field could never be filled at all.
+- .NET has no partial-match API to fix that with (Java's `Matcher.hitEnd()` has no `System.Text.RegularExpressions`
+  equivalent).
+
+This is the same split WinForms' `MaskedTextBox`, imask.js and Cleave.js all make, for the same
+reason.
+
+#### When a mask is the wrong tool
+
+A mask needs one fixed layout. Where the layout genuinely varies - a phone number, whose length and
+grouping differ by country - do not force one; a hand-written `PreviewTextInput`/`TextChanged` pair
+that accepts digits and formats loosely is the honest answer. The sample's
+`Views/Showcase/InputMask.cs` keeps exactly one such field for that reason, and uses `Valee.Mask`
+for every other.
+
+### `Valee.Numeric` - number-only boxes, and snapping back into range
+
+```xml
+<TextBox aqv:Valee.Field="{Binding Age}"   aqv:Valee.Numeric="Integer" />
+<TextBox aqv:Valee.Field="{Binding Price}" aqv:Valee.Numeric="Decimal" aqv:Valee.Minimum="0" />
+```
+
+**Typing** is filtered per keystroke (and paste with it): letters, punctuation, a second decimal
+separator, a minus sign anywhere but the front - all dropped before they appear. Half-finished
+input is deliberately still allowed, because `-`, `.` and `-.` are all legal states on the way to
+a real number and rejecting them would make the field impossible to fill. A number's grammar is
+simple enough to decide prefix-by-prefix, which is exactly why this can filter typing where
+[`PatternAttribute`](#valeemask---guiding-what-gets-typed) cannot.
+
+**Bounds are optional and independent** - set only a floor, only a ceiling, or neither:
+
+| Declared | Behavior |
+| --- | --- |
+| neither | characters are filtered, nothing is ever rewritten |
+| `Minimum` only | anything below it is raised; no upper limit |
+| `Maximum` only | anything above it is lowered; no lower limit |
+| both | value is kept inside the range |
+
+A `Minimum` of zero or above also removes the minus key entirely - no value that could satisfy it
+is negative.
+
+#### Bounds come from `[Range]` on their own
+
+If you don't declare them, they are taken from the bound field's
+`IField.Minimum`/`IField.Maximum`, which `Form.FromModel` fills in from the property's own
+`[Range]`. A model that already says:
+
+```csharp
+[Range(13, 120, ErrorMessage = "Age must be between 13 and 120.")]
+public int Age { get; set; } = 29;
+```
+
+needs nothing repeated in XAML - `aqv:Valee.Numeric="Integer"` alone will snap `150` down to
+`120`. `Valee.Minimum`/`Valee.Maximum` override the discovered values when you do set them, which
+is also how you bound a field that has no `[Range]` at all.
+
+#### Two things this deliberately does *not* do
+
+- **It never clamps while typing.** With a 10-100 range, snapping mid-keystroke would rewrite the
+  first `5` of `50` into `10`, leaving the user with `100`. Correction waits for
+  `LostFocus`, the way every numeric editor behaves.
+- **It does not validate.** Clamping silently rewrites what was typed, so keep `[Range]` (or an
+  equivalent rule) on the model regardless: that is what reports a genuinely bad value, and what
+  still runs when a value arrives from anywhere other than this text box.
+
+> **Culture note.** The accepted decimal separator is read from the element's
+> `FrameworkElement.Language`, because that is the culture WPF's own binding will use to parse the
+> text back. Reading it from `CultureInfo.CurrentCulture` instead would let the box accept a
+> character the binding then refuses, and the value would silently stop updating. `Language`
+> defaults to `en-US` regardless of thread culture - set it if you want comma separators.
+
 ### `FieldTemplateSelector` - auto-selecting a control per field
 
 ```xml
@@ -455,6 +636,60 @@ that are already native" precedent (see Aquarius's README). Likewise, a plain
 adorner for free via `Field<T>`'s own `INotifyDataErrorInfo` - `Valee.Field`'s only genuinely
 non-redundant job is the touched/trigger-timing wiring described above.
 
+### `SafeMessageConverter` - localization, without becoming dependent on a localizer
+
+**AquariusValee has no dependency on any localization library, and never requires one.** A plain
+literal message is an ordinary, fully supported way to use it:
+
+```csharp
+[Required(ErrorMessage = "Enter a valid email address.")]
+[Display(Name = "Email address", Prompt = "you@example.com")]
+public string Email { get; set; } = "";
+```
+
+Localizing is an application choice layered on top: store lookup keys in `ErrorMessage`/
+`[Display]` and resolve them at display time with your localizer's converter. That introduces one
+sharp edge worth knowing about, because it is **silent**: a typical localizing converter returns
+`null` for a key it does not recognise, and `null` bound to `TextBlock.Text` renders as *nothing at
+all*. One typo, one key nobody registered, or one message deliberately written as ordinary prose
+becomes an invisible error message - strictly worse than an untranslated one.
+
+`SafeMessageConverter` is the guard rail. Wrap your localizing converter in it (it is the XAML
+content property, so just nest it) and anything untranslatable is shown **as written** instead of
+disappearing:
+
+```xml
+<UserControl.Resources>
+    <aqv:SafeMessageConverter x:Key="Message">
+        <i18n:LocalizeConverter />
+    </aqv:SafeMessageConverter>
+</UserControl.Resources>
+...
+<TextBlock Text="{Binding ErrorMessage, Converter={StaticResource Message}}" Foreground="Red" />
+```
+
+`Inner` is an ordinary `IValueConverter`, so this is not tied to any one localization package -
+Barbatos.i18n, an `IStringLocalizer`-backed converter, ResX, or a hand-written one all work. An
+inner converter that *throws* is treated the same as one that returned nothing. Leave `Inner`
+unset and it is a pass-through, which is exactly right for an app that does not localize at all.
+
+#### Refreshing messages after a language change
+
+A message stored as a lookup key and resolved by a converter updates for free when the binding
+re-reads. A rule that resolves its text **eagerly** - unavoidable when the message interpolates a
+runtime value, e.g. `$"Must be at least {MinPrice.Value}."` - captured the old language at the
+moment it ran, and no later culture switch re-runs it. Call
+[`Form.RevalidateValidatedAsync()`](API-REFERENCE.md#form-sealed-class--observableobject-inotifydataerrorinfo-idisposable)
+after switching:
+
+```csharp
+localizationCultureManager.SetCulture(newCulture);
+await myForm.RevalidateValidatedAsync();
+```
+
+It re-runs only fields already `Meta.Validated`, so nothing sprouts an error on a field the user
+has never touched. vee-validate has the same characteristic and documents the same remedy.
+
 ---
 
 ## Rules
@@ -472,9 +707,37 @@ to have no `System.ComponentModel.DataAnnotations` equivalent:
 | `OneOfAttribute` / `NotOneOfAttribute` | Value must (not) equal one of a fixed set of literals, using vee-validate's own **loose, cross-type** matching (`1` and `"1"` match each other) - see the next section for when to reach for these instead of the BCL's own, stricter equivalent. |
 | `DigitsAttribute` | An exact-length numeric string (a PIN/OTP code). |
 | `NumericStringAttribute` / `IntegerStringAttribute` | "Does this raw string look like a number/integer" - for input not yet parsed into a numeric type. |
+| `PatternAttribute` | Regex matching **with a real `RegexOptions` property** - see below. |
 
-All eight treat a `null`/empty value as valid (pair with `[Required]` if emptiness itself should
+All of them treat a `null`/empty value as valid (pair with `[Required]` if emptiness itself should
 fail) - matching the `isEmpty`-short-circuit convention vee-validate's own equivalent rules use.
+`PropertyRangeAttribute` (documented under
+[Cross-field validation](#the-schema-mode-equivalent-propertyrangeattribute-and-idependsonproperties))
+lives in this namespace too, but is a different shape - property-only and `ValidationContext`-aware.
+
+### `PatternAttribute` - regex, and why `[RegularExpression]` isn't always enough
+
+The BCL's `RegularExpressionAttribute` covers the ordinary case and needs no extra package - **use
+it whenever a plain, case-sensitive pattern is all you need**. It has one hard limitation, though,
+confirmed by inspection: it exposes **no `RegexOptions` property at all**. `IgnoreCase`,
+`Multiline`, `CultureInvariant`, `IgnorePatternWhitespace` and friends are reachable only by
+embedding inline flags like `(?i)` into the pattern string - workable, but easy to typo and
+invisible to anyone skimming the attribute.
+
+```csharp
+[Pattern(@"[A-Z]{3}-\d{4}",
+    Options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+    ErrorMessage = "Use the format ABC-1234.")]
+public string Sku { get; set; } = "";
+```
+
+Two more differences from the BCL attribute worth knowing:
+
+- **Anchored by default.** `MustMatchEntireValue` defaults to `true`, so `[Pattern("[a-z]+")]`
+  rejects `abc123` - no forgotten `^...$` trap. Set it to `false` for a "contains a match" search.
+- **A regex timeout fails the field instead of throwing.** `MatchTimeoutInMilliseconds` (2000 by
+  default, the same bound the BCL attribute uses) means a catastrophically backtracking
+  pattern/input pair degrades into an invalid field rather than an exception on the UI thread.
 
 ### A full review of `System.ComponentModel.DataAnnotations` - what's native, what's custom, what doesn't apply
 

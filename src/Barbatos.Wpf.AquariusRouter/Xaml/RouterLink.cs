@@ -23,7 +23,7 @@ using RoutingRouter = Routing.Router;
 /// <remarks>
 /// <code>
 /// &lt;Button aqr:RouterLink.To="/about" Content="About" /&gt;
-/// &lt;Hyperlink aqr:RouterLink.To="{aqr:RouteTo Name=user, Params={...}}"&gt;Profile&lt;/Hyperlink&gt;
+/// &lt;Hyperlink aqr:RouterLink.To="{aqr:RouteTo Name=user, Params='id=42'}"&gt;Profile&lt;/Hyperlink&gt;
 ///
 /// &lt;Button aqr:RouterLink.To="/about"&gt;
 ///     &lt;Button.Style&gt;
@@ -167,6 +167,15 @@ public static class RouterLink
                     contentElement.Unloaded += OnUnloaded;
                     break;
             }
+
+            // <see cref="ToProperty"/> is bindable, so it can legitimately change while the
+            // element is already live (a bound target, or an ItemsControl recycling its
+            // containers) - each change builds a fresh LinkState, and Loaded will never fire
+            // again for an element that is already loaded. Without this, such a rebind would
+            // silently stop tracking: no CurrentRoute watch, and IsActive/IsExactActive frozen
+            // at whatever the previous target computed.
+            if (IsTargetLoaded())
+                StartTracking();
         }
 
         public void Detach()
@@ -190,7 +199,17 @@ public static class RouterLink
             _watchHandle = null;
         }
 
-        private void OnLoaded(object sender, RoutedEventArgs e)
+        private void OnLoaded(object sender, RoutedEventArgs e) => StartTracking();
+
+        private bool IsTargetLoaded() => target switch
+        {
+            FrameworkElement element => element.IsLoaded,
+            FrameworkContentElement contentElement => contentElement.IsLoaded,
+            _ => false,
+        };
+
+        /// <summary>Computes this link's active state now, and keeps it live for as long as the element stays loaded.</summary>
+        private void StartTracking()
         {
             var router = TryResolveRouter();
             if (router is null)
@@ -199,6 +218,9 @@ public static class RouterLink
                 return;
             }
 
+            // Defensive against ever tracking twice (an already-loaded Attach followed by a real
+            // Loaded, e.g. after a re-parent) - a second live watch would leak the first.
+            _watchHandle?.Dispose();
             UpdateActiveState(router);
             _watchHandle = Watch.On(router.CurrentRoute, (_, _) => UpdateActiveState(router));
         }
@@ -229,7 +251,24 @@ public static class RouterLink
             if (to is null)
                 return;
 
-            var targetLocation = router.Resolve(ToRouteLocationRaw(to));
+            RouteLocation targetLocation;
+            try
+            {
+                targetLocation = router.Resolve(ToRouteLocationRaw(to));
+            }
+            catch (InvalidOperationException)
+            {
+                // A target no route matches - a typo, or a route removed at runtime - is simply
+                // never "active". Deliberately not fatal: this runs from Loaded, i.e. from deep
+                // inside WPF's own render pipeline, where a synchronous throw takes the whole
+                // process down rather than surfacing catchably (the same hazard ReportMissingRouter
+                // exists to sidestep). Clicking the link still reports the real failure, through
+                // Navigate's own dispatcher-routed fault handling.
+                target.SetValue(IsActivePropertyKey, false);
+                target.SetValue(IsExactActivePropertyKey, false);
+                return;
+            }
+
             var current = router.CurrentRoute.Value;
 
             var (isActive, isExactActive) = ComputeActiveState(targetLocation, current);

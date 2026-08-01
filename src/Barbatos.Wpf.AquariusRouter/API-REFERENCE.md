@@ -10,9 +10,10 @@ looking up a specific member's exact signature/behavior.
 | --- | --- |
 | [`Barbatos.Wpf.AquariusRouter.Matching`](#namespace-barbatoswpfaquariusroutermatching) | The path-matching engine: tokenizer, compiled path parser/ranker, route matcher. No WPF dependency. |
 | [`Barbatos.Wpf.AquariusRouter.Routing`](#namespace-barbatoswpfaquariusrouterrouting) | The route table, resolved locations, the `Router` orchestrator, guards, failures, history. |
+| [`Barbatos.Wpf.AquariusRouter.Searching`](#namespace-barbatoswpfaquariusroutersearching) | In-app search: opt-in per-route search entries and the query/ranking engine. No WPF dependency. |
 | [`Barbatos.Wpf.AquariusRouter.Xaml`](#namespace-barbatoswpfaquariusrouterxaml) | `RouterView` and `RouterLink`. |
 
-All three are mapped onto one XAML namespace, `http://schemas.barbatos.co/aquariusrouter/2026/xaml`
+All four are mapped onto one XAML namespace, `http://schemas.barbatos.co/aquariusrouter/2026/xaml`
 (prefix `aqr`), via `[assembly: XmlnsDefinition]` in `AssemblyInfo.cs`.
 
 ---
@@ -105,13 +106,14 @@ a worked example.
 | --- | --- | --- |
 | `Path` | `required string` | This record's own path contribution (relative unless it starts with `/`, or empty for an "index" child). |
 | `Name` | `string?` | Unique navigation key. |
-| `View` | `Type?` | The default-outlet View. Shorthand for `Views["default"]`. |
+| `View` | `Type?` | The default-outlet View. Shorthand for `Views["default"]`. Setting both this and `Views` throws when the route is registered. |
 | `Views` | `IReadOnlyDictionary<string, Type>?` | Named outlets. |
 | `Children` | `IReadOnlyList<RouteRecord>?` | Nested child records. |
 | `Redirect` | `Func<RouteLocation, RouteLocationRaw>?` | Resolved before any guard runs - see README. |
 | `Alias` | `IReadOnlyList<string>?` | Alternate paths resolving to this same record. |
 | `Meta` | `IReadOnlyDictionary<string, object?>?` | Arbitrary data, merged root-to-leaf into `RouteLocation.Meta`. |
 | `BeforeEnter` | `NavigationGuard?` | Per-route guard, only for a genuinely new entry. |
+| `Search` | `IReadOnlyList<RouteSearchEntry>?` | Opt-in in-app-search entries - see [In-App Search](README.md#in-app-search). |
 | `Instances` | `IDictionary<string, FrameworkElement>` | Runtime bookkeeping: the currently-mounted View per outlet name. Written by `Router`/`RouterView`; not part of route-table configuration. |
 
 ### `RouteLocation` (sealed record)
@@ -145,6 +147,7 @@ A navigation target, as passed to `Push`/`Replace`/`Resolve`.
 | `Replace` | `bool` | Replace instead of push. |
 | `Force` | `bool` | Bypass the duplicate-navigation short-circuit. |
 | `implicit operator RouteLocationRaw(string path)` | | Shorthand for `new RouteLocationRaw { Path = path }`. |
+| `static Parse(string fullPath)` | `RouteLocationRaw` | Splits a serialized `path[?query][#hash]` back into its parts, percent-decoding the query - the inverse of how `Router.Resolve` composes `FullPath`. Used by `Go`/`Back`/`Forward` on history entries, and for protocol-activation URIs. |
 
 ### `NavigationGuard` (delegate)
 
@@ -242,6 +245,44 @@ See [The Router](README.md#the-router) for a concept-first walkthrough.
 
 ---
 
+## Namespace: `Barbatos.Wpf.AquariusRouter.Searching`
+
+See [In-App Search](README.md#in-app-search) for a concept-first walkthrough of why this exists
+and why it deliberately stops at the query engine rather than also shipping a search box control.
+
+### `RouteSearchEntry` (sealed class)
+
+One searchable entry for a `RouteRecord` - assign a list of these to `RouteRecord.Search` to opt a
+route into search (unset means not searchable).
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `Title` | `required string` | Display text, and the primary text matched against a query. |
+| `Keywords` | `string?` | Extra, unshown terms that also match a query - synonyms/abbreviations that don't belong in `Title` itself. |
+
+### `RouteSearchResult` (sealed record)
+
+One match returned by `RouteSearchIndex.Query`.
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `Record` | `required RouteRecord` | The route this result would navigate to. |
+| `Entry` | `required RouteSearchEntry` | Which of `Record.Search`'s entries matched. |
+| `To` | `RouteLocationRaw` | Ready to pass to `Router.Push`/`Replace` - resolves by `Record.Name`. **Throws `InvalidOperationException`** if `Record.Name` is `null`. |
+
+### `RouteSearchIndex` (sealed class)
+
+| Member | Signature | Meaning |
+| --- | --- | --- |
+| Constructor | `RouteSearchIndex(Router router)` | |
+| `Query` | `IReadOnlyList<RouteSearchResult> Query(string? query)` | Every entry matching every space-separated term in `query` (AND semantics), best match first. Empty for a `null`/blank query. Case- and Vietnamese-diacritic-insensitive. Always re-reads `router.GetRoutes()` fresh - never stale after `Router.AddRoute`/`RemoveRoute`. |
+
+Ranking (lower is better; ties preserve registration order): `0` = `Title` equals the query
+exactly, `1` = `Title` starts with the query, `2` = every term found in `Title` (any order), `3` =
+at least one term only found via `Keywords`.
+
+---
+
 ## Namespace: `Barbatos.Wpf.AquariusRouter.Xaml`
 
 ### `RouterView` (sealed class, `ContentControl`)
@@ -265,3 +306,22 @@ See [The Router](README.md#the-router) for a concept-first walkthrough.
 | `IsExactActiveProperty` / `GetIsExactActive` | `DependencyProperty` (read-only) / `bool` | Current route is exactly this link's target, including every param. |
 
 See [RouterLink](README.md#routerlink) for the active-state algorithm and a `DataTrigger` example.
+
+### `RouteTo` (sealed class, `MarkupExtension`)
+
+Builds a `RouteLocationRaw` inline in XAML - `{aqr:RouteTo Name=user, Params='id=42'}`. Returns
+`RouteLocationRaw`, so it goes straight into `RouterLink.To`.
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| Constructor | `RouteTo()` / `RouteTo(string path)` | The one-argument form is positional: `{aqr:RouteTo /about}`. |
+| `Path` | `string?` | A literal path. Mutually exclusive with `Name`. |
+| `Name` | `string?` | A route name, combined with `Params`. Mutually exclusive with `Path`. |
+| `Params` | `string?` | `key=value` pairs separated by `;`. A comma inside one value makes it the list a repeatable param expects. |
+| `Query` | `string?` | `key=value` pairs separated by `;`. |
+| `Hash` | `string?` | |
+| `Replace` / `Force` | `bool` | Map onto their `RouteLocationRaw` counterparts. |
+
+Throws `InvalidOperationException` if neither `Name` nor `Path` is set (or if both are), and
+`FormatException` for a malformed `Params`/`Query` pair. Evaluated once at parse time - bind
+`RouterLink.To` to a ViewModel `RouteLocationRaw` for a target that changes at runtime.
