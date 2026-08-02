@@ -8,16 +8,53 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- One source of truth, two derived values. The SDK does NOT derive these from <Version>:
+         AssemblyVersion defaults to $(VersionPrefix) and FileVersion defaults to
+         $(AssemblyVersion), so bumping <Version> alone leaves the version Windows Explorer,
+         installers and crash reporters actually read sitting at 1.0.0 forever. Keep all three
+         wired together like this.
+
+         AssemblyVersion/FileVersion take numeric parts only - for a prerelease, write
+         <Version>1.1.0-beta.1</Version> and set the two below to the bare 1.1.0. -->
+    <Version>1.0.0</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Feeds AppInfo.Name, PublisherInfo.Name and PublisherInfo.Copyright. Change <Company>
+         before you ship: together with AppInfo.AppId below it decides where Preferences,
+         SecureStorage and FileSystem.AppDataDirectory live
+         (%LocalAppData%\{Company}\{AppId}\), and moving it later strands existing user data. -->
+    <Product>BarbatosWpfApp</Product>
+    <Company>Your Company</Company>
+    <Copyright>Copyright (c) Your Company</Copyright>
+  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Barbatos.Wpf.Core" Version="2.3.0" />
+    <!-- AppInfo.AppId has no standard MSBuild property, so it is set as assembly metadata. It
+         does not have to be a GUID - any stable string works, and a readable one is nicer since
+         it doubles as the storage folder name. Whatever you pick, never change it after
+         shipping. -->
+    <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppId" Value="BarbatosWpfApp" />
+    <!-- Only needed once you ship an installer, and only if you read AppInfo.InstallDate /
+         AppInfo.InstallLocation: they look up ...\Uninstall\{AppId} verbatim. Inno Setup names
+         its key {its AppId}_is1 and offers no way to drop that suffix, so point this at the real
+         key name rather than dragging "_is1" into AppId (and therefore into the folder above). -->
+    <!-- <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.UninstallRegistryKey" Value="BarbatosWpfApp_is1" /> -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Barbatos.Wpf.Core" Version="2.3.1" />
 <!--#if (AquariusEffective) -->
-    <PackageReference Include="Barbatos.Wpf.Aquarius" Version="2.3.0" />
+    <PackageReference Include="Barbatos.Wpf.Aquarius" Version="2.3.1" />
 <!--#endif -->
 <!--#if (IncludeAquariusRouter) -->
-    <PackageReference Include="Barbatos.Wpf.AquariusRouter" Version="2.3.0" />
+    <PackageReference Include="Barbatos.Wpf.AquariusRouter" Version="2.3.1" />
 <!--#endif -->
 <!--#if (IncludeValee) -->
-    <PackageReference Include="Barbatos.Wpf.AquariusValee" Version="2.3.0" />
+    <PackageReference Include="Barbatos.Wpf.AquariusValee" Version="2.3.1" />
 <!--#endif -->
 <!--#if (IncludeI18n) -->
     <PackageReference Include="Barbatos.i18n.Wpf" Version="1.1.4" />

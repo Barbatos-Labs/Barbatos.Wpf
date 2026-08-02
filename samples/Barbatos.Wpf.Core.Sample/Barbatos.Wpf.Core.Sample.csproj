@@ -15,6 +15,12 @@
     <Product>Barbatos.Wpf.Core Sample</Product>
     <Company>Barbatos Labs</Company>
     <Version>1.0.0</Version>
+    <!-- Both are needed: the SDK derives AssemblyVersion from $(VersionPrefix) rather than from
+         <Version>, and FileVersion from $(AssemblyVersion). Without them this sample inherits
+         Directory.Build.props' library AssemblyVersion and reports *that* to File Explorer,
+         installers and crash reporters, while only NuGet and AppInfo.VersionString see 1.0.0. -->
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
     <Copyright>Copyright (c) 2026 Barbatos Labs</Copyright>
   </PropertyGroup>
 

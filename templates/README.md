@@ -136,11 +136,38 @@ normally.
 To try the template before then, pack this repo's `src/` projects and point a `nuget.config`
 next to the generated project at that folder. One trap worth knowing when you do: NuGet
 resolves an already-extracted package out of the global cache (`~/.nuget/packages`) purely by
-id+version and never re-checks your local feed, so a `2.3.0` you packed last week keeps being
-used after you rebuild `2.3.0` today. The symptom is a type the library definitely has going
+id+version and never re-checks your local feed, so a `2.3.1` you packed last week keeps being
+used after you rebuild `2.3.1` today. The symptom is a type the library definitely has going
 missing (`The tag 'RouteTo' does not exist in XML namespace ...`); the fix is to delete
 `~/.nuget/packages/barbatos.wpf.*/<version>/` before restoring, or to pack under a
 `-dev.N`-suffixed version instead of overwriting the same one.
+
+### App identity and version, out of the box
+
+The generated `.csproj` ships a filled-in identity block, because both halves of it are things
+that are painful to change *after* you ship:
+
+```xml
+<Version>1.0.0</Version>
+<AssemblyVersion>$(Version)</AssemblyVersion>
+<FileVersion>$(Version)</FileVersion>
+...
+<AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppId" Value="MyApp" />
+```
+
+- **All three version properties are wired to one value.** The .NET SDK does *not* derive
+  `AssemblyVersion` from `<Version>` - it derives it from `$(VersionPrefix)`, and then derives
+  `FileVersion` from `$(AssemblyVersion)`. Bump only `<Version>` and the number Windows Explorer,
+  your installer and your crash reporter all read stays at `1.0.0` while NuGet and
+  `AppInfo.VersionString` move on. (`AssemblyVersion`/`FileVersion` accept numeric parts only, so
+  for `1.1.0-beta.1` set them to the bare `1.1.0`.)
+- **`AppId` defaults to your project name, not a GUID.** It does not have to be one - it is the
+  app's stable identifier and doubles as the storage folder name
+  (`%LocalAppData%\{Company}\{AppId}\`), so a readable string is usually the better choice.
+  Change `<Company>` before shipping for the same reason; both are effectively permanent once
+  users have data. The template also carries a commented-out `UninstallRegistryKey` line for
+  when you add an installer - see *Reading back InstallDate and InstallLocation* in
+  `src/Barbatos.Wpf.Core/README.md`.
 
 ### Picking which modules to include
 
