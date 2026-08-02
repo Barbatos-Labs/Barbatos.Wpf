@@ -326,7 +326,7 @@ Essentials exception types.
 
 | Type | Description |
 |------|-------------|
-| [`AppInfo`](#appinfo--ipublisherinfo) / `IAppInfo` | App identity: `AppGuid`, `Name`, `Version`, `VersionString`, `BuildString`, `RequestedTheme`, `PackagingModel`, `RequestedLayoutDirection`, `InstallDate`, `InstallLocation`, `ShowSettingsUI()`. |
+| [`AppInfo`](#appinfo--ipublisherinfo) / `IAppInfo` | App identity: `AppId`, `Name`, `Version`, `VersionString`, `BuildString`, `RequestedTheme`, `PackagingModel`, `RequestedLayoutDirection`, `InstallDate`, `InstallLocation`, `ShowSettingsUI()`. (`AppGuid` is the deprecated former name of `AppId`.) |
 | [`PublisherInfo`](#appinfo--ipublisherinfo) / `IPublisherInfo` | Publisher identity: `Name`, `Website`, `SupportUrl`, `SupportEmail`, `Copyright`. |
 | [`DeviceIdentity`](#deviceidentity--ideviceidentity) / `IDeviceIdentity` | License-enforcement identifiers: `GetInstanceIdAsync()`, `GetHardwareFingerprintAsync()`. |
 | `AppTheme` | `Unspecified`, `Light`, `Dark`. |
@@ -352,20 +352,29 @@ Both follow the interface + static facade pattern (`AppInfo.Current` / `Publishe
 Their properties resolve from the standard SDK-generated assembly attributes — `<Product>`,
 `<Company>`, `<Version>`, `<Copyright>` in the csproj — with an explicit
 `Barbatos.Wpf.ApplicationModel.*` assembly-metadata override checked first for anything that
-needs a different value (or, for `AppGuid`, has no standard property at all). See
+needs a different value (or, for `AppId`, has no standard property at all). See
 [Configuring AppInfo and PublisherInfo](README.md#configuring-appinfo-and-publisherinfo) in
 the README for the full property table and fallback chain.
 
+`AppInfo.AppId` (`string`) is the app's stable identifier; it does *not* have to be a GUID —
+any stable string works. It was previously called `AppGuid`; `AppInfo.AppGuid` and
+`IAppInfo.AppGuid` still exist, still return the identical value, and are marked `[Obsolete]`
+pending removal in a future release. The `Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid`
+metadata key likewise still works as a fallback for the newer `...AppInfo.AppId` key.
+
 `AppInfo.InstallDate` (`DateTime?`) and `AppInfo.InstallLocation` (`string?`) read the
-Windows "Programs and Features" uninstall registry entry
-(`...\Uninstall\{AppGuid}` or `{AppGuid}_is1`) for `AppGuid`, searching `HKEY_LOCAL_MACHINE`
-and `HKEY_CURRENT_USER` in both the 64-bit and 32-bit registry view. Both are `null` when
-`AppGuid` isn't a real GUID, or no matching entry is found (e.g. running unpublished). See
+Windows "Programs and Features" uninstall registry entry `...\Uninstall\{AppId}` — the name
+used verbatim as the subkey name, GUID-shaped values normalised to the braced form — searching
+`HKEY_LOCAL_MACHINE` and `HKEY_CURRENT_USER` in both the 64-bit and 32-bit registry view. Both
+are `null` when no entry of that name is found (e.g. running unpublished). No suffix is ever
+appended or guessed: when your installer registers itself under a different name (Inno Setup
+always appends `_is1`), set the `Barbatos.Wpf.ApplicationModel.AppInfo.UninstallRegistryKey`
+assembly metadata to the name it actually creates — it defaults to `AppId`. See
 [Reading back InstallDate and InstallLocation](README.md#reading-back-installdate-and-installlocation)
 in the README.
 
 `FileSystem.AppDataDirectory`/`CacheDirectory` are derived from
-`PublisherInfo.Name`/`AppInfo.AppGuid` — see [`Barbatos.Wpf.Storage`](#barbatoswpfstorage-namespace).
+`PublisherInfo.Name`/`AppInfo.AppId` — see [`Barbatos.Wpf.Storage`](#barbatoswpfstorage-namespace).
 
 ### `DeviceIdentity` / `IDeviceIdentity`
 
@@ -378,7 +387,7 @@ README for the full rationale and privacy/compliance notes (not legal advice).
   resets on reinstall or if local app data is cleared.
 - **`GetHardwareFingerprintAsync()`** → `Task<string>` — a 64-character uppercase hex SHA-256
   hash of a few motherboard/BIOS/CPU identifiers (read via WMI: `Win32_BaseBoard.SerialNumber`,
-  `Win32_BIOS.SerialNumber`, `Win32_Processor.ProcessorId`), salted with `AppInfo.AppGuid` so
+  `Win32_BIOS.SerialNumber`, `Win32_Processor.ProcessorId`), salted with `AppInfo.AppId` so
   the result is scoped to this app rather than directly comparable across unrelated apps on
   the same machine. The raw hardware serials are never stored or returned — only the hash.
   Falls back to hashing `Environment.MachineName` alone when no WMI identifier is readable
@@ -516,7 +525,7 @@ Backed by `System.Net.NetworkInformation` instead of WinRT's `NetworkInformation
 
 ### `FileSystem` / `IFileSystem`
 
-- **`AppDataDirectory`**, **`CacheDirectory`** (`string`) — `%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppGuid}\{Data,Cache}`, created on first access.
+- **`AppDataDirectory`**, **`CacheDirectory`** (`string`) — `%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppId}\{Data,Cache}`, created on first access.
 - **`OpenAppPackageFileAsync(string filename)`** → `Task<Stream>`, **`AppPackageFileExistsAsync(string filename)`** → `Task<bool>` — resolved relative to the executable's own directory.
 
 ### `Preferences` / `IPreferences`
@@ -923,7 +932,7 @@ inherently single-instance).
 #### Remarks
 
 Implemented with a named `Mutex` (identity — session-local, not `Global\`) and a named
-`EventWaitHandle` (the wake signal), both keyed by `AppInfo.AppGuid`. See
+`EventWaitHandle` (the wake signal), both keyed by `AppInfo.AppId`. See
 [Optional desktop features](README.md#optional-desktop-features) in the README for the full
 behavior description.
 

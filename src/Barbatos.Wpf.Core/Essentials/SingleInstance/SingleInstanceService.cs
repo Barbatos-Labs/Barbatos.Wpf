@@ -12,7 +12,7 @@ namespace Barbatos.Wpf.SingleInstance;
 /// <summary>
 /// The default <see cref="ISingleInstanceService"/> implementation, backed by a named
 /// <see cref="Mutex"/> (identity) and a named <see cref="EventWaitHandle"/> (the "a second
-/// instance was launched" wake signal), both derived from <see cref="IAppInfo.AppGuid"/>.
+/// instance was launched" wake signal), both derived from <see cref="IAppInfo.AppId"/>.
 /// </summary>
 internal sealed class SingleInstanceService : ISingleInstanceService, IDisposable
 {
@@ -48,7 +48,7 @@ internal sealed class SingleInstanceService : ISingleInstanceService, IDisposabl
 
         // Session-local (unprefixed) names, not "Global\": this blocks a second instance for
         // the current user's session, not system-wide across every logged-in user.
-        var name = "Barbatos.Wpf.SingleInstance." + _appInfo.AppGuid;
+        var name = "Barbatos.Wpf.SingleInstance." + _appInfo.AppId;
 
         _mutex = new Mutex(initiallyOwned: true, name: name, createdNew: out var createdNew);
         IsPrimaryInstance = createdNew;

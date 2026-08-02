@@ -13,7 +13,7 @@ namespace Barbatos.Wpf.Core.UnitTests;
 /// <summary>
 /// <see cref="SingleInstanceOptions.Enabled"/> defaults to <see langword="true"/>, and
 /// enabling it makes <c>Build()</c> acquire a real, session-wide named <see cref="Mutex"/>
-/// keyed by <c>AppInfo.AppGuid</c> — which is the *same name* for every test in this process
+/// keyed by <c>AppInfo.AppId</c> — which is the *same name* for every test in this process
 /// (they all share one entry assembly). If two tests both actually reached the "acquire the
 /// mutex" code path with <c>Enabled = true</c> while running in parallel (xUnit's default),
 /// whichever one lost the race would call <see cref="Environment.Exit(int)"/> and kill the

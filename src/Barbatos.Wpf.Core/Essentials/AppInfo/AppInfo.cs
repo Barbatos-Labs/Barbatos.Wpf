@@ -15,20 +15,29 @@ public interface IAppInfo
     /// Gets the application's stable unique identifier.
     /// </summary>
     /// <remarks>
-    /// For packaged (MSIX) applications, this is the package identity name. For unpackaged
-    /// applications, this comes from the <c>Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid</c>
-    /// assembly metadata, falling back to the assembly title and the assembly name.
+    /// This does not have to be a GUID — any stable string works, whether that's a GUID
+    /// (<c>{34D092DC-F20D-4B08-B93F-B45FE60881E6}</c>) or an ordinary reverse-DNS style name
+    /// (<c>com.contoso.myapp</c>). It comes from the
+    /// <c>Barbatos.Wpf.ApplicationModel.AppInfo.AppId</c> assembly metadata, falling back to
+    /// the deprecated <c>Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid</c> key, then the
+    /// assembly title, then the assembly name.
     /// <para>
-    /// If you ship an installer (Inno Setup, MSI, ...), set this to the same GUID as the
-    /// installer's own application identifier (Inno Setup's <c>AppId</c>, which becomes the
-    /// <c>HKLM\...\Uninstall\{AppId}_is1</c> registry key) — e.g.
-    /// <c>{34D092DC-F20D-4B08-B93F-B45FE60881E6}</c>. Keeping the two in sync means the
-    /// storage folder this library derives from <see cref="AppGuid"/>
-    /// (see <see cref="Barbatos.Wpf.Storage.FileSystem"/>) and the identity Windows uses for
-    /// install/uninstall/upgrade both refer to the same app.
+    /// This is the identifier the app's storage folder is derived from (see
+    /// <see cref="Barbatos.Wpf.Storage.FileSystem"/>), so it should stay constant across
+    /// releases. It is also the uninstall registry subkey name
+    /// <see cref="InstallDate"/>/<see cref="InstallLocation"/> are read from — if you ship an
+    /// installer and want those to resolve, set this to the same identifier the installer
+    /// registers itself under.
     /// </para>
     /// </remarks>
-    string AppGuid { get; }
+    string AppId { get; }
+
+    /// <summary>
+    /// Gets the application's stable unique identifier.
+    /// </summary>
+    /// <remarks>Renamed to <see cref="AppId"/>; this member simply forwards to it.</remarks>
+    [Obsolete("AppGuid has been renamed to AppId, because the value does not have to be a GUID. Use AppId instead. This property will be removed in a future release.")]
+    string AppGuid => AppId;
 
     /// <summary>
     /// Gets the application name.
@@ -82,14 +91,15 @@ public interface IAppInfo
     /// </summary>
     /// <remarks>
     /// This has no .NET MAUI counterpart. It is read from the Windows
-    /// <c>...\Uninstall\{AppGuid}</c> (or <c>{AppGuid}_is1</c>, the suffix Inno Setup uses)
-    /// registry entry — the same entry that backs the "Programs and Features" control panel —
-    /// which only exists when <see cref="AppGuid"/> is a real GUID matching the installer's
-    /// own application identifier and the app was actually installed through it. Returns
-    /// <see langword="null"/> when running unpublished (e.g. from the IDE), when
-    /// <see cref="AppGuid"/> isn't a GUID, or when no matching entry is found in
-    /// <c>HKEY_LOCAL_MACHINE</c> or <c>HKEY_CURRENT_USER</c> (32-bit or 64-bit registry view).
-    /// See <c>Publishing with an installer</c> in the README.
+    /// <c>...\Uninstall\{AppId}</c> registry entry — the same entry that backs the "Programs
+    /// and Features" control panel — which only exists when the app was actually installed
+    /// through an installer that registered itself under that exact name. When your installer
+    /// uses a different name (Inno Setup always appends <c>_is1</c> to its own AppId, for
+    /// example), set the <c>Barbatos.Wpf.ApplicationModel.AppInfo.UninstallRegistryKey</c>
+    /// assembly metadata to the name it actually creates; it defaults to <see cref="AppId"/>.
+    /// Returns <see langword="null"/> when running unpublished (e.g. from the IDE), or when no
+    /// matching entry is found in <c>HKEY_LOCAL_MACHINE</c> or <c>HKEY_CURRENT_USER</c>
+    /// (32-bit or 64-bit registry view). See <c>Publishing with an installer</c> in the README.
     /// </remarks>
     DateTime? InstallDate { get; }
 
@@ -107,8 +117,12 @@ public interface IAppInfo
 /// <remarks>This is the WPF counterpart of .NET MAUI's <c>AppInfo</c>.</remarks>
 public static class AppInfo
 {
+    /// <inheritdoc cref="IAppInfo.AppId" />
+    public static string AppId => Current.AppId;
+
     /// <inheritdoc cref="IAppInfo.AppGuid" />
-    public static string AppGuid => Current.AppGuid;
+    [Obsolete("AppGuid has been renamed to AppId, because the value does not have to be a GUID. Use AppId instead. This property will be removed in a future release.")]
+    public static string AppGuid => Current.AppId;
 
     /// <inheritdoc cref="IAppInfo.Name" />
     public static string Name => Current.Name;

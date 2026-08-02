@@ -48,5 +48,5 @@ class FileSystemImplementation : IFileSystem
         string.Join("_", path.Split(Path.GetInvalidFileNameChars()));
 
     static string AppSpecificPath =>
-        Path.Combine(CleanPath(PublisherInfo.Name), CleanPath(AppInfo.AppGuid));
+        Path.Combine(CleanPath(PublisherInfo.Name), CleanPath(AppInfo.AppId));
 }

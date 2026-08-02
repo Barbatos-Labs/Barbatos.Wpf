@@ -23,13 +23,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- AppInfo.AppGuid, PublisherInfo.Website, PublisherInfo.SupportUrl and
+    <!-- AppInfo.AppId, PublisherInfo.Website, PublisherInfo.SupportUrl and
          PublisherInfo.SupportEmail have no standard MSBuild-property equivalent, so they are
          set through the explicit Barbatos.Wpf.ApplicationModel.* assembly metadata override
-         instead. AppGuid is a real GUID here (not a reverse-DNS string) so it can double as
-         an Inno Setup/MSI-style installer's own AppId - see "Publishing with an installer"
-         in the root README.md. -->
-    <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}" />
+         instead. AppId is a GUID here (a plain string like "com.contoso.myapp" is equally
+         valid) so it can double as an MSI-style installer's own product code - see
+         "Publishing with an installer" in the root README.md. -->
+    <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppId" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}" />
+    <!-- If this sample were shipped through Inno Setup, AppInfo.InstallDate/InstallLocation
+         would need the line below: Inno Setup always appends "_is1" to its own AppId when
+         naming the uninstall registry key, and keeping the suffix out of AppId keeps it out of
+         the %LocalAppData% folder name too. Left commented out because the sample is run from
+         the IDE, never installed. -->
+    <!-- <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.UninstallRegistryKey" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}_is1" /> -->
     <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.Website" Value="https://github.com/Barbatos-Labs/Barbatos.Wpf" />
     <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportUrl" Value="https://github.com/Barbatos-Labs/Barbatos.Wpf/issues" />
     <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportEmail" Value="support@barbatos-labs.example" />

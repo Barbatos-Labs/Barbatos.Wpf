@@ -215,7 +215,7 @@ public sealed class FakeLauncher : ILauncher
 
 public sealed class FakeAppInfo : IAppInfo
 {
-    public string AppGuid { get; set; } = "test-app-guid";
+    public string AppId { get; set; } = "test-app-id";
 
     public string Name { get; set; } = "Test App";
 

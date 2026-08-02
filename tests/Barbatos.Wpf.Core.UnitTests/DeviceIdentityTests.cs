@@ -53,14 +53,14 @@ public class DeviceIdentityTests
     }
 
     [Fact]
-    public async Task GetHardwareFingerprintAsyncDoesNotContainRawAppGuidOrMachineName()
+    public async Task GetHardwareFingerprintAsyncDoesNotContainRawAppIdOrMachineName()
     {
         // The fingerprint is a one-way SHA-256 hash: none of its salted/hashed inputs
-        // (AppInfo.AppGuid, Environment.MachineName, or any raw hardware serial) should be
+        // (AppInfo.AppId, Environment.MachineName, or any raw hardware serial) should be
         // recoverable/visible in the output.
         var fingerprint = await DeviceIdentity.GetHardwareFingerprintAsync();
 
-        Assert.DoesNotContain(AppInfo.AppGuid, fingerprint, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(AppInfo.AppId, fingerprint, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(Environment.MachineName, fingerprint, StringComparison.OrdinalIgnoreCase);
     }
 

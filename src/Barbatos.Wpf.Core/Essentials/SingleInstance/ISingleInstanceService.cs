@@ -7,7 +7,7 @@ namespace Barbatos.Wpf.SingleInstance;
 
 /// <summary>
 /// Detects whether this process is the only running instance of the application, identified
-/// by <see cref="Barbatos.Wpf.ApplicationModel.IAppInfo.AppGuid"/>.
+/// by <see cref="Barbatos.Wpf.ApplicationModel.IAppInfo.AppId"/>.
 /// </summary>
 /// <remarks>
 /// This has no .NET MAUI counterpart (mobile platforms are inherently single-instance). By

@@ -48,10 +48,10 @@ class DeviceIdentityImplementation : IDeviceIdentity
         if (string.IsNullOrEmpty(hardwareValues))
             hardwareValues = Environment.MachineName;
 
-        // Salted with AppGuid so the resulting fingerprint is scoped to this app - like
+        // Salted with AppId so the resulting fingerprint is scoped to this app - like
         // Apple's IdentifierForVendor - instead of being directly comparable across unrelated
         // apps that happen to run on the same machine.
-        var salted = AppInfo.Current.AppGuid + "|" + hardwareValues;
+        var salted = AppInfo.Current.AppId + "|" + hardwareValues;
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(salted)));
     });

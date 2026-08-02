@@ -24,16 +24,37 @@ class AppInfoImplementation : IAppInfo
     const string PersonalizeKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
 
     // Computed once (not per-access, unlike the other properties above) since it involves
-    // several registry lookups; AppGuid itself never changes for the lifetime of the process.
+    // several registry lookups; AppId itself never changes for the lifetime of the process.
     readonly Lazy<(DateTime? InstallDate, string? InstallLocation)> _installedAppInfo;
 
     public AppInfoImplementation()
     {
-        _installedAppInfo = new(() => AppInfoUtils.ReadInstalledAppInfo(AppGuid));
+        _installedAppInfo = new(() => AppInfoUtils.ReadInstalledAppInfo(UninstallRegistryKey));
     }
 
-    public string AppGuid =>
-        _launchingAssembly?.GetAppInfoValue("AppGuid")
+    /// <summary>
+    /// The <c>...\Uninstall\</c> subkey name <see cref="InstallDate"/>/<see cref="InstallLocation"/>
+    /// are read from, defaulting to <see cref="AppId"/>.
+    /// </summary>
+    /// <remarks>
+    /// Installers do not all register themselves under the identifier the app knows itself by.
+    /// Inno Setup, for instance, always appends "_is1" to its own AppId and offers no way to
+    /// change that, so an app installed by it has to state the suffixed name here rather than
+    /// carry the suffix around in <see cref="AppId"/> (which would leak into the storage folder
+    /// name). Keeping this a separate, explicitly-configured value means this library never has
+    /// to guess installer-specific naming conventions.
+    /// </remarks>
+    string UninstallRegistryKey =>
+        _launchingAssembly?.GetAppInfoValue("UninstallRegistryKey") is { Length: > 0 } key
+            ? key
+            : AppId;
+
+    public string AppId =>
+        _launchingAssembly?.GetAppInfoValue("AppId")
+        // "AppGuid" was this key's original name; still honoured so apps that set it before
+        // the rename keep resolving to the same identifier (and therefore the same storage
+        // folder). Deprecated alongside IAppInfo.AppGuid.
+        ?? _launchingAssembly?.GetAppInfoValue("AppGuid")
         ?? _launchingAssembly?.GetCustomAttribute<AssemblyTitleAttribute>()?.Title
         ?? _launchingAssembly?.GetName().Name
         ?? string.Empty;
@@ -127,7 +148,7 @@ static class AppInfoUtils
     /// Gets the app info from this app's assembly metadata.
     /// </summary>
     /// <param name="assembly">The assembly to retrieve the app info for.</param>
-    /// <param name="name">The key of the metadata to be retrieved (e.g. AppGuid or Name).</param>
+    /// <param name="name">The key of the metadata to be retrieved (e.g. AppId or Name).</param>
     public static string? GetAppInfoValue(this Assembly assembly, string name) =>
         assembly.GetMetadataAttributeValue("Barbatos.Wpf.ApplicationModel.AppInfo." + name);
 
@@ -147,19 +168,20 @@ static class AppInfoUtils
 
     /// <summary>
     /// Reads <c>InstallDate</c>/<c>InstallLocation</c> from the Windows "Programs and
-    /// Features" uninstall registry entry for <paramref name="appGuid"/>, trying both the
-    /// bare-GUID subkey name (the MSI/WiX convention) and the "_is1" suffixed one (the Inno
-    /// Setup convention) across every registry hive/view combination an installer might use.
-    /// Returns <c>(null, null)</c> when <paramref name="appGuid"/> isn't a GUID, or no
-    /// matching entry is found.
+    /// Features" uninstall registry entry named <paramref name="uninstallKeyName"/>, across
+    /// every registry hive/view combination an installer might have used. The name is used
+    /// verbatim as the subkey name — no suffix is appended or guessed — except that a
+    /// GUID-shaped one is normalised to the braced <c>{...}</c> form the registry convention
+    /// uses. Returns <c>(null, null)</c> when no matching entry is found.
     /// </summary>
-    public static (DateTime? InstallDate, string? InstallLocation) ReadInstalledAppInfo(string appGuid)
+    public static (DateTime? InstallDate, string? InstallLocation) ReadInstalledAppInfo(string uninstallKeyName)
     {
-        if (!Guid.TryParse(appGuid, out var guid))
+        if (string.IsNullOrWhiteSpace(uninstallKeyName))
             return (null, null);
 
-        var braced = guid.ToString("B", CultureInfo.InvariantCulture);
-        var subKeyNames = new[] { braced + "_is1", braced };
+        var subKeyName = Guid.TryParse(uninstallKeyName, out var guid)
+            ? guid.ToString("B", CultureInfo.InvariantCulture)
+            : uninstallKeyName;
 
         try
         {
@@ -167,24 +189,21 @@ static class AppInfoUtils
             {
                 using var baseKey = RegistryKey.OpenBaseKey(hive, view);
 
-                foreach (var subKeyName in subKeyNames)
+                using var key = baseKey.OpenSubKey(UninstallKeyPath + subKeyName);
+                if (key is null)
+                    continue;
+
+                var installLocation = key.GetValue("InstallLocation") as string;
+
+                DateTime? installDate = null;
+                if (key.GetValue("InstallDate") is string installDateValue &&
+                    DateTime.TryParseExact(installDateValue, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
                 {
-                    using var key = baseKey.OpenSubKey(UninstallKeyPath + subKeyName);
-                    if (key is null)
-                        continue;
-
-                    var installLocation = key.GetValue("InstallLocation") as string;
-
-                    DateTime? installDate = null;
-                    if (key.GetValue("InstallDate") is string installDateValue &&
-                        DateTime.TryParseExact(installDateValue, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
-                    {
-                        installDate = parsedDate;
-                    }
-
-                    if (installDate is not null || !string.IsNullOrEmpty(installLocation))
-                        return (installDate, string.IsNullOrEmpty(installLocation) ? null : installLocation);
+                    installDate = parsedDate;
                 }
+
+                if (installDate is not null || !string.IsNullOrEmpty(installLocation))
+                    return (installDate, string.IsNullOrEmpty(installLocation) ? null : installLocation);
             }
         }
         catch

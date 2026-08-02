@@ -31,7 +31,7 @@ public interface IDeviceIdentity
 
     /// <summary>
     /// Gets a stable hash derived from a few motherboard/BIOS/CPU identifiers (read via WMI)
-    /// and salted with <see cref="IAppInfo.AppGuid"/>, so the result is scoped to this specific
+    /// and salted with <see cref="IAppInfo.AppId"/>, so the result is scoped to this specific
     /// app — like Apple's <c>IdentifierForVendor</c> — rather than being a single hardware ID
     /// usable to correlate the same machine across unrelated apps. The underlying serial
     /// numbers are never stored or returned in raw form, only as a one-way SHA-256 hash.

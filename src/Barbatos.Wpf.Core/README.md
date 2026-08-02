@@ -257,7 +257,7 @@ container by `UseEssentials()`, part of the builder defaults:
 | Publisher info | `PublisherInfo` | `IPublisherInfo` | Assembly metadata, falling back to `AssemblyCompanyAttribute` |
 | Device identity | `DeviceIdentity` | `IDeviceIdentity` | See [License enforcement: DeviceIdentity](#license-enforcement-deviceidentity) below — a desktop-specific addition |
 | Device info | `DeviceInfo` | `IDeviceInfo` | BIOS registry (`Model`/`Manufacturer`); a Chromium-style tablet-mode heuristic for `Idiom` |
-| File system | `FileSystem` | `IFileSystem` | `%LocalAppData%\{Publisher}\{AppGuid}\{Data,Cache}`, created on first access |
+| File system | `FileSystem` | `IFileSystem` | `%LocalAppData%\{Publisher}\{AppId}\{Data,Cache}`, created on first access |
 | Preferences | `Preferences` | `IPreferences` | A local JSON file, guarded by a lock around file I/O |
 | Secure storage | `SecureStorage` | `ISecureStorage` | DPAPI (`ProtectedData`, current-user scope) instead of the WinRT `DataProtectionProvider` |
 | Version tracking | `VersionTracking` | `IVersionTracking` | Pure C#, no platform-specific code (built on `Preferences` + `AppInfo`) |
@@ -287,7 +287,7 @@ await Launcher.OpenAsync("https://example.com");
 `AppInfo` and `PublisherInfo` never require any setup — their fallback chains always resolve
 to *something* — but you should configure them explicitly for any app you plan to ship,
 because `FileSystem.AppDataDirectory` and `FileSystem.CacheDirectory` are derived from
-`PublisherInfo.Name` and `AppInfo.AppGuid` (`%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppGuid}\...`).
+`PublisherInfo.Name` and `AppInfo.AppId` (`%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppId}\...`).
 
 This library targets .NET 8+ SDK-style projects only, so configuration is a plain
 `<PropertyGroup>` in the csproj — the same well-known properties Visual Studio's *Project ▸
@@ -321,7 +321,7 @@ need:
 | `PublisherInfo.Name` | `AssemblyCompanyAttribute` | `<Company>` |
 | `PublisherInfo.Copyright` | `AssemblyCopyrightAttribute` | `<Copyright>` |
 
-`AppInfo.AppGuid` and `PublisherInfo.Website`/`SupportUrl`/`SupportEmail` have no standard
+`AppInfo.AppId` and `PublisherInfo.Website`/`SupportUrl`/`SupportEmail` have no standard
 MSBuild-property equivalent — there is no built-in "app id"/"website"/"support URL"/"support
 email" assembly attribute at all. For
 those (or to override any of the properties above with a value that differs from
@@ -330,16 +330,22 @@ metadata directly — it is always checked *before* the standard fallback:
 
 ```xml
 <ItemGroup>
-  <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}" />
+  <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppId" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}" />
   <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.Website" Value="https://contoso.example" />
   <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportUrl" Value="https://contoso.example/support" />
   <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.PublisherInfo.SupportEmail" Value="support@contoso.example" />
 </ItemGroup>
 ```
 
+`AppId` does not have to be a GUID — `com.contoso.myapp` or `Contoso.MyApp` work just as
+well. Use a GUID when you want it to double as an MSI product code (see
+[Publishing with an installer](#publishing-with-an-installer)); use a readable string
+otherwise, since it also becomes the app's storage folder name.
+
 | Property | Metadata key (explicit override) |
 | --- | --- |
-| `AppInfo.AppGuid` | `Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid` |
+| `AppInfo.AppId` | `Barbatos.Wpf.ApplicationModel.AppInfo.AppId` |
+| *(the `Uninstall` subkey `AppInfo.InstallDate`/`InstallLocation` read from)* | `Barbatos.Wpf.ApplicationModel.AppInfo.UninstallRegistryKey` *(defaults to `AppId` — see [Reading back InstallDate and InstallLocation](#reading-back-installdate-and-installlocation))* |
 | `AppInfo.Name` | `Barbatos.Wpf.ApplicationModel.AppInfo.Name` |
 | `AppInfo.Version`/`VersionString` | `Barbatos.Wpf.ApplicationModel.AppInfo.Version` |
 | `PublisherInfo.Name` | `Barbatos.Wpf.ApplicationModel.PublisherInfo.Name` |
@@ -358,13 +364,19 @@ var publisher = PublisherInfo.Name;
 var copyright = PublisherInfo.Copyright;
 ```
 
-> **Important:** `AppInfo.AppGuid` (not a store package identifier on this platform — it is
+> **Important:** `AppInfo.AppId` (not a store package identifier on this platform — it is
 > simply the stable identifier used to derive the app's storage folder) should stay constant
 > across releases. Changing it after
 > shipping moves `Preferences`, `SecureStorage`, and `FileSystem.AppDataDirectory` to a new
 > folder, effectively discarding every existing user's stored data. If you ship an installer,
-> set it to a real GUID matching the installer's own application identifier — see
+> consider matching it to the installer's own application identifier — see
 > [Publishing with an installer](#publishing-with-an-installer) below.
+>
+> **`AppGuid` is deprecated:** this property used to be called `AppInfo.AppGuid`, back when it
+> was expected to always hold a GUID. `AppGuid` (and the
+> `Barbatos.Wpf.ApplicationModel.AppInfo.AppGuid` metadata key) still resolve to the exact same
+> value, so nothing breaks and no storage folder moves — but the property is marked
+> `[Obsolete]` and will be removed in a future release. Rename both to `AppId` when convenient.
 >
 > **Multi-project solutions:** `<Product>`/`<Company>`/`<Copyright>` are easy to accidentally
 > set in a shared `Directory.Build.props` — every app in the solution would then report the
@@ -380,9 +392,9 @@ tooling already understands. For [Inno Setup](https://jrsoftware.org/isinfo.php)
 specifically (the same mapping applies to WiX/MSI, which uses the identical Windows
 `Uninstall` registry convention):
 
-| `[Setup]` directive | Registry value under `...\Uninstall\{AppId}_is1` | Barbatos.Wpf.Core source |
+| `[Setup]` directive | Registry value under the installer's `Uninstall` key | Barbatos.Wpf.Core source |
 | --- | --- | --- |
-| `AppId` | *(the key name itself)* | `AppInfo.AppGuid` — **use the same GUID for both**, see the note above |
+| `AppId` | *(the key name itself, **plus `_is1`** — see below)* | `AppInfo.AppId`, plus the `...AppInfo.UninstallRegistryKey` metadata key for the suffixed form — see [Reading back InstallDate and InstallLocation](#reading-back-installdate-and-installlocation) |
 | `AppName` | `DisplayName` | `AppInfo.Name` (`<Product>`) |
 | `AppVersion` | `DisplayVersion` | `AppInfo.VersionString` (`<Version>`) |
 | `AppPublisher` | `Publisher` | `PublisherInfo.Name` (`<Company>`) |
@@ -392,7 +404,7 @@ specifically (the same mapping applies to WiX/MSI, which uses the identical Wind
 
 ```pascal
 ; setup.iss
-#define AppGUID "C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D"   ; matches AppInfo.AppGuid, without braces
+#define AppGUID "C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D"   ; matches AppInfo.AppId, without braces
 #define Publisher "Contoso"                              ; matches PublisherInfo.Name
 #define AppName "My App"                                 ; matches AppInfo.Name
 
@@ -415,25 +427,49 @@ AppPublisher={#Publisher}
 ### Reading back InstallDate and InstallLocation
 
 `AppInfo.InstallDate` and `AppInfo.InstallLocation` read the *installed copy's* own uninstall
-registry entry (the one from the table above) back — the same entry `AppInfo.AppGuid` is
-recommended to match:
+registry entry (the one from the table above) back:
 
 ```csharp
 var when = AppInfo.InstallDate;         // DateTime? — null if not found
 var where = AppInfo.InstallLocation;    // string? — null if not found
 ```
 
-Both try every plausible location an installer might have used: `HKEY_LOCAL_MACHINE` (a
-machine-wide install) and `HKEY_CURRENT_USER` (a per-user install, e.g. Inno Setup's
-`PrivilegesRequired=lowest`), each in both the 64-bit and 32-bit registry view (the 32-bit
-view transparently redirects to `WOW6432Node`), trying both the bare-GUID subkey name (the
-MSI/WiX convention) and the `_is1`-suffixed one (the Inno Setup convention). They resolve to
-`null` — never throw — whenever:
+The subkey looked up is `...\Uninstall\{AppInfo.AppId}` by default, using the name **verbatim**
+— no suffix is appended or guessed (a GUID-shaped name is normalised to the braced `{...}` form
+the registry convention uses, so `C6BB…` and `{C6BB…}` both work). Both properties try every
+plausible location an installer might have used: `HKEY_LOCAL_MACHINE` (a machine-wide install)
+and `HKEY_CURRENT_USER` (a per-user install, e.g. Inno Setup's `PrivilegesRequired=lowest`),
+each in both the 64-bit and 32-bit registry view (the 32-bit view transparently redirects to
+`WOW6432Node`). They resolve to `null` — never throw — when no entry of that exact name exists
+anywhere, which includes the ordinary "not installed through an installer yet" case (running
+from the IDE/`dotnet run`).
 
-- `AppInfo.AppGuid` isn't a valid GUID (the common case for an app that never overrode it —
-  see the note above), or
-- the app hasn't actually been installed through a matching installer yet (running from the
-  IDE/`dotnet run`, or a different `AppId` than what `AppInfo.AppGuid` reports).
+When your installer registers itself under a name that *isn't* `AppId`, point the lookup at the
+real name with the `UninstallRegistryKey` metadata key instead — `AppId` stays clean, and this
+library never has to guess installer-specific naming conventions:
+
+```xml
+<AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppId" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}" />
+<AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.UninstallRegistryKey" Value="{C6BB69DE-7E6B-43E3-83AD-AC46E1B0570D}_is1" />
+```
+
+> **Inno Setup users, this is you.** Inno Setup does not name its uninstall key after its
+> `AppId` directly — it appends `_is1` and offers no directive to change or remove that suffix
+> (`AppId=MyProgram` → `...\Uninstall\MyProgram_is1`; if you never set `AppId` it defaults to
+> `AppName`). This has been its behaviour since version 1.3. So an Inno-installed app needs the
+> `UninstallRegistryKey` override above — set it to your `AppId` plus `_is1`.
+>
+> Putting the suffix here rather than in `AppInfo.AppId` matters: `AppId` also becomes the
+> storage folder name (`%LocalAppData%\{Publisher}\{AppId}\`), and it can never be changed after
+> shipping without stranding every existing user's stored data.
+>
+> Source: the `[Setup]: AppId` and `[Setup]: CreateUninstallRegKey` topics in `ISetup.chm`,
+> shipped with Inno Setup itself
+> ([help source](https://github.com/jrsoftware/issrc/blob/is-6_4_3/ISHelp/isetup.xml),
+> [web version](https://jrsoftware.org/ishelp/topic_setup_appid.htm)).
+
+MSI/WiX needs no override: its uninstall key *is* the product code, so setting `AppInfo.AppId`
+to that GUID is all it takes.
 
 Other fields the installer's uninstall entry carries — `EstimatedSize`, `DisplayIcon`,
 `NoModify`/`NoRepair`, the `Inno Setup: *` bookkeeping keys — describe the *installed copy*
@@ -551,7 +587,7 @@ string fingerprint = await DeviceIdentity.GetHardwareFingerprintAsync();
 | Member | What it is | Survives reinstall? |
 | --- | --- | --- |
 | `GetInstanceIdAsync()` | A random GUID generated on first use, persisted via `SecureStorage`. Identifies "this install", not the physical machine. | No |
-| `GetHardwareFingerprintAsync()` | A SHA-256 hash of a few motherboard/BIOS/CPU identifiers (read via WMI), salted with `AppInfo.AppGuid`. | Yes |
+| `GetHardwareFingerprintAsync()` | A SHA-256 hash of a few motherboard/BIOS/CPU identifiers (read via WMI), salted with `AppInfo.AppId`. | Yes |
 
 Two design choices keep this narrower than the raw hardware-ID approach a lot of licensing
 code reaches for by default:
@@ -559,7 +595,7 @@ code reaches for by default:
 - **The hardware serials themselves are never stored or transmitted** — only a one-way
   SHA-256 hash of them. Your license server can tell "this is the same machine as last time"
   without ever holding a reversible hardware identifier.
-- **The hash is salted with `AppInfo.AppGuid`**, so it's scoped to *this app* — the same
+- **The hash is salted with `AppInfo.AppId`**, so it's scoped to *this app* — the same
   machine produces a different fingerprint for a different app, the same way Apple's
   `IdentifierForVendor` is scoped to a developer rather than being a single ID usable to
   correlate a device across unrelated apps.
@@ -640,7 +676,7 @@ And from a configuration file:
 
 Notes:
 
-- **Single instance** is keyed by `AppInfo.AppGuid` (see
+- **Single instance** is keyed by `AppInfo.AppId` (see
   [Configuring AppInfo and PublisherInfo](#configuring-appinfo-and-publisherinfo)) via a
   named `Mutex`, scoped to the current user's session (not machine-wide). A second launch
   detects the running instance during `Build()` — *before any window is created* — signals

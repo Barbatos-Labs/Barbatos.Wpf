@@ -80,10 +80,10 @@ public class GreetingService : IGreetingService
         $"Application: {_environment.ApplicationName} | Environment: {_environment.EnvironmentName} | Content root: {_environment.ContentRootPath}";
 
     public string GetAppDeviceDescription() =>
-        $"App: {_appInfo.Name} v{_appInfo.VersionString} [{_appInfo.AppGuid}] ({_appInfo.PackagingModel}, {_appInfo.RequestedTheme} theme) | " +
+        $"App: {_appInfo.Name} v{_appInfo.VersionString} [{_appInfo.AppId}] ({_appInfo.PackagingModel}, {_appInfo.RequestedTheme} theme) | " +
         $"Device: {_deviceInfo.Manufacturer} {_deviceInfo.Model} \"{_deviceInfo.Name}\" ({_deviceInfo.Platform}, {_deviceInfo.Idiom}, {_deviceInfo.DeviceType}, OS {_deviceInfo.VersionString})";
 
-    // Only resolves once an installer (matching this app's AppGuid) has actually run on this
+    // Only resolves once an installer (matching this app's AppId) has actually run on this
     // machine - see "Publishing with an installer" in the root README.md. Always null when
     // launched from the IDE/dotnet run, which is the expected case for this sample.
     public string GetInstallInfoDescription() =>
@@ -91,8 +91,8 @@ public class GreetingService : IGreetingService
             ? $"Installed: {installDate:yyyy-MM-dd} at {_appInfo.InstallLocation ?? "(unknown location)"}"
             : "Installed: (not installed through a matching installer - AppInfo.InstallDate/InstallLocation are null)";
 
-    // AppInfo.Name/AppGuid and PublisherInfo.Name/Copyright come from the standard <Product>/
-    // <Company>/<Version>/<Copyright> csproj properties; AppInfo.AppGuid and
+    // AppInfo.Name/Version and PublisherInfo.Name/Copyright come from the standard <Product>/
+    // <Company>/<Version>/<Copyright> csproj properties; AppInfo.AppId and
     // PublisherInfo.Website/SupportEmail have no standard equivalent, so they come from the
     // explicit Barbatos.Wpf.ApplicationModel.* assembly metadata instead — see this sample's
     // .csproj and "Configuring AppInfo and PublisherInfo" in the root README.md.
@@ -128,6 +128,6 @@ public class GreetingService : IGreetingService
         var instanceId = await _deviceIdentity.GetInstanceIdAsync();
         var fingerprint = await _deviceIdentity.GetHardwareFingerprintAsync();
 
-        return $"InstanceId (resets on reinstall): {instanceId} | HardwareFingerprint (survives reinstall, salted with AppGuid): {fingerprint}";
+        return $"InstanceId (resets on reinstall): {instanceId} | HardwareFingerprint (survives reinstall, salted with AppId): {fingerprint}";
     }
 }

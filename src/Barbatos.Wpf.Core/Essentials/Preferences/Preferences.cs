@@ -244,7 +244,7 @@ public static class Preferences
     static IPreferences Current => Default;
 
     internal static string GetPrivatePreferencesSharedName(string feature) =>
-        $"{AppInfo.Current.AppGuid}.barbatos.wpf.essentials.{feature}";
+        $"{AppInfo.Current.AppId}.barbatos.wpf.essentials.{feature}";
 
     static IPreferences? defaultImplementation;
 

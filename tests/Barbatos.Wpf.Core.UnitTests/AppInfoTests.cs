@@ -25,9 +25,18 @@ public class AppInfoTests
     }
 
     [Fact]
-    public void AppGuidIsNotEmpty()
+    public void AppIdIsNotEmpty()
     {
-        Assert.False(string.IsNullOrEmpty(AppInfo.AppGuid));
+        Assert.False(string.IsNullOrEmpty(AppInfo.AppId));
+    }
+
+    [Fact]
+    public void ObsoleteAppGuidStillForwardsToAppId()
+    {
+#pragma warning disable CS0618 // AppGuid is obsolete — that is exactly what this test covers.
+        Assert.Equal(AppInfo.AppId, AppInfo.AppGuid);
+        Assert.Equal(AppInfo.AppId, AppInfo.Current.AppGuid);
+#pragma warning restore CS0618
     }
 
     [Fact]
@@ -65,16 +74,16 @@ public class AppInfoTests
     }
 
     [Fact]
-    public void InstallDateIsNullWhenAppGuidIsNotARealGuid()
+    public void InstallDateIsNullWhenThereIsNoMatchingUninstallEntry()
     {
-        // The test host's AppGuid falls back to the assembly title/name (not a GUID), so
-        // there is no matching "...\Uninstall\{AppGuid}" registry entry to read from — this
-        // is also the common case for any app that never overrode AppGuid to a real GUID.
+        // The test host's AppId falls back to the assembly title/name, and nothing ever
+        // installed a "...\Uninstall\{AppId}" registry entry under that name — this is also
+        // the common case for any app that runs from the IDE rather than an installer.
         Assert.Null(AppInfo.InstallDate);
     }
 
     [Fact]
-    public void InstallLocationIsNullWhenAppGuidIsNotARealGuid()
+    public void InstallLocationIsNullWhenThereIsNoMatchingUninstallEntry()
     {
         Assert.Null(AppInfo.InstallLocation);
     }
