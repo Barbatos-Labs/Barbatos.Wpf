@@ -31,6 +31,13 @@ public static partial class AppHostBuilderExtensions
     /// <see cref="IAiSessionStore"/> persists those conversations across app restarts. Both
     /// layers stay available - see <see cref="IAiAgentFactory"/>'s own remarks for which to use
     /// when.
+    /// <para>
+    /// OAuth for HTTP servers is wired up here too: <see cref="IMcpAuthorizationHandler"/>
+    /// (browser + loopback redirect by default) and <see cref="IMcpTokenStore"/>
+    /// (DPAPI-encrypted <c>SecureStorage</c> by default) are registered with
+    /// <c>TryAddSingleton</c>, so registering your own before this call replaces them. Neither is
+    /// used unless a server sets <see cref="McpServerDescriptor.OAuth"/>.
+    /// </para>
     /// </remarks>
     public static WpfAppBuilder ConfigureMcp(
         this WpfAppBuilder builder,
@@ -54,6 +61,8 @@ public static partial class AppHostBuilderExtensions
         agentOptions.Bind(builder.Configuration.GetSection(AiAgentOptions.SectionName));
 
         builder.Services.TryAddSingleton<IAiApiKeyProvider, SecureStorageAiApiKeyProvider>();
+        builder.Services.TryAddSingleton<IMcpAuthorizationHandler, BrowserMcpAuthorizationHandler>();
+        builder.Services.TryAddSingleton<IMcpTokenStore, SecureStorageMcpTokenStore>();
         builder.Services.TryAddSingleton<IMcpServerRegistry, McpServerRegistry>();
         builder.Services.TryAddSingleton<IAiChatClientFactory, AiChatClientFactory>();
         builder.Services.TryAddSingleton<IAiChatService, AiChatService>();

@@ -328,6 +328,9 @@ public sealed class FakeMcpServerRegistry : IMcpServerRegistry
     public Task<bool> RemoveServerAsync(string name, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException($"{nameof(FakeMcpServerRegistry)} only exposes {nameof(Tools)} directly.");
 
+    public Task<bool> SignOutAsync(string name, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException($"{nameof(FakeMcpServerRegistry)} only exposes {nameof(Tools)} directly.");
+
     public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

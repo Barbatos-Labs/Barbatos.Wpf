@@ -40,8 +40,11 @@ public interface IMcpServerRegistry : IAsyncDisposable
     IReadOnlyList<AITool> Tools { get; }
 
     /// <summary>
-    /// Occurs whenever <see cref="Servers"/> changes - a server was added, removed, connected, or
-    /// failed to connect.
+    /// Occurs whenever <see cref="Servers"/> changes - a server was added, removed, connected,
+    /// failed to connect, or dropped off on its own (a stdio server process that exited, an HTTP
+    /// session the server tore down). Raised on whichever thread caused the change, which for a
+    /// server dropping off is a background thread - marshal to the UI thread before touching
+    /// bindings.
     /// </summary>
     event EventHandler? Changed;
 
@@ -65,6 +68,22 @@ public interface IMcpServerRegistry : IAsyncDisposable
     /// with that name is currently tracked.
     /// </summary>
     Task<bool> RemoveServerAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Discards any OAuth tokens stored for the named server (see <see cref="IMcpTokenStore"/>),
+    /// so the next connection sends the end user through the browser consent flow again - the
+    /// "sign out of this server" action a settings UI needs. Returns <see langword="false"/> if
+    /// nothing was stored for that name.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately independent of <see cref="RemoveServerAsync"/>: this only forgets the
+    /// credentials and leaves a connected server connected on its existing token, because the
+    /// common case is letting a user switch accounts without also losing the server entry they
+    /// configured. Call <see cref="RemoveServerAsync"/> too if the connection should drop now.
+    /// Works for a name that is not currently tracked, so tokens can also be cleaned up for a
+    /// server that has already been removed.
+    /// </remarks>
+    Task<bool> SignOutAsync(string name, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -80,12 +99,20 @@ public sealed class McpServerStatus
     /// <summary>This server's unique name, matching <see cref="McpServerDescriptor.Name"/>.</summary>
     public string Name { get; }
 
-    /// <summary>Whether this server is currently connected.</summary>
+    /// <summary>
+    /// Whether this server is currently connected. Flips back to <see langword="false"/> on its
+    /// own if the session ends without <see cref="IMcpServerRegistry.RemoveServerAsync"/> being
+    /// called - a stdio server process that crashed or exited, or an HTTP session the server tore
+    /// down - with <see cref="LastError"/> set and <see cref="IMcpServerRegistry.Changed"/> raised.
+    /// </summary>
     public bool IsConnected { get; internal set; }
 
     /// <summary>
-    /// The error message from the most recent failed connection attempt, or
-    /// <see langword="null"/> if the last attempt succeeded (or none has been made yet).
+    /// The error message from the most recent failed connection attempt or unexpected
+    /// disconnection, or <see langword="null"/> if the last attempt succeeded (or none has been
+    /// made yet). For a stdio server this includes the child process's exit code and the tail of
+    /// its standard error, which is usually the real explanation behind an otherwise opaque
+    /// transport failure.
     /// </summary>
     public string? LastError { get; internal set; }
 

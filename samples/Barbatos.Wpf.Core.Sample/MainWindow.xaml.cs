@@ -91,6 +91,14 @@ public partial class MainWindow : Window
     void SendAiChatMessageButton_Click(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).SendAiChatMessage();
 
+    // Adding a hosted, OAuth-protected MCP server at runtime. The browser opens during the first
+    // connect; after that the stored tokens make it silent.
+    void ConnectMcpOAuthServerButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).ConnectMcpOAuthServer();
+
+    void SignOutMcpOAuthServerButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).SignOutMcpOAuthServer();
+
     void AiChatInputTextBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)

@@ -149,6 +149,61 @@ public class McpFeatureTests
     }
 
     [Fact]
+    public void DescriptorDefaultsMatchTheMcpSdkDefaults()
+    {
+        var descriptor = new McpServerDescriptor();
+
+        Assert.True(descriptor.InheritEnvironmentVariables);
+        Assert.Empty(descriptor.EnvironmentVariables);
+        Assert.Equal(McpHttpTransportMode.AutoDetect, descriptor.HttpTransportMode);
+    }
+
+    [Fact]
+    public void EnvironmentVariablesTakeANullValueToWithholdAnInheritedVariable()
+    {
+        // Also pins the nested-initializer syntax the README documents, since EnvironmentVariables
+        // is get-only like Arguments/AdditionalHeaders.
+        var descriptor = new McpServerDescriptor
+        {
+            Name = "env",
+            TransportKind = McpTransportKind.Stdio,
+            Command = "dotnet",
+            EnvironmentVariables = { ["API_TOKEN"] = "secret", ["AWS_SECRET_ACCESS_KEY"] = null },
+        };
+
+        Assert.Equal("secret", descriptor.EnvironmentVariables["API_TOKEN"]);
+        Assert.Null(descriptor.EnvironmentVariables["AWS_SECRET_ACCESS_KEY"]);
+        Assert.Null(Record.Exception(descriptor.Validate));
+    }
+
+    [Fact]
+    public async Task LastErrorCarriesTheStdioServerExitCodeAndStandardError()
+    {
+        var registry = BuildRegistry();
+        var descriptor = new McpServerDescriptor
+        {
+            Name = "exits-immediately",
+            TransportKind = McpTransportKind.Stdio,
+            // A "server" that launches successfully, writes a diagnostic to stderr the way a real
+            // misconfigured server does, then exits - so the connection fails at the MCP handshake
+            // rather than at process start. That is the case where the 2.x SDK's structured
+            // ClientTransportClosedException.Details earns its keep: without it the message is a
+            // bare "transport closed" with no hint of why.
+            Command = "cmd.exe",
+            Arguments = { "/c", "echo BARBATOS_STDERR_MARKER 1>&2 & exit 3" },
+        };
+
+        var exception = await Assert.ThrowsAnyAsync<Exception>(() => registry.AddServerAsync(descriptor));
+
+        var status = Assert.Single(registry.Servers);
+        Assert.False(status.IsConnected);
+        Assert.NotNull(status.LastError);
+        Assert.Contains("BARBATOS_STDERR_MARKER", status.LastError);
+        Assert.Contains("exited with code 3", status.LastError);
+        Assert.IsType<ModelContextProtocol.Client.ClientTransportClosedException>(exception);
+    }
+
+    [Fact]
     public async Task GetChatClientAsyncThrowsWhenModelIsMissing()
     {
         var builder = WpfApp.CreateBuilder();

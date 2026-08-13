@@ -1432,6 +1432,11 @@ builder.ConfigureMcp(
         TransportKind = McpTransportKind.Stdio,
         Command = "dotnet",
         Arguments = { "dnx", "NuGet.Mcp.Server", "--version", "1.4.16", "--yes" },
+        // Most real servers are configured through the environment, like the `env` block of a
+        // Claude Desktop/Cursor server entry. Set InheritEnvironmentVariables = false to start
+        // the server with an empty environment instead, so none of this process's own secrets
+        // reach a third-party server binary.
+        EnvironmentVariables = { ["NUGET_SOURCE"] = "https://api.nuget.org/v3/index.json" },
     }),
     configureProvider: options =>
     {
@@ -1460,10 +1465,56 @@ var response = await aiChatService.GetResponseAsync([new ChatMessage(ChatRole.Us
 Console.WriteLine(response.Text);
 ```
 
+### Hosted servers that need a sign-in (OAuth)
+
+The interesting MCP servers are hosted ones - your issue tracker, your notes, your repos - and
+those want the end user to sign in rather than paste a token. `McpServerDescriptor.OAuth` turns on
+the full MCP authorization flow, and because everything in it is discoverable, an empty options
+object is genuinely all most servers need:
+
+```csharp
+await mcpServerRegistry.AddServerAsync(new McpServerDescriptor
+{
+    Name = "Linear",
+    TransportKind = McpTransportKind.Http,
+    Endpoint = "https://mcp.example.com/mcp",
+    OAuth = new McpOAuthOptions(),   // discovered: auth server, scopes, client registration
+});
+```
+
+That single call gets the server's `401` challenge, finds its authorization server, registers this
+app as an OAuth client (no client ID to provision by hand), opens the **user's real browser** for
+consent, catches the redirect on a loopback port, and exchanges the code - the OAuth 2.1 / RFC 8252
+native-app flow, so your app never handles the user's password. The tokens are then persisted
+DPAPI-encrypted, so the next app start reconnects without asking again.
+
+Fill properties in only where a particular server forces you to - `ClientId` for one that has no
+dynamic registration, `Scopes` for one that publishes none, `RedirectUri` for one that demands a
+fixed registered URL. Two seams are swappable by registering your own before `ConfigureMcp()`:
+
+| Type | Default | Replace it when |
+| --- | --- | --- |
+| `IMcpAuthorizationHandler` | `BrowserMcpAuthorizationHandler` - system browser + loopback listener | you want consent in an embedded WebView2 window instead of the user's browser |
+| `IMcpTokenStore` | `SecureStorageMcpTokenStore` - DPAPI, current-user scope | tokens belong in Credential Manager or a key vault |
+
+```csharp
+// "Sign out of this server": forget the tokens so the next connect asks again. Independent of
+// RemoveServerAsync, so a user can switch accounts without losing the server entry.
+await mcpServerRegistry.SignOutAsync("Linear");
+
+// Denied consent, a closed browser tab, or a timeout arrives as McpAuthorizationException -
+// an ordinary outcome to report, not a crash. It also lands in McpServerStatus.LastError.
+```
+
+The sample's "AI Chat + MCP" tab has this wired to a text box and two buttons, so you can point it
+at a real hosted server and watch the whole round trip.
+
 | Type | Role |
 | --- | --- |
-| `IMcpServerRegistry` | Connects to MCP servers (stdio child process or HTTP), aggregates their tools. Runtime-mutable (`AddServerAsync`/`RemoveServerAsync`), not just a fixed config list - build your own "add an MCP server" settings UI on top if your app should let the end user do that themselves, the same way Claude Desktop/Cursor do. |
+| `IMcpServerRegistry` | Connects to MCP servers (stdio child process or HTTP), aggregates their tools. Runtime-mutable (`AddServerAsync`/`RemoveServerAsync`/`SignOutAsync`), not just a fixed config list - build your own "add an MCP server" settings UI on top if your app should let the end user do that themselves, the same way Claude Desktop/Cursor do. |
 | `IAiApiKeyProvider` | Resolves/stores the end user's own API key, keyed per provider string (case-insensitively) so switching providers never loses a different provider's key. The default implementation is `SecureStorage`-backed; swap in Credential Manager/a key vault by registering your own before calling `ConfigureMcp`. |
+| `IMcpAuthorizationHandler` | The interactive half of a server's OAuth flow - sends the user to consent and returns what the authorization server redirects back. Defaults to the system browser plus a loopback listener; see "Hosted servers that need a sign-in" above. |
+| `IMcpTokenStore` | Persists each server's OAuth tokens (DPAPI-encrypted by default) so a consented server reconnects silently after a restart. `IMcpServerRegistry.SignOutAsync` is what clears them. |
 | `IAiChatClientFactory` | The "which provider" seam (structurally the same role `IPushNotificationTransport` plays for push notifications) - builds/caches the `Microsoft.Extensions.AI.IChatClient` for whichever provider/model is currently selected. Inject this directly instead of `IAiChatService` if you want a raw chat client with no MCP tools merged in. |
 | `IAiChatService` | The one-shot facade - merges every connected server's tools into `ChatOptions.Tools` automatically before delegating to `IAiChatClientFactory`, so callers never wire MCP tools in by hand. `GetResponseAsync`/`GetStreamingResponseAsync`. No memory between calls, and tools run without asking. |
 | `IAiAgentFactory` | The agent layer (see below) - builds a Microsoft Agent Framework `AIAgent` over the same provider and the same MCP servers, adding conversation memory and end-user tool approval. |

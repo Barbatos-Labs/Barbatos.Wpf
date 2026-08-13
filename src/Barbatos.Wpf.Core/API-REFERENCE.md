@@ -1313,26 +1313,96 @@ Connects to MCP servers and aggregates their tools.
 - **`Tools`** (`IReadOnlyList<Microsoft.Extensions.AI.AITool>`) — aggregated from every
   currently-connected server; if two servers expose a same-named tool, the most recently
   connected one wins (logged as a warning).
-- **`Changed`** (`event EventHandler`)
+- **`Changed`** (`event EventHandler`) — a server was added, removed, connected, failed to
+  connect, or dropped off on its own. Raised on whichever thread caused the change, which for a
+  server dropping off is a background thread.
 - **`AddServerAsync(McpServerDescriptor, CancellationToken = default)`** → `Task<McpServerStatus>`
   — throws `InvalidOperationException` for a descriptor that fails its own
   `McpServerDescriptor.Validate()`, `ArgumentException` for a duplicate `Name` (mirrors
   `IPeriodicServiceScheduler.Register`'s exception split). A connection failure is both recorded
   on the returned/tracked `McpServerStatus` and rethrown.
 - **`RemoveServerAsync(string name, CancellationToken = default)`** → `Task<bool>`
+- **`SignOutAsync(string name, CancellationToken = default)`** → `Task<bool>` — discards the
+  server's stored OAuth tokens (see `IMcpTokenStore`) so the next connect re-prompts. Independent
+  of `RemoveServerAsync`: it forgets credentials without dropping the connection, so a user can
+  switch accounts without losing the server entry. Works for a name that is no longer tracked.
 
-### `McpServerDescriptor` / `McpTransportKind` / `McpServerStatus`
+### `McpServerDescriptor` / `McpTransportKind` / `McpHttpTransportMode` / `McpServerStatus`
 
 - **`McpServerDescriptor`**: **`Name`** (`string?`, required), **`TransportKind`**
-  (`McpTransportKind`, default `Stdio`), **`Command`**/**`Arguments`**/**`WorkingDirectory`**
-  (stdio), **`Endpoint`**/**`AdditionalHeaders`** (http). **`Validate()`** checks internal
-  consistency for the current `TransportKind` without attempting a connection (throws
-  `InvalidOperationException`) - the same role `PeriodicSchedule.Validate()` plays, usable to
-  check a server entry from a settings UI before saving/connecting it.
+  (`McpTransportKind`, default `Stdio`), **`Command`**/**`Arguments`**/**`WorkingDirectory`**/
+  **`EnvironmentVariables`**/**`InheritEnvironmentVariables`** (stdio),
+  **`Endpoint`**/**`AdditionalHeaders`**/**`HttpTransportMode`**/**`OAuth`** (http).
+  **`Validate()`** checks internal consistency for the current `TransportKind` without attempting
+  a connection (throws `InvalidOperationException`) - the same role `PeriodicSchedule.Validate()`
+  plays, usable to check a server entry from a settings UI before saving/connecting it.
+  - **`EnvironmentVariables`** (`IDictionary<string, string?>`) is applied on top of what
+    **`InheritEnvironmentVariables`** (default `true`) lets through; a `null` value *removes* an
+    inherited variable, so one secret can be withheld from one server without giving up
+    inheritance entirely.
 - **`McpTransportKind`**: **`Stdio`** (a local child process, `ModelContextProtocol.Client.StdioClientTransport`),
   **`Http`** (Streamable HTTP with SSE fallback, `ModelContextProtocol.Client.HttpClientTransport`).
+- **`McpHttpTransportMode`**: **`AutoDetect`** (default — probe Streamable HTTP, fall back to
+  SSE), **`StreamableHttp`**, **`Sse`**.
 - **`McpServerStatus`**: **`Name`** (`string`), **`IsConnected`** (`bool`), **`LastError`**
   (`string?`), **`Tools`** (`IReadOnlyList<AITool>`) — as of the last successful connection.
+  - **`IsConnected`** flips back to `false` on its own when a session ends without
+    `RemoveServerAsync` (a stdio process that crashed or exited, an HTTP session the server tore
+    down), with `LastError` set and `Changed` raised.
+  - **`LastError`** for a stdio server includes the child process's exit code and the tail of its
+    standard error, which is usually the real explanation behind an otherwise opaque transport
+    failure. Every stderr line is also logged at `Debug`.
+
+### `McpOAuthOptions` — OAuth for hosted servers
+
+Set `McpServerDescriptor.OAuth` to turn the flow on. Every property is optional: an empty
+`new McpOAuthOptions()` is the intended common case and is enough for any server following the MCP
+authorization spec, since the authorization server, its scopes, and this app's client registration
+are all discovered at connect time. HTTP transport only — `Validate()` rejects it on `Stdio`.
+
+- **`ClientId`** / **`ClientSecret`** (`string?`) — for a server that made you register a client by
+  hand. Left unset, the client registers dynamically. A secret without an id is rejected; a desktop
+  binary cannot keep one secret anyway, which is why the native-app flow uses PKCE instead.
+- **`Scopes`** (`IList<string>`) — *fallback* only. The spec's order is `WWW-Authenticate` →
+  protected resource metadata `scopes_supported` → this list → no scope parameter, so leaving it
+  empty is right for any server that publishes its own.
+- **`RedirectUri`** (`Uri?`) — defaults to a free `127.0.0.1` port chosen per attempt. Must be an
+  `http://` loopback URL. Set it only when the server requires a fixed registered value.
+- **`ClientName`** (`string?`) — what the consent screen calls this app during dynamic
+  registration. Defaults to `IAppInfo.Name`.
+- **`AdditionalAuthorizationParameters`** (`IDictionary<string, string>`) — extra query parameters
+  for servers needing a non-standard one (`audience`, a tenant hint).
+- **`PersistTokens`** (`bool`, default `true`) — whether tokens go through `IMcpTokenStore`.
+- **`Validate()`** — same pre-flight role as `McpServerDescriptor.Validate()`; called by it.
+
+### `IMcpAuthorizationHandler` / `IMcpTokenStore`
+
+The two halves of the flow that need a desktop. Both are registered by `ConfigureMcp` with
+`TryAddSingleton`, so registering your own first replaces them, and neither is touched unless a
+server sets `OAuth`.
+
+- **`IMcpAuthorizationHandler`** — **`GetRedirectUri(McpServerDescriptor)`** → `Uri` (called once
+  per attempt, before the flow starts, because the URL is registered up front) and
+  **`AuthorizeAsync(McpAuthorizationContext, CancellationToken = default)`** →
+  `Task<McpAuthorizationResult>`.
+  - **`BrowserMcpAuthorizationHandler`** (default) opens the user's real browser via `ILauncher`
+    and catches the redirect on a loopback `HttpListener` — the OAuth 2.1 / RFC 8252 native-app
+    flow, so the app never handles the user's password. Incidental requests (a favicon probe) are
+    answered `404` and ignored; it completes on the first one carrying `code` or `error`. Public
+    **`Timeout`** (default 5 min) and **`CompletionHtml`** (the "you can close this tab" page).
+    Replace the whole handler to use an embedded WebView2 instead.
+  - **`McpAuthorizationContext`**: **`Descriptor`**, **`AuthorizationUri`**, **`RedirectUri`**.
+  - **`McpAuthorizationResult`**: **`Code`**, **`State`**, **`Issuer`**. Pass `state` and `iss`
+    back unchanged — the SDK requires an exact `state` match (CSRF) and validates `iss` per
+    RFC 9207 (mix-up attacks).
+  - **`McpAuthorizationException`**: **`Error`**, **`ErrorDescription`** from the server's redirect
+    (`access_denied` when the user clicks Deny). Surfaces through `McpServerStatus.LastError`.
+- **`IMcpTokenStore`** — **`GetAsync`** / **`SetAsync`** / **`RemoveAsync`**, keyed by server name.
+  The payload is an **opaque** SDK-owned string (access + refresh token and the registration that
+  produced them): treat it as a secret, don't parse it. The default
+  `SecureStorageMcpTokenStore` is DPAPI-backed `SecureStorage`, the same place `IAiApiKeyProvider`
+  keeps API keys. A payload that can no longer be read is discarded and the user simply
+  re-authorizes rather than the connection failing.
 
 ### `McpOptions`
 

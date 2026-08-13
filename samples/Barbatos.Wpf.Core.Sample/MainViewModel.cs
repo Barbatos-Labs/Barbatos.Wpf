@@ -68,6 +68,10 @@ public class MainViewModel : INotifyPropertyChanged
     string _aiChatInput = string.Empty;
     bool _aiAwaitingReply;
 
+    string _mcpOAuthEndpoint = string.Empty;
+    string _mcpOAuthStatus = "Paste a hosted MCP server's URL and connect.";
+    bool _mcpOAuthBusy;
+
     // The conversation the agent remembers, kept across turns - this is what IAiChatService
     // has no equivalent of. Dropped whenever IAiAgentFactory rebuilds the agent (a different
     // provider/key, or an MCP server appearing/disappearing), since a session belongs to the
@@ -649,6 +653,121 @@ public class MainViewModel : INotifyPropertyChanged
             : string.Join(" | ", _mcpServerRegistry.Servers.Select(server => server.IsConnected
                 ? $"{server.Name}: connected - {string.Join(", ", server.Tools.Select(tool => tool.Name))}"
                 : $"{server.Name}: {server.LastError}"));
+
+    /// <summary>
+    /// The URL of a hosted, OAuth-protected MCP server to connect to at runtime - the "let the end
+    /// user add their own server" case <see cref="IMcpServerRegistry"/> exists for, the same way
+    /// Claude Desktop and Cursor let a user paste one in.
+    /// </summary>
+    public string McpOAuthEndpoint
+    {
+        get => _mcpOAuthEndpoint;
+        set { _mcpOAuthEndpoint = value; OnPropertyChanged(); }
+    }
+
+    public string McpOAuthStatus
+    {
+        get => _mcpOAuthStatus;
+        private set { _mcpOAuthStatus = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Whether a browser authorization is currently in flight - the connect button stays disabled
+    /// until it resolves, since a second attempt would open a second browser tab and bind a second
+    /// loopback port for the same server.
+    /// </summary>
+    public bool McpOAuthBusy
+    {
+        get => _mcpOAuthBusy;
+        private set { _mcpOAuthBusy = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanConnectMcpOAuthServer)); }
+    }
+
+    public bool CanConnectMcpOAuthServer => !McpOAuthBusy;
+
+    /// <summary>
+    /// Connects <see cref="McpOAuthEndpoint"/> with OAuth turned on. Everything the flow needs is
+    /// discovered from the server itself, so <c>new McpOAuthOptions()</c> with nothing filled in
+    /// is genuinely all this takes: the SDK reads the server's 401 challenge, finds its
+    /// authorization server, registers this app as a client, and
+    /// <see cref="IMcpAuthorizationHandler"/> sends the user to their browser to consent. The
+    /// resulting tokens land in DPAPI-encrypted SecureStorage via <see cref="IMcpTokenStore"/>,
+    /// so a restart reconnects without asking again.
+    /// </summary>
+    public async void ConnectMcpOAuthServer()
+    {
+        var endpoint = McpOAuthEndpoint.Trim();
+        if (string.IsNullOrEmpty(endpoint))
+        {
+            McpOAuthStatus = "Enter the server's URL first.";
+            return;
+        }
+
+        // Name the entry after the host so two different hosted servers don't collide, and so the
+        // stored tokens (keyed by name) follow the server they belong to.
+        var name = Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? uri.Host : endpoint;
+
+        var descriptor = new McpServerDescriptor
+        {
+            Name = name,
+            TransportKind = McpTransportKind.Http,
+            Endpoint = endpoint,
+            OAuth = new McpOAuthOptions(),
+        };
+
+        McpOAuthBusy = true;
+        McpOAuthStatus = $"Connecting to {name} - finish signing in in your browser...";
+        LogLifecycleEvent($"IMcpServerRegistry.AddServerAsync(\"{name}\") with OAuth");
+
+        try
+        {
+            // A previous run may have left this server registered; removing first keeps the button
+            // idempotent instead of throwing on the duplicate name.
+            await _mcpServerRegistry.RemoveServerAsync(name);
+
+            var status = await _mcpServerRegistry.AddServerAsync(descriptor);
+            McpOAuthStatus = $"{status.Name}: connected - {status.Tools.Count} tool(s). The agent can use them now.";
+        }
+        catch (McpAuthorizationException ex)
+        {
+            // Denying consent or closing the browser is an ordinary outcome here, not a bug -
+            // report it plainly rather than as a crash.
+            McpOAuthStatus = $"Not signed in: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            McpOAuthStatus = $"Could not connect: {ex.Message}";
+        }
+        finally
+        {
+            McpOAuthBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Forgets the stored tokens for <see cref="McpOAuthEndpoint"/>'s server and disconnects it,
+    /// so the next connect goes through the browser again - the "sign out" a settings screen
+    /// needs. <see cref="IMcpServerRegistry.SignOutAsync"/> only discards credentials, which is
+    /// why <see cref="IMcpServerRegistry.RemoveServerAsync"/> is called alongside it here.
+    /// </summary>
+    public async void SignOutMcpOAuthServer()
+    {
+        var endpoint = McpOAuthEndpoint.Trim();
+        var name = Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? uri.Host : endpoint;
+        if (string.IsNullOrEmpty(name))
+        {
+            McpOAuthStatus = "Enter the server's URL first.";
+            return;
+        }
+
+        LogLifecycleEvent($"IMcpServerRegistry.SignOutAsync(\"{name}\")");
+
+        var hadTokens = await _mcpServerRegistry.SignOutAsync(name);
+        await _mcpServerRegistry.RemoveServerAsync(name);
+
+        McpOAuthStatus = hadTokens
+            ? $"Signed out of {name}. Connecting again will ask for consent."
+            : $"Nothing stored for {name}.";
+    }
 
     /// <summary>
     /// Applies <see cref="SelectedAiProvider"/>/<see cref="AiModel"/> and, if entered, saves
