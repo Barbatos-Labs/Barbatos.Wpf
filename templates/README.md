@@ -136,8 +136,8 @@ normally.
 To try the template before then, pack this repo's `src/` projects and point a `nuget.config`
 next to the generated project at that folder. One trap worth knowing when you do: NuGet
 resolves an already-extracted package out of the global cache (`~/.nuget/packages`) purely by
-id+version and never re-checks your local feed, so a `2.3.1` you packed last week keeps being
-used after you rebuild `2.3.1` today. The symptom is a type the library definitely has going
+id+version and never re-checks your local feed, so a `2.4.0` you packed last week keeps being
+used after you rebuild `2.4.0` today. The symptom is a type the library definitely has going
 missing (`The tag 'RouteTo' does not exist in XML namespace ...`); the fix is to delete
 `~/.nuget/packages/barbatos.wpf.*/<version>/` before restoring, or to pack under a
 `-dev.N`-suffixed version instead of overwriting the same one.
