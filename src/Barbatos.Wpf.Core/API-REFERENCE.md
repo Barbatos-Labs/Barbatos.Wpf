@@ -1459,6 +1459,30 @@ currently-configured provider/model.
   so the next `GetChatClientAsync` re-reads the stored key immediately (already re-checked on
   every call regardless; this only makes `ConfigurationChanged` fire right away).
 
+### `IAiModelCatalog` / `AiModelInfo`
+
+The "which model" counterpart — asks a provider which models it currently offers, using the end
+user's own stored key, so a settings UI can offer a live list instead of one hardcoded at build
+time. Optional: `AiProviderOptions.Model` is a free string, so a model released after the app
+shipped is always reachable by typing its name.
+
+- **`GetModelsAsync(string provider, string? endpoint = null, CancellationToken = default)`** →
+  `Task<IReadOnlyList<AiModelInfo>>` — `provider`/`endpoint` mean exactly what they do on
+  `AiProviderOptions` (only `"anthropic"` is special-cased; everything else goes to
+  `GET {endpoint}/models`). Throws `ArgumentException` for a blank provider and
+  `InvalidOperationException`, naming the provider, if no API key has been stored for it yet.
+- **`AiModelInfo`**: **`Id`** (`string`) — the string to pass to `UpdateProvider`; **`DisplayName`**,
+  **`CreatedAt`**, **`MaxInputTokens`**, **`MaxOutputTokens`**, **`OwnedBy`** — all nullable, since
+  only Anthropic's listing reports names/token limits and only OpenAI-compatible ones report
+  `owned_by`.
+
+Four things this deliberately does not do: it does not cache (every call is a network round trip —
+drive it from a "Refresh models" button, not window activation), it does not work before the end
+user has saved a key, it does not filter (an OpenAI-compatible listing includes embedding/audio
+models with no reliable flag distinguishing chat ones), and it does not sort (providers return
+their own order). Not every endpoint implements the route either — a narrow proxy can fail here,
+so keep a typed-in model name working as the fallback.
+
 ### `IAiChatService`
 
 The one-shot facade — merges `IMcpServerRegistry.Tools` into the caller's own

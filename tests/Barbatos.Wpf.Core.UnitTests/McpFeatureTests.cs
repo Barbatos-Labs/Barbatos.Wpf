@@ -3,6 +3,9 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using Barbatos.Wpf.Mcp;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -20,6 +23,7 @@ public class McpFeatureTests
 
         Assert.Null(wpfApp.Services.GetService<IMcpServerRegistry>());
         Assert.Null(wpfApp.Services.GetService<IAiChatClientFactory>());
+        Assert.Null(wpfApp.Services.GetService<IAiModelCatalog>());
         Assert.Null(wpfApp.Services.GetService<IAiChatService>());
         Assert.Null(wpfApp.Services.GetService<IAiApiKeyProvider>());
     }
@@ -33,6 +37,7 @@ public class McpFeatureTests
 
         Assert.NotNull(wpfApp.Services.GetService<IMcpServerRegistry>());
         Assert.NotNull(wpfApp.Services.GetService<IAiChatClientFactory>());
+        Assert.NotNull(wpfApp.Services.GetService<IAiModelCatalog>());
         Assert.NotNull(wpfApp.Services.GetService<IAiChatService>());
         Assert.NotNull(wpfApp.Services.GetService<IAiApiKeyProvider>());
     }
@@ -385,6 +390,66 @@ public class McpFeatureTests
     }
 
     [Fact]
+    public async Task GetModelsAsyncThrowsClearlyWhenNoApiKeyHasBeenStored()
+    {
+        var builder = WpfApp.CreateBuilder();
+        builder.Services.AddSingleton<IAiApiKeyProvider>(new FakeAiApiKeyProvider());
+        builder.ConfigureMcp();
+        var wpfApp = builder.Build();
+
+        var catalog = wpfApp.Services.GetRequiredService<IAiModelCatalog>();
+
+        // Listing is an authenticated call to the provider, so a settings UI cannot populate its
+        // model picker before the end user has saved a key - the message has to say that rather
+        // than surfacing whatever 401 the provider would have answered with.
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => catalog.GetModelsAsync("openai"));
+        Assert.Contains("openai", exception.Message);
+        Assert.Contains(nameof(IAiApiKeyProvider.SetApiKeyAsync), exception.Message);
+    }
+
+    [Fact]
+    public async Task GetModelsAsyncListsModelsFromAnOpenAiCompatibleEndpoint()
+    {
+        // A loopback endpoint stands in for OpenRouter/Ollama/LM Studio/Gemini's compatible route:
+        // listing is part of the OpenAI wire protocol rather than of OpenAI the service, which is
+        // what lets one code path serve every provider except Anthropic.
+        using var endpoint = new FakeOpenAiModelsEndpoint("""
+            {
+              "object": "list",
+              "data": [
+                { "id": "gpt-5.2", "object": "model", "created": 1740000000, "owned_by": "openai" },
+                { "id": "text-embedding-3-large", "object": "model", "created": 1700000000, "owned_by": "openai" }
+              ]
+            }
+            """);
+
+        var keyProvider = new FakeAiApiKeyProvider();
+        await keyProvider.SetApiKeyAsync("my-proxy", "sk-test");
+
+        var builder = WpfApp.CreateBuilder();
+        builder.Services.AddSingleton<IAiApiKeyProvider>(keyProvider);
+        builder.ConfigureMcp();
+        var wpfApp = builder.Build();
+
+        var models = await wpfApp.Services.GetRequiredService<IAiModelCatalog>()
+            .GetModelsAsync("my-proxy", endpoint.BaseUrl);
+
+        // Unfiltered on purpose - the embedding model is still in the list, because nothing in the
+        // response reliably marks a model as chat-capable and guessing would hide a working one.
+        Assert.Equal(new[] { "gpt-5.2", "text-embedding-3-large" }, models.Select(m => m.Id));
+        Assert.Equal("openai", models[0].OwnedBy);
+        Assert.Equal(1740000000, models[0].CreatedAt?.ToUnixTimeSeconds());
+        // Only Anthropic's listing carries these; an OpenAI-compatible one does not.
+        Assert.Null(models[0].DisplayName);
+        Assert.Null(models[0].MaxInputTokens);
+
+        // The configured endpoint is what got asked, carrying the key stored for that provider -
+        // a listing pointed anywhere else would be describing a different service.
+        Assert.Equal("/v1/models", endpoint.LastPath);
+        Assert.Equal("Bearer sk-test", endpoint.LastAuthorization);
+    }
+
+    [Fact]
     public async Task IsConfiguredAsyncReflectsWhetherAnApiKeyIsStored()
     {
         var keyProvider = new FakeAiApiKeyProvider();
@@ -518,6 +583,79 @@ public class McpFeatureTests
         var wpfApp = builder.Build();
 
         return wpfApp.Services.GetRequiredService<IMcpServerRegistry>();
+    }
+
+    /// <summary>
+    /// A loopback stand-in for an OpenAI-compatible <c>GET {endpoint}/models</c> route, so the real
+    /// OpenAI SDK path in <c>OpenAiModelCatalog</c> is exercised end to end - including the
+    /// endpoint and API key it sends - without reaching any real provider. Answers every request
+    /// with the same payload; <see cref="LastPath"/>/<see cref="LastAuthorization"/> record what
+    /// the SDK actually asked for.
+    /// </summary>
+    sealed class FakeOpenAiModelsEndpoint : IDisposable
+    {
+        readonly HttpListener _listener = new();
+
+        public FakeOpenAiModelsEndpoint(string json)
+        {
+            var port = FindFreeLoopbackPort();
+            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            _listener.Start();
+            // A "/v1/" base like the real API's, so the SDK's own "{endpoint}/models" is visible in
+            // LastPath rather than being hidden by a root-mounted listener.
+            BaseUrl = $"http://127.0.0.1:{port}/v1/";
+            _ = ServeAsync(json);
+        }
+
+        /// <summary>What to pass as this provider's <c>AiProviderOptions.Endpoint</c>.</summary>
+        public string BaseUrl { get; }
+
+        public string? LastPath { get; private set; }
+
+        public string? LastAuthorization { get; private set; }
+
+        async Task ServeAsync(string json)
+        {
+            var payload = Encoding.UTF8.GetBytes(json);
+
+            while (true)
+            {
+                HttpListenerContext context;
+                try
+                {
+                    context = await _listener.GetContextAsync();
+                }
+                catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or InvalidOperationException)
+                {
+                    return; // Disposed by the test.
+                }
+
+                LastPath = context.Request.Url?.AbsolutePath;
+                LastAuthorization = context.Request.Headers["Authorization"];
+
+                context.Response.ContentType = "application/json";
+                context.Response.ContentLength64 = payload.Length;
+                await context.Response.OutputStream.WriteAsync(payload);
+                context.Response.Close();
+            }
+        }
+
+        static int FindFreeLoopbackPort()
+        {
+            var probe = new TcpListener(IPAddress.Loopback, 0);
+            probe.Start();
+            try
+            {
+                return ((IPEndPoint)probe.LocalEndpoint).Port;
+            }
+            finally
+            {
+                probe.Stop();
+            }
+        }
+
+        public void Dispose() =>
+            ((IDisposable)_listener).Dispose();
     }
 
     static IAiChatService BuildChatService(IAiChatClientFactory chatClientFactory, IMcpServerRegistry serverRegistry)

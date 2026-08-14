@@ -335,7 +335,7 @@
                     <StackPanel Grid.Row="0">
                         <TextBlock Text="AI chat + MCP (IAiAgentFactory)" Style="{StaticResource SettingTitle}" Margin="0,0,0,4" />
                         <TextBlock Style="{StaticResource SettingDescription}"
-                                   Text="Bring-your-own-key: pick a provider, paste your own API key (goes straight to that provider and to DPAPI-encrypted SecureStorage - never into a config file), then chat. Every connected MCP server's tools are made available to the model automatically, with no extra wiring. This tab runs an agent, so the conversation is remembered across turns and every tool call has to be approved below before it runs - IAiChatService is still registered for one-shot requests that need neither." />
+                                   Text="Bring-your-own-key: pick a provider, paste your own API key (goes straight to that provider and to DPAPI-encrypted SecureStorage - never into a config file), then chat. Once a key is saved, &quot;Refresh models&quot; asks that provider through IAiModelCatalog what it currently offers and fills the model drop-down - which stays editable, so a model released after this build is still reachable by typing its name. Every connected MCP server's tools are made available to the model automatically, with no extra wiring. This tab runs an agent, so the conversation is remembered across turns and every tool call has to be approved below before it runs - IAiChatService is still registered for one-shot requests that need neither." />
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Margin="0,4,0,0">
@@ -346,7 +346,8 @@
                     <Grid Grid.Row="2" Margin="0,8,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="190" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
@@ -354,16 +355,30 @@
                                   SelectedItem="{Binding SelectedAiProvider}"
                                   Width="90"
                                   VerticalAlignment="Center" />
-                        <TextBox Grid.Column="1"
-                                 Margin="6,0,0,0"
-                                 VerticalAlignment="Center"
-                                 Text="{Binding AiModel, UpdateSourceTrigger=PropertyChanged}" />
+                        <!-- Editable on purpose: "Refresh models" fills the drop-down from
+                             IAiModelCatalog, but a model released after this build - or a provider
+                             whose endpoint has no /models route - must still be reachable by typing
+                             its name. IsTextSearchEnabled="False" stops the ComboBox autocompleting
+                             a half-typed name into a different listed model. -->
+                        <ComboBox Grid.Column="1"
+                                  Margin="6,0,0,0"
+                                  VerticalAlignment="Center"
+                                  IsEditable="True"
+                                  IsTextSearchEnabled="False"
+                                  ItemsSource="{Binding AiModels}"
+                                  Text="{Binding AiModel, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="2"
+                                Margin="6,0,0,0"
+                                Padding="10,2"
+                                Content="Refresh models"
+                                IsEnabled="{Binding CanRefreshAiModels}"
+                                Click="RefreshAiModelsButton_Click" />
                         <PasswordBox x:Name="AiApiKeyPasswordBox"
-                                     Grid.Column="2"
+                                     Grid.Column="3"
                                      Margin="6,0,0,0"
                                      VerticalAlignment="Center"
                                      PasswordChanged="AiApiKeyPasswordBox_PasswordChanged" />
-                        <Button Grid.Column="3"
+                        <Button Grid.Column="4"
                                 Margin="6,0,0,0"
                                 Padding="10,2"
                                 Content="Save AI settings"

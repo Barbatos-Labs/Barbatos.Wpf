@@ -18,7 +18,8 @@ public static partial class AppHostBuilderExtensions
     /// feature: <see cref="IMcpServerRegistry"/> connects to the configured MCP servers,
     /// <see cref="IAiChatClientFactory"/>/<see cref="IAiApiKeyProvider"/> provide the BYOK model
     /// layer (the application's own end user supplies their Gemini/Claude/ChatGPT/other API key -
-    /// the publisher never pays for usage), and <see cref="IAiChatService"/> ties both together
+    /// the publisher never pays for usage), <see cref="IAiModelCatalog"/> asks a provider which
+    /// models it currently offers, and <see cref="IAiChatService"/> ties both together
     /// so callers get MCP tool-calling "for free". Configurable from code via
     /// <paramref name="configure"/>/<paramref name="configureProvider"/>/<paramref name="configureAgent"/>
     /// and/or from the <c>Barbatos:Mcp</c>/<c>Barbatos:Mcp:Provider</c>/<c>Barbatos:Mcp:Agent</c>
@@ -65,6 +66,7 @@ public static partial class AppHostBuilderExtensions
         builder.Services.TryAddSingleton<IMcpTokenStore, SecureStorageMcpTokenStore>();
         builder.Services.TryAddSingleton<IMcpServerRegistry, McpServerRegistry>();
         builder.Services.TryAddSingleton<IAiChatClientFactory, AiChatClientFactory>();
+        builder.Services.TryAddSingleton<IAiModelCatalog, AiModelCatalog>();
         builder.Services.TryAddSingleton<IAiChatService, AiChatService>();
         builder.Services.TryAddSingleton<IAiAgentFactory, AiAgentFactory>();
         builder.Services.TryAddSingleton<IAiSessionStore, FileAiSessionStore>();

@@ -47,6 +47,7 @@ public class MainViewModel : INotifyPropertyChanged
     readonly IAiChatService _aiChat;
     readonly IAiAgentFactory _aiAgentFactory;
     readonly IAiChatClientFactory _aiChatClientFactory;
+    readonly IAiModelCatalog _aiModelCatalog;
     readonly IAiApiKeyProvider _aiApiKeyProvider;
     readonly IMcpServerRegistry _mcpServerRegistry;
     readonly IReadOnlyList<AiProviderDescriptor> _aiProviderCatalog;
@@ -63,6 +64,7 @@ public class MainViewModel : INotifyPropertyChanged
     string _workspaceSummary = "(not loaded yet)";
     string _selectedAiProvider = "gemini";
     string _aiModel = "gemini-3.5-flash";
+    bool _aiModelsBusy;
     string _aiApiKeyInput = string.Empty;
     string _aiStatusDescription = "Not configured yet.";
     string _aiChatInput = string.Empty;
@@ -101,6 +103,7 @@ public class MainViewModel : INotifyPropertyChanged
         IAiChatService aiChat,
         IAiAgentFactory aiAgentFactory,
         IAiChatClientFactory aiChatClientFactory,
+        IAiModelCatalog aiModelCatalog,
         IAiApiKeyProvider aiApiKeyProvider,
         IMcpServerRegistry mcpServerRegistry,
         IOptions<AiProviderOptions> aiProviderOptions,
@@ -133,6 +136,7 @@ public class MainViewModel : INotifyPropertyChanged
         _aiChat = aiChat;
         _aiAgentFactory = aiAgentFactory;
         _aiChatClientFactory = aiChatClientFactory;
+        _aiModelCatalog = aiModelCatalog;
         _aiApiKeyProvider = aiApiKeyProvider;
         _mcpServerRegistry = mcpServerRegistry;
         _settingsStore = settingsStore;
@@ -622,6 +626,65 @@ public class MainViewModel : INotifyPropertyChanged
     {
         get => _aiModel;
         set { _aiModel = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// The model names <see cref="RefreshAiModels"/> last got back from
+    /// <see cref="IAiModelCatalog"/>, shown as suggestions in an editable ComboBox - empty until
+    /// that button is clicked. The box stays editable on purpose: a provider that doesn't implement
+    /// model listing, or a model published minutes ago, must still be reachable by typing its name,
+    /// which is the whole reason <see cref="AiProviderOptions.Model"/> is a free string.
+    /// </summary>
+    public ObservableCollection<string> AiModels { get; } = new();
+
+    /// <summary>Whether "Refresh models" is idle - it makes a real network call per click.</summary>
+    public bool CanRefreshAiModels => !_aiModelsBusy;
+
+    /// <summary>
+    /// Asks the selected provider which models it currently offers, using the API key already
+    /// stored for it. Deliberately a button rather than something that runs on startup:
+    /// <see cref="IAiModelCatalog"/> caches nothing and cannot work at all until the end user has
+    /// saved their own key, so the sensible time to ask is when the user asks.
+    /// </summary>
+    public async void RefreshAiModels()
+    {
+        _aiModelsBusy = true;
+        OnPropertyChanged(nameof(CanRefreshAiModels));
+
+        try
+        {
+            // Same endpoint this sample's catalog entry would chat through - listing has to be
+            // pointed at the same place, or it would answer for a different service entirely.
+            var endpoint = _aiProviderCatalog.FirstOrDefault(p => string.Equals(p.Key, SelectedAiProvider, StringComparison.OrdinalIgnoreCase))?.Endpoint;
+            LogLifecycleEvent($"IAiModelCatalog.GetModelsAsync({SelectedAiProvider})");
+            var models = await _aiModelCatalog.GetModelsAsync(SelectedAiProvider, endpoint);
+
+            AiModels.Clear();
+            // Sorted here, not by the library: providers return their own order (Anthropic newest
+            // first, an OpenAI-compatible endpoint whatever it likes), and a picker is easier to
+            // scan alphabetically. The list is also unfiltered - an OpenAI-compatible endpoint
+            // lists embedding and audio models next to chat ones, with no reliable flag to tell
+            // them apart, so this sample shows everything rather than guessing wrong.
+            foreach (var id in models.Select(m => m.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
+                AiModels.Add(id);
+
+            AiStatusDescription = AiModels.Count > 0
+                ? $"{AiModels.Count} model(s) listed for {SelectedAiProvider} - pick one, or keep typing your own."
+                : $"{SelectedAiProvider} returned no models - type the model name yourself.";
+        }
+        catch (Exception ex)
+        {
+            // Neither failure is fatal: no key saved yet is the common one, and a narrow proxy that
+            // implements only chat completions has no /models route at all. Typing a model name
+            // keeps working in both cases.
+            AiStatusDescription = $"Could not list models for {SelectedAiProvider}: {ex.Message}";
+            LogLifecycleEvent($"IAiModelCatalog.GetModelsAsync({SelectedAiProvider}) failed - {ex.GetType().Name}");
+        }
+        finally
+        {
+            _aiModelsBusy = false;
+            OnPropertyChanged(nameof(CanRefreshAiModels));
+        }
     }
 
     /// <summary>

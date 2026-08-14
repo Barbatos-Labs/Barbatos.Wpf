@@ -1516,6 +1516,7 @@ at a real hosted server and watch the whole round trip.
 | `IMcpAuthorizationHandler` | The interactive half of a server's OAuth flow - sends the user to consent and returns what the authorization server redirects back. Defaults to the system browser plus a loopback listener; see "Hosted servers that need a sign-in" above. |
 | `IMcpTokenStore` | Persists each server's OAuth tokens (DPAPI-encrypted by default) so a consented server reconnects silently after a restart. `IMcpServerRegistry.SignOutAsync` is what clears them. |
 | `IAiChatClientFactory` | The "which provider" seam (structurally the same role `IPushNotificationTransport` plays for push notifications) - builds/caches the `Microsoft.Extensions.AI.IChatClient` for whichever provider/model is currently selected. Inject this directly instead of `IAiChatService` if you want a raw chat client with no MCP tools merged in. |
+| `IAiModelCatalog` | The "which model" counterpart - asks a provider which models it currently offers, using the end user's own stored key, so a settings UI can fill a picker instead of hardcoding a list that ages (see "Models" below). Optional: a model name typed by hand always works, since `Model` is a free string. |
 | `IAiChatService` | The one-shot facade - merges every connected server's tools into `ChatOptions.Tools` automatically before delegating to `IAiChatClientFactory`, so callers never wire MCP tools in by hand. `GetResponseAsync`/`GetStreamingResponseAsync`. No memory between calls, and tools run without asking. |
 | `IAiAgentFactory` | The agent layer (see below) - builds a Microsoft Agent Framework `AIAgent` over the same provider and the same MCP servers, adding conversation memory and end-user tool approval. |
 | `IAiSessionStore` | Persists an agent's conversation across app restarts. File-backed by default; swap in your own the same way as `IAiApiKeyProvider`. |
@@ -1614,6 +1615,47 @@ MCP servers. It is purely a catalog: `Barbatos.Wpf.Mcp` itself never reads it au
 calling `UpdateProvider` with that entry's own `Provider`/`Model`/`Endpoint`. Leave it empty if
 your app hardcodes its own list instead, or only ever supports one provider - `Provider`/`Model`/
 `Endpoint` directly on `AiProviderOptions` work with or without a `Providers` catalog behind them.
+
+### Models (`IAiModelCatalog`)
+
+Models are released far more often than most desktop apps ship, which is why
+`AiProviderOptions.Model` is a free string: a model published this morning is reachable by typing
+its name, with no new release of your app. `IAiModelCatalog` is the optional upgrade on top of
+that - it asks the provider which models it currently offers, using the end user's own stored key,
+so a settings screen can populate a picker instead of hardcoding a list that ages:
+
+```csharp
+// "Refresh models" in a settings screen. The endpoint is whatever this provider chats through -
+// listing has to be pointed at the same place, or it describes a different service.
+var models = await modelCatalog.GetModelsAsync("openai");
+var geminiModels = await modelCatalog.GetModelsAsync(
+    "gemini", "https://generativelanguage.googleapis.com/v1beta/openai/");
+
+foreach (var model in models)
+    Console.WriteLine(model.DisplayName ?? model.Id);   // model.Id is what UpdateProvider wants
+```
+
+Behind the string it splits exactly like the chat path: `"anthropic"` goes through Anthropic's own
+SDK (paginated, and rich enough to fill in `DisplayName`/`MaxInputTokens`/`MaxOutputTokens`),
+everything else through `GET {endpoint}/models`, a route OpenRouter, Ollama, LM Studio, vLLM and
+Gemini's OpenAI-compatible endpoint all answer.
+
+Worth knowing before wiring it to a picker:
+
+- **An API key must already be stored** for the provider being asked - this is a real authenticated
+  call, so the list can only be fetched *after* the end user saves their key, not while the fields
+  are blank. Without one it throws `InvalidOperationException` naming the provider, rather than
+  surfacing a raw 401.
+- **Nothing is cached** - every call is a network round trip. Unlike a chat client, a model list has
+  no event that could invalidate it (a provider can publish a model at any moment), so caching here
+  would mostly serve stale answers to the one call a user makes explicitly to get fresh ones. Drive
+  it from a button and keep the result in your view model.
+- **The list is raw** - unfiltered and unsorted, the same way `IAiChatService` passes message content
+  through untransformed. An OpenAI-compatible endpoint lists embedding, audio and image models next
+  to chat ones with no reliable flag telling them apart, and providers return their own order.
+- **Not every endpoint implements it** - a narrow proxy that only serves chat completions will throw
+  here. Keep a free-text model entry as the fallback (the sample's model box is an *editable*
+  ComboBox for exactly this reason): the typed name is what always works.
 
 ### Attachments (images, documents)
 

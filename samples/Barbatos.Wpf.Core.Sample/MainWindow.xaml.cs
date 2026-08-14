@@ -82,6 +82,9 @@ public partial class MainWindow : Window
     void AiApiKeyPasswordBox_PasswordChanged(object sender, RoutedEventArgs e) =>
         ((MainViewModel)DataContext).AiApiKeyInput = ((System.Windows.Controls.PasswordBox)sender).Password;
 
+    void RefreshAiModelsButton_Click(object sender, RoutedEventArgs e) =>
+        ((MainViewModel)DataContext).RefreshAiModels();
+
     void SaveAiSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         ((MainViewModel)DataContext).SaveAiSettings();
