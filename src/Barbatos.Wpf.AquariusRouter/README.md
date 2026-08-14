@@ -21,6 +21,7 @@ active-state styling - built directly on [Barbatos.Wpf.Aquarius](https://github.
   * [Introduction](#introduction)
   * [Quick Start](#quick-start)
 * **[The Route Table](#the-route-table)**
+  * [Default child routes](#default-child-routes)
   * [Pairing a View with its ViewModel](#pairing-a-view-with-its-viewmodel)
 * **[The Router](#the-router)**
 * **[RouterView](#routerview)**
@@ -187,6 +188,44 @@ new RouteRecord
   keys) - read it in a guard (`to.Meta["requiresAuth"]`) without manually walking `to.Matched`.
 - **`BeforeEnter`** - a per-route guard, checked only when genuinely entering this record from a
   different one (not on a param/query-only update).
+
+### Default child routes
+
+Give a parent a child whose `Path` is the empty string. It contributes nothing to the path, so it
+resolves to exactly the parent's own - the "index" child, and the parent's default:
+
+```csharp
+new RouteRecord
+{
+    Path = "/settings", Name = "settings", View = typeof(SettingsShellView),
+    Children =
+    [
+        new RouteRecord { Path = "", Name = "settings-profile", View = typeof(SettingsProfileView) },
+        new RouteRecord { Path = "security", Name = "settings-security", View = typeof(SettingsSecurityView) },
+    ],
+}
+```
+
+Navigating to `/settings` now renders the shell **and** the profile child inside its
+`RouterView` - and so does targeting the parent by name (`{aqr:RouteTo Name=settings}`), which
+descends to the index child just as the path form does. A chain of them descends all the way to the
+deepest. Without an index child, `/settings` matches the shell alone and its nested outlet renders
+nothing, which is usually not what you want.
+
+The alternative is a **redirect** on the parent, when the default should be a real, differently-pathed
+child:
+
+```csharp
+new RouteRecord { Path = "/settings", Name = "settings", Redirect = _ => "/settings/security", Children = [...] }
+```
+
+The difference: an index child keeps the URL at `/settings`, a redirect changes it to
+`/settings/security` and resolves before any guard runs (see [`Redirect`](#the-route-table) above).
+
+> There is deliberately no "default route" for the **top level** of a table. The initial location
+> is whatever you pass to `Router.Start("/")` - explicit, because unlike a browser there is no
+> ambient URL to fall back on - and anything unmatched is handled by a catch-all
+> (`/:pathMatch(.*)*`, see [Path Matching](#path-matching)).
 
 ---
 

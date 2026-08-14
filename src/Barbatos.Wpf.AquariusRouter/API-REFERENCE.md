@@ -104,7 +104,7 @@ a worked example.
 
 | Member | Type | Meaning |
 | --- | --- | --- |
-| `Path` | `required string` | This record's own path contribution (relative unless it starts with `/`, or empty for an "index" child). |
+| `Path` | `required string` | This record's own path contribution (relative unless it starts with `/`). Empty makes it the parent's **index child** - its default: targeting the parent by path *or* by name descends to it. See [Default child routes](README.md#default-child-routes). |
 | `Name` | `string?` | Unique navigation key. |
 | `View` | `Type?` | The default-outlet View. Shorthand for `Views["default"]`. Setting both this and `Views` throws when the route is registered. |
 | `Views` | `IReadOnlyDictionary<string, Type>?` | Named outlets. |

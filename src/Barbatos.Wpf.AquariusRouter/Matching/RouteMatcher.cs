@@ -184,6 +184,12 @@ public sealed class RouteMatcher
 
             parameters = seeded;
             path = matcher.Parser.Stringify(seeded);
+
+            // Land on the index child, exactly as resolving this same route BY PATH already does.
+            // Without this, targeting a named parent that has one would match the parent alone and
+            // render an empty outlet - and since resolving by path can never produce the parent
+            // alone, that asymmetry has no use to preserve.
+            matcher = DescendToIndexChild(matcher);
         }
         else if (location.Path is not null)
         {
@@ -304,6 +310,33 @@ public sealed class RouteMatcher
         segments.Count > 0 && segments[0] is [{ Kind: PathTokenKind.Static, Value.Length: > 0 } token]
             ? token.Value
             : null;
+
+    /// <summary>
+    /// Follows a chain of "index" children - those whose own <see cref="RouteRecord.Path"/> adds
+    /// nothing, so they resolve to exactly their parent's path and act as its default child - down
+    /// to the deepest one, or returns <paramref name="node"/> unchanged when it has none.
+    /// </summary>
+    private static MatcherNode DescendToIndexChild(MatcherNode node)
+    {
+        // Bounded by the tree's depth; a record cannot be its own ancestor.
+        while (true)
+        {
+            MatcherNode? index = null;
+            foreach (var child in node.Children)
+            {
+                if (!child.IsAlias && IsMatchable(child.Record) && child.ResolvedPath == node.ResolvedPath)
+                {
+                    index = child;
+                    break;
+                }
+            }
+
+            if (index is null)
+                return node;
+
+            node = index;
+        }
+    }
 
     private void AddRouteNode(RouteRecord record, MatcherNode? parent)
     {
