@@ -159,8 +159,25 @@ public static class Setup
         element.DataContext = Resolve(viewModelType);
     }
 
-    private static object Resolve(Type viewModelType) =>
-        ServiceProvider?.GetService(viewModelType) ?? Activator.CreateInstance(viewModelType)!;
+    /// <summary>
+    /// Resolves an instance of <paramref name="type"/> the way this library resolves everything
+    /// it constructs on the app's behalf: from <see cref="ServiceProvider"/> if one is set,
+    /// otherwise <see cref="Activator.CreateInstance(Type)"/>.
+    /// </summary>
+    /// <remarks>
+    /// Public because the same rule has to apply everywhere a View or ViewModel is built for the
+    /// app rather than by it - <see cref="Xaml.Component"/>'s lazily-realized Views and
+    /// AquariusRouter's entering Views both go through here, so a routed or cached View resolves
+    /// its constructor-injected dependencies exactly like one this class wires up itself. Named
+    /// <c>Resolve</c>, not <c>Create</c>: with a container in play the result may well be a
+    /// singleton the container already had.
+    /// </remarks>
+    /// <param name="type">The View or ViewModel type to resolve.</param>
+    public static object Resolve(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return ServiceProvider?.GetService(type) ?? Activator.CreateInstance(type)!;
+    }
 
     private static Type? DefaultResolver(Type viewType) =>
         ConventionCache.GetOrAdd(viewType, static t =>

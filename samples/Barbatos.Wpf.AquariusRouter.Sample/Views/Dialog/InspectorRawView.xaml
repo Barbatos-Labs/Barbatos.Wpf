@@ -1,0 +1,9 @@
+<UserControl x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Dialog.InspectorRawView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Raw data" FontSize="18" FontWeight="Bold" />
+        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                   Text="The second modal route, sharing this same Window type with the first - which is why clicking between the two keeps one window and only swaps this outlet, rather than closing and reopening the dialog." />
+    </StackPanel>
+</UserControl>

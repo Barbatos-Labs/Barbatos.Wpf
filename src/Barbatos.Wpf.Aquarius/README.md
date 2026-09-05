@@ -6,7 +6,7 @@
 
 **Reactive state (`Ref<T>`/`Computed<T>`/`Watch`), lifecycle hooks, XAML directives for
 two-way binding/visibility/events, custom directives, `Teleport`, `Transition`,
-`Provide`/`Inject`, `Suspense` - for plain desktop WPF, built directly on top of
+`Provide`/`Inject`, `Suspense`, `KeepAlive` - for plain desktop WPF, built directly on top of
 CommunityToolkit.Mvvm.**
 
 [![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.Aquarius.svg)](https://www.nuget.org/packages/Barbatos.Wpf.Aquarius)
@@ -41,8 +41,12 @@ CommunityToolkit.Mvvm.**
 * **[Provide / Inject](#provide--inject)**
 * **[Suspense](#suspense)**
 * **[Slots](#slots)**
+* **[KeepAlive](#keepalive)**
+  * [Component](#component)
+  * [Cache control](#cache-control)
+  * [What still unmounts](#what-still-unmounts)
+  * [Routed views](#routed-views)
 * **[Patterns that are already native](#patterns-that-are-already-native)**
-  * ["KeepAlive"](#keepalive)
   * [Scoped slots for lists](#scoped-slots-for-lists)
 * **[Ecosystem](#ecosystem)**
 * **[API Reference](#api-reference)**
@@ -225,8 +229,8 @@ interface with a plain `is` pattern.
 | `IOnUpdated` | Once per batch, coalesced through `NextTick` |
 | `IOnBeforeUnmount` | `Unloaded`, before `IOnUnmounted` |
 | `IOnUnmounted` | `Unloaded` |
-| `IOnActivated` | Mount (only if actually visible at that point), `IsVisible` flipping back to `true` while still mounted, and (additionally) a `Window` regaining focus - see ["KeepAlive"](#keepalive) |
-| `IOnDeactivated` | Unmount, `IsVisible` flipping to `false` while still mounted, and (additionally) a `Window` losing focus - see ["KeepAlive"](#keepalive) |
+| `IOnActivated` | Mount (only if actually visible at that point), `IsVisible` flipping back to `true` while still mounted, and (additionally) a `Window` regaining focus - see [KeepAlive](#keepalive) |
+| `IOnDeactivated` | Unmount, `IsVisible` flipping to `false` while still mounted, and (additionally) a `Window` losing focus - see [KeepAlive](#keepalive) |
 | `IOnErrorCaptured` | An unhandled exception reaches the dispatcher while mounted |
 
 Notes:
@@ -248,11 +252,10 @@ Notes:
   exception handled (suppresses the app's unhandled-exception behavior), `false` to let it
   keep propagating - the same polarity every other "did you handle this" callback in WPF
   already uses.
-- `IOnActivated`/`IOnDeactivated` are what makes ["KeepAlive"](#keepalive) work below -
-  see that section for why there's no separate `KeepAlive` control, and why it matters
-  that mount only reports activated when the element is genuinely visible (content that
-  mounts already-hidden, like a background TabControl tab, must not falsely claim to be
-  activated - see that section for why).
+- `IOnActivated`/`IOnDeactivated` are what the [`KeepAlive`](#keepalive) control is built
+  on - and why it matters that mount only reports activated when the element is genuinely
+  visible (content that mounts already-hidden, like a background TabControl tab, must not
+  falsely claim to be activated - see that section for why).
 
 `If` ([below](#if-v-if)) genuinely detaches/reattaches its content from the visual tree,
 so a `Lifecycle.Enable`'d child behind an `<aq:If>` really does receive
@@ -349,10 +352,26 @@ Two ways to opt in, both set on the View's own XAML root:
   parameterless constructor:
 
   ```csharp
-  // Once at startup - works with Barbatos.Wpf.Core's WpfAppBuilder.Services, or any other
-  // Microsoft.Extensions.DependencyInjection IServiceProvider:
-  Setup.ServiceProvider = host.Services;
+  var builder = WpfApp.CreateBuilder();
+  builder.Services.AddAquarius();          // registers Aquarius's own options
+
+  var app = builder.Build();
+  app.Services.UseAquarius();              // ...and wires them up
   ```
+
+  Two calls, deliberately: `AddAquarius` only *declares* registrations, and `UseAquarius` is
+  the one-shot wiring step you run once the container exists - the same split as Core's own
+  `UseEssentials`. That wiring step is what a XAML-driven library needs and a pure service
+  library does not: `aq:Setup.Enable` and [`Component.Is`](#keepalive) both resolve types
+  from markup, where there is no constructor to inject into, so they go through an ambient
+  provider. `UseAquarius` is what points that at your container.
+
+  `AddAquarius(options => ...)` also sets `ThrowOnUnresolvedViewModels`,
+  `ThrowOnUnresolvedExprIdentifiers` and a custom `ViewModelResolver` from one place, instead
+  of as loose static assignments after `Build()`. It is optional - `app.Services.UseAquarius()`
+  on its own still does the useful half - and so is the whole thing:
+  `Setup.ServiceProvider = host.Services` remains a perfectly good one-liner for an app that
+  wants nothing else.
 
   A ViewModel with required constructor arguments and no DI configured needs either a
   registration, a parameterless constructor, or to skip this feature for that View and keep
@@ -484,7 +503,8 @@ reattach); `Directives.Show` is the opposite (always mounted, so a toggle is jus
   **This is exactly what "realtime" means here**: if `Condition` is driven by a value that
   updates several times a second - a live feed, a timer, anything with that shape - switch
   that element to `Directives.Show` instead. It only ever flips `Visibility`, so the hooks
-  simply don't re-fire at all (see the [`"KeepAlive"`](#keepalive) note above).
+  simply don't re-fire at all. [`KeepAlive`](#keepalive) below is that same trick packaged
+  up, for a whole set of switchable sections.
 
 In short: `If` for content that changes rarely (a tab's content, a logged-in/logged-out
 split, ...), `Directives.Show` for content that toggles often - and "often" specifically
@@ -737,6 +757,41 @@ it once the host registers, instead of silently never teleporting.
 
 Like a DOM `id`, host names are expected to be unique app-wide; if two hosts register the
 same name, the most recently loaded one wins.
+
+### Several Teleports, one host
+
+A host is **any `Panel`**, and any number of `Teleport`s may target the same one - a toolbar
+assembled from widgets declared all over the app, an overlay stack, a docking edge. Pick the
+panel for the layout you want:
+
+```xml
+<UniformGrid Rows="1" aq:TeleportHost.RegisterHost="Toolbar" />
+
+<!-- ...declared anywhere, in any order: -->
+<aq:Teleport To="Toolbar" Order="20"><views:SaveButton /></aq:Teleport>
+<aq:Teleport To="Toolbar" Order="0"><views:SearchBox /></aq:Teleport>
+<aq:Teleport To="Toolbar" Order="10"><views:FilterPicker /></aq:Teleport>
+```
+
+`Order` (lower first, default `0`) is what makes the result deterministic. Without it the
+children would land in whatever order they happened to *load* in, which depends on where each
+`Teleport` is declared, whether its host was already registered, and whether it sits inside a tab
+that has been opened yet. Ties break by declaration order, so leaving everything at the default
+still gives a stable result rather than an arbitrary one.
+
+Two things worth knowing:
+
+- **Set layout attached properties on the content, not on the `Teleport`.** It is the content
+  element that becomes the panel's real child, so `DockPanel.Dock`, `Grid.Row` and friends belong
+  on it - and they keep working after the move.
+- **A host may have static children of its own.** Teleported children are positioned relative to
+  each other only, and placed after whatever the host declares itself, so a `StackPanel` with a
+  fixed header or a `DockPanel` with a permanent status bar works as you'd expect.
+
+Changing `Order` at runtime repositions only that one control's content, leaving its siblings
+untouched - though repositioning is a real `Children` remove-then-insert (WPF's
+`UIElementCollection` has no move operation), so it fires the same full unmount/remount pair every
+other `Teleport` move does.
 
 ---
 
@@ -1076,30 +1131,113 @@ content already have throughout this library. Two items claiming the same slot n
 
 ---
 
-## Patterns that are already native
+## KeepAlive
 
-Two more patterns turned out to already exist natively in WPF - once that was recognized,
-no new API was the right answer.
+`Barbatos.Wpf.Aquarius.Xaml` - `Component` + `KeepAlive`.
 
-### "KeepAlive"
+Vue's own two pieces, ported as-is. `<aq:Component Is="...">` is
+[`<component :is>`](https://vuejs.org/guide/essentials/component-basics.html#dynamic-components):
+it renders whichever View type you point it at, and destroys the previous one when that changes.
+`<aq:KeepAlive>` wraps it to cache them instead:
 
-Keeping an inactive view's state alive across a "switch between views" UI - rather than
-destroying and recreating it every time - is a common need with no single obvious WPF
-answer. Only one native pattern actually delivers that without ever unmounting/remounting
-at all (`IOnActivated`/`IOnDeactivated` firing on switch instead) - the others look
-plausible but were confirmed, by actually running it, to genuinely destroy and recreate
-content instead:
+```xml
+<aq:KeepAlive Max="3" Exclude="ReportView">
+    <aq:Component Is="{Binding CurrentView.Value}" />
+</aq:KeepAlive>
+```
+
+Switching `Is` reveals the cached View for that type, building it only the first time. A ViewModel
+under [`Lifecycle.Enable`](#lifecycle-hooks) therefore sees only `IOnDeactivated` when you switch
+away and `IOnActivated` when you come back - **never an unmount** - so everything it holds (a
+scroll position, a half-filled form, a loaded page of results) is still there.
+
+That is what neither a `TabControl` nor `Frame`/`Page` gives you. Both look like they should, and
+both were confirmed *by actually running them* to genuinely destroy and recreate content on every
+switch:
 
 | Pattern | Actually keep-alive? |
 | --- | --- |
-| Several siblings toggled via [`Directives.Show`](#directivesshow-v-show), all present in the tree from the start | **Yes** - confirmed: only `IOnActivated`/`IOnDeactivated` ever fire, never `IOnUnmounted`/`IOnMounted`, no matter how many times you switch back and forth. |
-| A plain `TabControl` | **No** - every tab's content genuinely loads up front (confirmed via `IsLoaded`), but the moment you switch *away* from any tab, its content is for-real unloaded; switching back is a fresh mount, not a resume. The "never destroys" impression only holds for the initial render, before anything has been clicked. |
+| `aq:KeepAlive` around an `aq:Component` | **Yes** - only `IOnActivated`/`IOnDeactivated` ever fire while switching, however many times you go back and forth. Lazy, too: a View you never visit is never built. |
+| Several siblings toggled via [`Directives.Show`](#directivesshow-v-show), all present from the start | **Yes**, and it is what `KeepAlive` does internally - but by hand: every section mounts up front whether or not it is ever looked at, and there is no cache cap and no include/exclude. |
+| A plain `TabControl` | **No** - every tab's content genuinely loads up front (confirmed via `IsLoaded`), but the moment you switch *away* from a tab, its content is for-real unloaded; switching back is a fresh mount, not a resume. The "never destroys" impression only holds for the initial render, before anything has been clicked. |
 | `Frame`/`Page` navigation | **No**, regardless of `Page.KeepAlive` - confirmed identical unmount/remount behavior with that flag either `true` or `false`. It governs journal/state retention for URI-based navigation, not whether content stays mounted. |
 
-So: "KeepAlive" in Aquarius is `Directives.Show`-toggled siblings plus `Lifecycle.Enable`'s
-`IOnActivated`/`IOnDeactivated` - specifically *not* `TabControl` or `Frame`, despite how
-native and tempting those look for a "switch between views" UI. See `KeepAliveTests.cs`
-in the test project for the exact hook sequences each pattern produces.
+See `KeepAliveTests.cs` (the native patterns) and `KeepAliveControlTests.cs` (these controls) in
+the test project for the exact hook sequences each one produces.
+
+### Component
+
+`Is` is a bindable `Type`, so a ViewModel drives it with an ordinary `Ref<Type>`:
+
+```csharp
+public Ref<Type?> CurrentView { get; } = new(typeof(ProfileView));
+```
+
+The View is resolved through [`Setup`](#setup)'s DI-first-else-`Activator` path, so a
+constructor-injected View comes out of your own container and its own `aq:Setup.Enable` resolves
+its `DataContext` exactly as usual.
+
+**Used on its own, `Component` destroys the outgoing View** - it is dropped outright, so it *and
+its ViewModel* become collectable and anything the ViewModel was holding (a subscription, a timer,
+a cache) stops being reachable. That is Vue's behavior, and it is precisely what `KeepAlive` exists
+to opt out of, which is why the caching is a wrapper rather than a setting.
+
+> **The name.** Deliberately `Component`, matching Vue's own tag, at the cost of colliding with
+> `System.ComponentModel.Component` for C# code that imports both namespaces - a qualified name
+> resolves that on the rare occasion it comes up. In XAML, where this type is actually written,
+> `<aq:Component>` is unambiguous.
+
+### Cache control
+
+| Property | Meaning |
+| --- | --- |
+| `Max` | How many Views may stay cached, least-recently-activated evicted first. `0` (default) is unlimited. Mirrors Vue's `max`. |
+| `Include` | Comma-separated allow-list of View **type names** that may be cached. Unset caches everything. |
+| `Exclude` | Comma-separated deny-list, checked after `Include`. |
+
+`Include`/`Exclude` match the View's **type name** - the WPF counterpart of Vue matching a
+component's own `name` option. Vue's regex and array forms have no concise XAML literal, so the
+comma-separated string is the one form here.
+
+Eviction and exclusion are real teardowns: the dropped View fires `IOnBeforeUnmount`/
+`IOnUnmounted`, and switching back to it builds from scratch. Editing `Include`/`Exclude` at
+runtime applies retroactively to what is already cached (Vue watches both for the same reason) -
+the one exception being the View currently on screen, which is marked instead and dropped the
+moment you switch away, since releasing it outright would blank the control.
+
+### What still unmounts
+
+Exactly as in Vue: a View evicted by `Max`, one filtered out by `Include`/`Exclude`, and **every
+cached View when the `KeepAlive` control itself is unloaded**. That last one is a WPF fact rather
+than a choice - `Loaded`/`Unloaded` are broadcast through a subtree regardless of `Visibility` - so
+putting a `KeepAlive` inside a `TabItem` or an [`If`](#if-v-if--v-else--v-else-if) means every
+cached View gets a real unmount/remount cycle whenever that container comes and goes. The
+*ViewModel instances* survive that (their `DataContext` is never touched), so state is still
+preserved; the hooks simply run again.
+
+Two smaller caveats worth knowing:
+
+- **`KeepAlive` owns its children's `Visibility`**, writing it as a local value - so don't also put
+  [`Directives.Show`](#directivesshow-v-show) on a cached View; the two will fight over it.
+- Adding children to `KeepAlive` directly (rather than through its `Component`) throws. They would
+  have no cache entry and no eviction position, and would simply be arranged on top of whatever is
+  showing - a silent layout bug worth failing loudly over.
+
+### Routed views
+
+Vue Router has **no per-route keep-alive option**; it composes in the template instead, via
+`<router-view v-slot="{ Component }">`. AquariusRouter deliberately does not offer one either, and
+`<aq:KeepAlive>` around an `<aqr:RouterView>` is **not** supported - see
+[AquariusRouter's "Deliberately Out of Scope"](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusRouter/README.md#deliberately-out-of-scope)
+for why: its `Router` owns routed View lifetimes so that navigation guards can run against the
+instance that is actually mounted, which is a constraint Vue's renderer does not have.
+
+---
+
+## Patterns that are already native
+
+One more pattern turned out to already exist natively in WPF - once that was recognized,
+no new API was the right answer.
 
 ### Scoped slots for lists
 

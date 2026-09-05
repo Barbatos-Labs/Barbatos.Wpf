@@ -221,6 +221,14 @@ public static class Lifecycle
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
+            // The symmetric half of OnLoaded's own `if (_mounted) return;` guard: WPF can
+            // raise Unloaded for an element that never completed a Loaded, and firing
+            // OnBeforeUnmount/OnUnmounted with no matching OnMounted before them is exactly
+            // the half-initialized ViewModel the create/mount bookkeeping below exists to
+            // prevent in the other direction.
+            if (!_mounted)
+                return;
+
             // Reset so a later remount (e.g. `If.Condition` flipping true again, which
             // detaches and reattaches this same instance) fires the whole create/mount
             // sequence again too - every mount is treated as fresh, never a resume. Cleared

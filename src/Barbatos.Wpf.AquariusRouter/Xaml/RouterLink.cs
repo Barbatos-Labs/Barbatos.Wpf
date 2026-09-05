@@ -231,7 +231,13 @@ public static class RouterLink
             _watchHandle = null;
         }
 
-        private RoutingRouter? TryResolveRouter() => GetRouter(target) ?? RoutingRouter.Current;
+        /// <summary>
+        /// An explicit <see cref="RouterProperty"/> on this element first, then the nearest
+        /// inherited <see cref="RouterScope.RouterProperty"/> - which is how a window with its own
+        /// navigation stack gives every link inside it that stack with one declaration instead of
+        /// one per link - and finally the ambient <see cref="RoutingRouter.Current"/>.
+        /// </summary>
+        private RoutingRouter? TryResolveRouter() => GetRouter(target) ?? RouterScope.GetRouter(target) ?? RoutingRouter.Current;
 
         /// <summary>
         /// Defers the "no Router available" failure through this element's own
@@ -278,16 +284,16 @@ public static class RouterLink
 
         private void Navigate()
         {
+            var to = GetTo(target);
+            if (to is null)
+                return;
+
             var router = TryResolveRouter();
             if (router is null)
             {
                 ReportMissingRouter();
                 return;
             }
-
-            var to = GetTo(target);
-            if (to is null)
-                return;
 
             var raw = ToRouteLocationRaw(to);
             if (GetReplace(target))

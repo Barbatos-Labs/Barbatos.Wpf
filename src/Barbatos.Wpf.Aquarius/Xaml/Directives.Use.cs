@@ -161,8 +161,17 @@ public static partial class Directives
             directive.Updated(element, binding);
         }
 
+        // Both edges are guarded, for the same reasons Lifecycle's own OnLoaded documents:
+        // WPF raises Loaded a second time with no Unloaded in between (a TabControl realizes
+        // every tab's content up front, then raises Loaded again on whichever one later
+        // becomes selected), and it can raise Unloaded for an element that never completed a
+        // Loaded. Without these, a directive sees a duplicate Mounted whose oldValue: null
+        // silently discards the first one's state, or an Unmounted with no Mounted before it.
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
+            if (_mounted)
+                return;
+
             _mounted = true;
             _lastValue = GetUseValue(element);
             directive.Mounted(element, CurrentBinding(oldValue: null));
@@ -170,6 +179,9 @@ public static partial class Directives
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
+            if (!_mounted)
+                return;
+
             _mounted = false;
             directive.Unmounted(element, CurrentBinding(_lastValue));
         }

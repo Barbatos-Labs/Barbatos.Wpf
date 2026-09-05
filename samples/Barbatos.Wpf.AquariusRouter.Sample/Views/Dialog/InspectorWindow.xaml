@@ -1,0 +1,28 @@
+<Window x:Class="Barbatos.Wpf.AquariusRouter.Sample.Views.Dialog.InspectorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
+        Title="Inspector (a modal route)"
+        Width="460"
+        Height="340"
+        WindowStartupLocation="CenterOwner">
+    <!-- Nothing in this file names a router, a route depth or a window. RouterWindows opened this
+         window because /dashboard/inspector matched, and handed it the record to show; the
+         RouterView below renders that record, and the two links are ordinary RouterLinks written
+         exactly like the ones in the main window's nav bar. -->
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
+            <!-- Two sibling modal routes sharing this same Window type: stepping between them
+                 keeps this window exactly where it is and swaps only the outlet below. -->
+            <Button Content="Overview" Margin="0,0,6,0" Padding="10,4" aqr:RouterLink.To="/dashboard/inspector" />
+            <Button Content="Raw data" Padding="10,4" aqr:RouterLink.To="/dashboard/inspector/raw" />
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Bottom" TextWrapping="Wrap" Foreground="Gray" Margin="0,12,0,0"
+                   Text="One router, one history. /dashboard is still matched and still showing behind this window, Back closes it, and closing it with [X] navigates back to /dashboard - the route and what is on screen can never disagree. Watch the navigation history panel behind: every step here is an ordinary entry on the app's own stack." />
+
+        <Border BorderBrush="#DDD" BorderThickness="1" Padding="12">
+            <aqr:RouterView />
+        </Border>
+    </DockPanel>
+</Window>

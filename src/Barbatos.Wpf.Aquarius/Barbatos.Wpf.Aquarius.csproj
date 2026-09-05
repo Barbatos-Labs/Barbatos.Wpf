@@ -22,6 +22,12 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <!-- Abstractions only, never a container implementation: this package offers
+         services.AddAquarius()/provider.UseAquarius() so an app can configure Aquarius through
+         the same DI it configures everything else with, but it never builds or owns a container.
+         Microsoft.Extensions.Options is what backs AquariusOptions/IOptions<T>. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
 </Project>

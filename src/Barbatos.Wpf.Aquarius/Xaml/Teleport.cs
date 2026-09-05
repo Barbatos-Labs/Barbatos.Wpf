@@ -41,6 +41,22 @@ namespace Barbatos.Wpf.Aquarius.Xaml;
 /// <c>TeleportTests</c> in the test project for the confirmed hook sequences.
 /// </para>
 /// <para>
+/// <b>Several <see cref="Teleport"/>s may target the same host</b> - an overlay stack, a toolbar
+/// assembled from widgets declared all over the app, a docking edge. Their relative order is
+/// <see cref="Order"/>, never the order they happened to load in, so the result is the same
+/// whether a host registers before or after its content. Pick the host <see cref="Panel"/> for
+/// the layout you want - <c>UniformGrid</c>, <c>StackPanel</c>, <c>WrapPanel</c>,
+/// <c>DockPanel</c>, <c>Grid</c> - and set that panel's own layout attached properties
+/// (<c>DockPanel.Dock</c>, <c>Grid.Row</c>, ...) on the <i>content</i> inside this control, not
+/// on the control itself: it is the content that becomes the panel's real child.
+/// <code>
+/// &lt;UniformGrid Rows="1" aq:TeleportHost.RegisterHost="Toolbar" /&gt;
+/// &lt;!-- ...declared anywhere, in any order: --&gt;
+/// &lt;aq:Teleport To="Toolbar" Order="10"&gt;&lt;views:SaveButton /&gt;&lt;/aq:Teleport&gt;
+/// &lt;aq:Teleport To="Toolbar" Order="0"&gt;&lt;views:SearchBox /&gt;&lt;/aq:Teleport&gt;
+/// </code>
+/// </para>
+/// <para>
 /// This is also the building block for a dockable panel: keep this <see cref="Teleport"/>
 /// declared in one stable place (e.g. the main window) and flip <see cref="To"/> between a
 /// docked host and a floating dialog's host to move the same live panel back and forth. If
@@ -62,6 +78,32 @@ public class Teleport : ContentControl
     public static readonly DependencyProperty DisabledProperty =
         DependencyProperty.Register(nameof(Disabled), typeof(bool), typeof(Teleport), new PropertyMetadata(false, OnToOrDisabledChanged));
 
+    /// <summary>
+    /// Where this control's content sits relative to the other <see cref="Teleport"/>s
+    /// rendering into the same host - lower first. Defaults to <c>0</c>.
+    /// </summary>
+    /// <remarks>
+    /// Without this, several <see cref="Teleport"/>s sharing a host would land in whatever
+    /// order they happened to load in - which depends on where each one is declared in the
+    /// tree, whether its host was already registered, and whether it sits inside a tab that
+    /// has been opened yet. <see cref="Order"/> makes the result deterministic; ties break by
+    /// creation order, so leaving every <see cref="Teleport"/> at the default still gives a
+    /// stable (declaration-order) result rather than an arbitrary one.
+    /// <para>
+    /// Changing this while content is already teleported repositions <i>only</i> this control's
+    /// content, leaving its siblings untouched - but repositioning is a real
+    /// <see cref="Panel.Children"/> remove-then-insert (WPF's <c>UIElementCollection</c> has no
+    /// move operation), so it fires the same full unmount/remount pair every other
+    /// <see cref="Teleport"/> move does. See this type's own remarks.
+    /// </para>
+    /// </remarks>
+    public static readonly DependencyProperty OrderProperty =
+        DependencyProperty.Register(nameof(Order), typeof(int), typeof(Teleport), new PropertyMetadata(0, OnOrderChanged));
+
+    private static long _sequenceCounter;
+
+    private readonly long _sequence = Interlocked.Increment(ref _sequenceCounter);
+
     private UIElement? _teleportedContent;
     private Panel? _currentHost;
     private bool _loaded;
@@ -80,17 +122,46 @@ public class Teleport : ContentControl
         set => SetValue(DisabledProperty, value);
     }
 
+    /// <inheritdoc cref="OrderProperty"/>
+    public int Order
+    {
+        get => (int)GetValue(OrderProperty);
+        set => SetValue(OrderProperty, value);
+    }
+
     public Teleport()
     {
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
+    /// <summary>The content currently rendered into a host, for <see cref="TeleportHost"/>'s own index bookkeeping.</summary>
+    internal UIElement? TeleportedContent => _teleportedContent;
+
+    /// <summary>Orders two <see cref="Teleport"/>s sharing a host: <see cref="Order"/> first, creation order as a stable tie-break.</summary>
+    internal static int CompareOrder(Teleport left, Teleport right)
+    {
+        var byOrder = left.Order.CompareTo(right.Order);
+        return byOrder != 0 ? byOrder : left._sequence.CompareTo(right._sequence);
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _loaded = true;
-        TeleportHost.HostRegistered += OnHostRegistered;
-        TeleportHost.HostUnregistered += OnHostUnregistered;
+        // Only subscribe on a transition into the loaded state, never on every Loaded. WPF
+        // raises Loaded a second time with no Unloaded in between (a TabControl realizes every
+        // tab's content up front, then raises Loaded again on whichever one later becomes
+        // selected - see Lifecycle's own OnLoaded), and `-=` removes exactly one subscription
+        // per Unloaded. Subscribing unconditionally therefore left a live handler on a static,
+        // process-lifetime event, pinning this control, its content subtree and its whole
+        // DataContext graph forever. UpdateTeleport still runs on every Loaded, so a genuine
+        // re-Loaded (a tab becoming selected after its host registered) is still picked up.
+        if (!_loaded)
+        {
+            _loaded = true;
+            TeleportHost.HostRegistered += OnHostRegistered;
+            TeleportHost.HostUnregistered += OnHostUnregistered;
+        }
+
         UpdateTeleport();
     }
 
@@ -122,6 +193,23 @@ public class Teleport : ContentControl
     private static void OnToOrDisabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((Teleport)d).UpdateTeleport();
 
+    /// <summary>
+    /// Repositions this control's content within the host it is already rendering into -
+    /// deliberately not a <see cref="RestoreLocal"/>/<see cref="UpdateTeleport"/> round trip,
+    /// which would bounce the content back through this control on the way and cost two
+    /// unmount/remount cycles instead of one.
+    /// </summary>
+    private static void OnOrderChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var teleport = (Teleport)d;
+
+        if (teleport._teleportedContent is not { } content || teleport._currentHost is not { } host)
+            return;
+
+        TeleportHost.RemoveTeleportedContent(host, teleport, content);
+        TeleportHost.AddTeleportedContent(host, teleport, content);
+    }
+
     private void UpdateTeleport()
     {
         if (!_loaded)
@@ -142,8 +230,11 @@ public class Teleport : ContentControl
         {
             _teleportedContent = content;
             _currentHost = host;
+
+            // Content must be cleared first: an element still owned by this ContentControl
+            // has a logical parent, and Panel.Children.Add refuses to adopt one that does.
             Content = null;
-            host.Children.Add(content);
+            TeleportHost.AddTeleportedContent(host, this, content);
         }
     }
 
@@ -152,7 +243,9 @@ public class Teleport : ContentControl
         if (_teleportedContent is null)
             return;
 
-        _currentHost?.Children.Remove(_teleportedContent);
+        if (_currentHost is { } host)
+            TeleportHost.RemoveTeleportedContent(host, this, _teleportedContent);
+
         Content = _teleportedContent;
         _teleportedContent = null;
         _currentHost = null;

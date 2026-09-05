@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Barbatos.Wpf.Aquarius.Reactivity;
+using Barbatos.Wpf.AquariusRouter.Routing;
 
 namespace Barbatos.Wpf.AquariusRouter.Xaml;
 
@@ -68,6 +69,21 @@ using RoutingRouter = Routing.Router;
 /// (e.g. <c>/users/1</c> -&gt; <c>/users/2</c>, same reused View instance) never spuriously
 /// remount here.
 /// </para>
+/// <para>
+/// <b>In a window</b>, depth cannot be inferred - a window is its own visual-tree root, so the
+/// ancestor walk always yields 0 there however deeply nested the route really is. Two ways to
+/// place an outlet in one, and they answer different needs:
+/// <list type="bullet">
+/// <item><description><b>A modal route</b> - <see cref="Routing.RouteRecord.Window"/> on the record,
+/// and <see cref="RouterWindows"/> hands this control the record it opened the window for, so no
+/// depth is involved at all. One router, one history: the parent route keeps showing in the main
+/// window behind it, and Back closes the dialog.</description></item>
+/// <item><description><b>A genuinely independent navigation stack</b> - give the window its own
+/// <see cref="Routing.Router"/> via <see cref="RouterScope.RouterProperty"/>, one declaration
+/// inherited by every <see cref="RouterView"/> and <see cref="RouterLink"/> inside it. Depth 0 is
+/// then correct, because that router's own chain starts there.</description></item>
+/// </list>
+/// </para>
 /// </remarks>
 public sealed class RouterView : ContentControl
 {
@@ -108,17 +124,34 @@ public sealed class RouterView : ContentControl
         set => SetValue(OutletNameProperty, value);
     }
 
+    /// <summary>Re-reads the current route and updates <see cref="ContentControl.Content"/> accordingly.</summary>
+    /// <remarks>
+    /// Only <see cref="RouterWindows"/> calls this, and only after re-pointing a modal-route window
+    /// at a different record. Both this and the outlet's own <c>CurrentRoute</c> watch fire for that
+    /// navigation, but their relative order is an artefact of who subscribed first - and this
+    /// control reads the pinned record at the moment it runs. Being told makes the outcome
+    /// order-independent: whichever lands second re-assigns the same instance, which WPF drops as
+    /// a no-op.
+    /// </remarks>
+    internal void Refresh()
+    {
+        if (_effectiveRouter is { } router)
+            UpdateContent(router);
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         var ancestor = FindAncestor();
         _depth = ancestor is null ? 0 : ancestor._depth + 1;
 
-        // An explicit Router set on THIS RouterView always wins; otherwise inherit whichever
-        // Router the nearest ancestor RouterView resolved to (so setting Router explicitly once,
-        // on an outer/root RouterView, correctly applies to every nested one inside it too -
-        // without this, a multi-router app's nested RouterViews would each need Router set
-        // individually, or would silently fall through to the unrelated global Router.Current).
-        _effectiveRouter = Router ?? ancestor?._effectiveRouter ?? RoutingRouter.Current;
+        // An explicit Router set on THIS RouterView always wins; then an inherited
+        // RouterScope.Router, which is how a dialog Window declares its own navigation stack once
+        // for everything inside it; then whichever Router the nearest ancestor RouterView resolved
+        // to (so setting Router explicitly once, on an outer/root RouterView, correctly applies to
+        // every nested one inside it too - without this, a multi-router app's nested RouterViews
+        // would each need Router set individually, or would silently fall through to the unrelated
+        // global Router.Current).
+        _effectiveRouter = Router ?? RouterScope.GetRouter(this) ?? ancestor?._effectiveRouter ?? RoutingRouter.Current;
 
         if (_effectiveRouter is null)
         {
@@ -136,6 +169,13 @@ public sealed class RouterView : ContentControl
             return;
         }
 
+        // Defensive against ever watching twice: WPF raises Loaded a second time with no
+        // Unloaded in between (a TabControl realizes every tab's content up front, then raises
+        // Loaded again on whichever one later becomes selected), and a second live watch would
+        // leak the first - pinning this control and its whole routed subtree to Router.CurrentRoute,
+        // which for an app-lifetime Router means forever. RouterLink already guards its own watch
+        // this way, with the same reasoning.
+        _watchHandle?.Dispose();
         UpdateContent(_effectiveRouter);
         _watchHandle = Watch.On(_effectiveRouter.CurrentRoute, (_, _) => UpdateContent(_effectiveRouter));
     }
@@ -160,14 +200,35 @@ public sealed class RouterView : ContentControl
 
     private void UpdateContent(RoutingRouter router)
     {
-        var matched = router.CurrentRoute.Value.Matched;
+        var record = ResolveRecord(router.CurrentRoute.Value.Matched);
+
+        Content = record is not null && record.Instances.TryGetValue(OutletName, out var instance)
+            ? instance
+            : null;
+    }
+
+    /// <summary>The matched record this outlet should be rendering, or <see langword="null"/> if none.</summary>
+    /// <remarks>
+    /// Normally that is a question of depth: this outlet's position in the nesting decides which
+    /// link of the matched chain it feeds from, skipping any record with no <c>Views</c> of its own
+    /// (a pure grouping/layout record, mirroring Vue Router's own identical skip-loop).
+    /// <para>
+    /// A modal-route window is the one case where depth cannot answer it - a window is its own
+    /// visual-tree root, so the walk in <c>Loaded</c> always yields 0 there no matter how deeply
+    /// nested the route actually is. <see cref="RouterWindows"/> pins the record it opened the
+    /// window for, and that is used directly instead: exact, and immune to the route table being
+    /// renested later.
+    /// </para>
+    /// </remarks>
+    private RouteRecord? ResolveRecord(IReadOnlyList<RouteRecord> matched)
+    {
+        if (Window.GetWindow(this) is { } window && RouterWindows.GetRecord(window) is { } pinned)
+            return pinned;
 
         var depth = _depth;
         while (depth < matched.Count && matched[depth].ResolvedViews is null)
             depth++;
 
-        Content = depth < matched.Count && matched[depth].Instances.TryGetValue(OutletName, out var instance)
-            ? instance
-            : null;
+        return depth < matched.Count ? matched[depth] : null;
     }
 }

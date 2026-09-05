@@ -1,0 +1,20 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.SectionBody"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
+    <!-- The shared body every section View wraps - each section is its own type (that is what
+         KeepAlive keys on), but they all look the same, so the markup lives here once. -->
+    <Border Background="#EEF4FF"
+            Padding="12">
+        <StackPanel>
+            <TextBlock FontWeight="Bold"
+                       Margin="0,0,0,6"
+                       Text="{Binding Title}" />
+            <TextBlock TextWrapping="Wrap"
+                       Margin="0,0,0,6"
+                       FontStyle="Italic"
+                       Text="Type below, switch to another section, then come back - the text is still here, because this View was never unmounted." />
+            <TextBox aq:Directives.Model="{Binding Draft}" />
+        </StackPanel>
+    </Border>
+</UserControl>

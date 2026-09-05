@@ -145,4 +145,43 @@ public class DirectiveExtensibilityTests
             Assert.Empty(directive.Updates);
         });
     }
+
+    [Fact]
+    public void ASecondLoadedWithNoInterveningUnloadDoesNotMountTwice()
+    {
+        // Same guard Lifecycle's own OnLoaded already has, and for the same documented
+        // reason: WPF raises Loaded a second time with no Unloaded in between (a TabControl
+        // realizes every tab's content up front, then raises Loaded again on whichever one
+        // later becomes selected). Without it a custom directive sees two Mounted calls for
+        // one real mount - and the second arrives with oldValue: null, silently discarding
+        // whatever state the first one set up.
+        StaThread.Run(() =>
+        {
+            var directive = new RecordingDirective();
+            var element = new Border();
+            Directives.SetUse(element, directive);
+
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+
+            Assert.Equal(["Mounted:Border"], directive.Calls);
+        });
+    }
+
+    [Fact]
+    public void AnUnloadedThatNeverMountedDoesNotFireUnmounted()
+    {
+        // The symmetric half: WPF can raise Unloaded for an element that never completed a
+        // Loaded, which used to produce an Unmounted with no matching Mounted before it.
+        StaThread.Run(() =>
+        {
+            var directive = new RecordingDirective();
+            var element = new Border();
+            Directives.SetUse(element, directive);
+
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+
+            Assert.Empty(directive.Calls);
+        });
+    }
 }

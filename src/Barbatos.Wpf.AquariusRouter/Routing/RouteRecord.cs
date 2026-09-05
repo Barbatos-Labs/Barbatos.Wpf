@@ -157,13 +157,60 @@ public sealed class RouteRecord
     public IReadOnlyList<RouteSearchEntry>? Search { get; init; }
 
     /// <summary>
-    /// The View instance currently mounted for this record, per outlet name (<c>"default"</c>
-    /// for the unnamed outlet). Runtime bookkeeping, not part of the route table's own
-    /// configuration - written by <see cref="Router"/> (on construction, during navigation) and
-    /// <see cref="Xaml.RouterView"/> (on mount/unmount), read by <see cref="Router"/> to find the
-    /// currently-live instance a leaving/updating navigation guard needs to run against. The
-    /// direct C#/WPF analogue of Vue Router's own <c>record.instances</c>.
+    /// Renders this record in a separate <see cref="Window"/> of this type rather than inline -
+    /// a <b>modal route</b>. The window opens whenever this record is matched and closes when it
+    /// stops being, so the whole thing is declared here and nowhere else.
     /// </summary>
+    /// <remarks>
+    /// <code>
+    /// new RouteRecord
+    /// {
+    ///     Path = "/", Name = "home", View = typeof(HomeView),
+    ///     Children =
+    ///     [
+    ///         new RouteRecord
+    ///         {
+    ///             Path = "inspector", Name = "inspector",
+    ///             Window = typeof(InspectorWindow),
+    ///             Views = new Dictionary&lt;string, Type&gt; { ["inspector"] = typeof(InspectorView) },
+    ///         },
+    ///     ],
+    /// }
+    /// </code>
+    /// <b>Declare it as a child of the route that should stay on screen behind it</b> - the parent
+    /// keeps rendering in the main window while the child renders in the dialog, which is what
+    /// makes it read as "a dialog over this screen" rather than a navigation away from it. This is
+    /// the same shape a web app gives a modal route, and it means <i>every</i> way of navigating
+    /// reaches it: an <see cref="Xaml.RouterLink"/>, a <see cref="Router.Push"/> from a ViewModel,
+    /// a keyboard shortcut, in-app search, a URI activation. Nothing has to know it is a window.
+    /// <para>
+    /// One router, one history: going Back closes the dialog, and closing the dialog navigates
+    /// back - see <see cref="Xaml.RouterWindows"/>, which is the piece that actually opens and
+    /// closes it (the <see cref="Router"/> itself stays free of any window knowledge, so it
+    /// remains testable with no <see cref="Application"/> at all). A dialog that instead needs a
+    /// navigation stack genuinely independent of the app's needs its own <see cref="Router"/> -
+    /// see <see cref="Xaml.RouterScope"/>.
+    /// </para>
+    /// <para>
+    /// Give the record a named outlet (<see cref="Views"/>) rather than a bare <see cref="View"/>,
+    /// and host a matching <c>&lt;aqr:RouterView OutletName="..."/&gt;</c> inside the window - a
+    /// plain <see cref="View"/> would also be claimed by the main window's default outlet.
+    /// </para>
+    /// </remarks>
+    public Type? Window { get; init; }
+
+    /// <summary>
+    /// The View instance currently live for this record, per outlet name (<c>"default"</c> for
+    /// the unnamed outlet). Runtime bookkeeping, not part of the route table's own configuration -
+    /// the direct C#/WPF analogue of Vue Router's own <c>record.instances</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="Router"/> is the only writer</b>: it builds entering Views into this
+    /// dictionary, reads it back to find the instance a leaving/updating guard must run against,
+    /// and clears it when the record is left. <see cref="Xaml.RouterView"/> only ever reads it -
+    /// which is what makes this the single authority on "is there a live instance for this
+    /// record", and why the router owns that lifetime rather than the visual tree.
+    /// </remarks>
     public IDictionary<string, FrameworkElement> Instances { get; } = new Dictionary<string, FrameworkElement>();
 
     /// <summary>

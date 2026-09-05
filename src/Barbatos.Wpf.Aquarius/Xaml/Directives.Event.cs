@@ -26,8 +26,16 @@ public static partial class Directives
     /// <c>Command</c> for (e.g. <c>Border.MouseLeftButtonDown</c>, <c>TextBox.TextChanged</c>),
     /// the same way <c>v-on</c> is not limited to a fixed event list in Vue. The command is
     /// executed with <see cref="CommandParameterProperty"/> if set, otherwise the raised
-    /// <see cref="EventArgs"/> itself. Automatically unhooked on <c>Unloaded</c>. Also honors
-    /// <see cref="ModifiersProperty"/> - see "Modifiers" below.
+    /// <see cref="EventArgs"/> itself. Also honors <see cref="ModifiersProperty"/> - see
+    /// "Modifiers" below.
+    ///
+    /// <b>The subscription follows the element's <c>Loaded</c>/<c>Unloaded</c> cycle</b>: it is
+    /// suspended on <c>Unloaded</c> and resumed on the next <c>Loaded</c>, so an element that
+    /// gets detached and reattached (an <see cref="If"/> branch toggling, a <see cref="Teleport"/>
+    /// moving between hosts, a <see cref="KeepAlive"/> eviction, a <c>TabItem</c> switched away
+    /// from and back, a routed View re-entered) keeps working afterwards. Only the <c>once</c>
+    /// modifier, or changing <see cref="EventProperty"/>/<see cref="CommandProperty"/> itself,
+    /// tears the binding down for good.
     ///
     /// <b>Modifiers</b> (<see cref="ModifiersProperty"/>, comma-separated) - a curated subset
     /// of Vue's real <c>v-on</c> modifier list, each a no-op unless the raised
@@ -97,7 +105,7 @@ public static partial class Directives
     {
         if (d.GetValue(EventBindingStateProperty) is EventBindingState existing)
         {
-            existing.Unhook();
+            existing.Detach();
             d.ClearValue(EventBindingStateProperty);
         }
 
@@ -162,12 +170,31 @@ public static partial class Directives
         return true;
     }
 
+    /// <summary>
+    /// Owns one element's reflection-built event subscription, and keeps it in step with that
+    /// element's <c>Loaded</c>/<c>Unloaded</c> cycle.
+    /// </summary>
+    /// <remarks>
+    /// The subscription is <b>suspended</b> while the element is unloaded and resumed when it
+    /// loads again - deliberately not a one-way teardown. Anything that detaches and reattaches
+    /// an element (an <see cref="If"/> branch toggling, a <see cref="Teleport"/> moving between
+    /// hosts, a <see cref="KeepAlive"/> eviction, a <c>TabItem</c> switched away from and back, a
+    /// routed View re-entered) would otherwise lose its wiring permanently on the first unload
+    /// while still looking correctly wired - which is exactly what used to happen to a
+    /// <c>RouterLink</c>, since its click handling is built on this.
+    /// <para>
+    /// <see cref="Detach"/> is the separate, permanent teardown: the <c>once</c> modifier and a
+    /// changed <see cref="EventProperty"/>/<see cref="CommandProperty"/> both use it, so neither
+    /// is resurrected by a later <c>Loaded</c>.
+    /// </para>
+    /// </remarks>
     private sealed class EventBindingState
     {
         private readonly DependencyObject _target;
         private readonly EventInfo _eventInfo;
         private readonly Delegate _handler;
         private bool _hooked;
+        private bool _detached;
 
         public EventBindingState(DependencyObject target, string eventName)
         {
@@ -180,16 +207,32 @@ public static partial class Directives
             var relayMethod = typeof(EventBindingState).GetMethod(nameof(Relay), BindingFlags.NonPublic | BindingFlags.Instance)!;
             _handler = Delegate.CreateDelegate(_eventInfo.EventHandlerType!, this, relayMethod);
 
-            if (target is FrameworkElement element)
-                element.Unloaded += OnUnloaded;
+            // Both branches, not just FrameworkElement: a Hyperlink is a FrameworkContentElement,
+            // and RouterLink supports it as a link target just like a ButtonBase.
+            switch (target)
+            {
+                case FrameworkElement element:
+                    element.Loaded += OnLoaded;
+                    element.Unloaded += OnUnloaded;
+                    break;
+                case FrameworkContentElement contentElement:
+                    contentElement.Loaded += OnLoaded;
+                    contentElement.Unloaded += OnUnloaded;
+                    break;
+            }
         }
 
+        /// <summary>Subscribes the relay to the named event. Idempotent - WPF can raise <c>Loaded</c> twice with no <c>Unloaded</c> in between.</summary>
         public void Hook()
         {
+            if (_hooked || _detached)
+                return;
+
             _eventInfo.AddEventHandler(_target, _handler);
             _hooked = true;
         }
 
+        /// <summary>Suspends the subscription, leaving it able to resume on the next <c>Loaded</c>.</summary>
         public void Unhook()
         {
             if (!_hooked)
@@ -197,10 +240,28 @@ public static partial class Directives
 
             _eventInfo.RemoveEventHandler(_target, _handler);
             _hooked = false;
-
-            if (_target is FrameworkElement element)
-                element.Unloaded -= OnUnloaded;
         }
+
+        /// <summary>Permanently tears the binding down, lifecycle subscriptions included - see this type's own remarks.</summary>
+        public void Detach()
+        {
+            Unhook();
+            _detached = true;
+
+            switch (_target)
+            {
+                case FrameworkElement element:
+                    element.Loaded -= OnLoaded;
+                    element.Unloaded -= OnUnloaded;
+                    break;
+                case FrameworkContentElement contentElement:
+                    contentElement.Loaded -= OnLoaded;
+                    contentElement.Unloaded -= OnUnloaded;
+                    break;
+            }
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e) => Hook();
 
         private void OnUnloaded(object sender, RoutedEventArgs e) => Unhook();
 
@@ -214,7 +275,7 @@ public static partial class Directives
                     stopArgs.Handled = true;
 
                 if (modifiers.Contains("once"))
-                    Unhook();
+                    Detach();
 
                 if (!PassesModifierGate(e, sender, modifiers))
                     return;

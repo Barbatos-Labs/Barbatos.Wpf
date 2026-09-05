@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:aqr="http://schemas.barbatos.co/aquariusrouter/2026/xaml"
         xmlns:services="clr-namespace:Barbatos.Wpf.AquariusRouter.Sample.Services"
-        Title="Barbatos.Wpf.AquariusRouter Sample" Height="600" Width="900">
+        Title="Barbatos.Wpf.AquariusRouter Sample" Height="600" Width="900"
+        aqr:RouterWindows.Enable="True">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <!-- Hides every nav RouterLink while logged out; a premium-gated one then stays visible
@@ -57,6 +58,14 @@
             <Button Content="User 2" Style="{StaticResource NavLink}" aqr:RouterLink.To="{aqr:RouteTo Name=user, Params='id=2'}" />
             <Button Content="Dashboard" Style="{StaticResource NavLink}" aqr:RouterLink.To="/dashboard" />
             <Button Content="Preferences" Style="{StaticResource NavLink}" aqr:RouterLink.To="/preferences" />
+            <!-- A modal route, and the link says nothing about that at all - it is written exactly
+                 like every other nav entry here. The route record is what declares the window
+                 (AppRoutes' /dashboard children), so the search box below reaches the same dialog
+                 with no second implementation, and so would a shortcut or a router.Push. The one
+                 line that turns this on for the whole app is RouterWindows.Enable, on this Window
+                 above. -->
+            <Button Content="Inspector (dialog)" Style="{StaticResource NavLink}"
+                    aqr:RouterLink.To="/dashboard/inspector" />
             <!-- The one premium-gated link (see AppRoutes' "/settings" Meta) - stays visible once
                  logged in (inherited from the NavLink style above) but only enabled on the
                  premium plan. Toggle it from Dashboard's "Premium plan" checkbox. -->

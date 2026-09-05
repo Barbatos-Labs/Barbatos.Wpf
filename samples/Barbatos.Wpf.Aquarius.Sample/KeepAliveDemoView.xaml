@@ -1,0 +1,56 @@
+<UserControl x:Class="Barbatos.Wpf.Aquarius.Sample.KeepAliveDemoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Barbatos.Wpf.Aquarius.Sample"
+             xmlns:aq="http://schemas.barbatos.co/aquarius/2026/xaml">
+    <StackPanel Margin="12">
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   FontStyle="Italic"
+                   Text="Vue's exact shape: a &lt;KeepAlive&gt; wrapping one &lt;Component Is=&quot;...&quot;/&gt;. Switching sections only ever fires OnDeactivated/OnActivated - never OnUnmounted - so each section keeps whatever you typed into it. Watch the activity log below while you click, and compare with a TabControl (it destroys and rebuilds the tab you switch away from)." />
+
+        <StackPanel Orientation="Horizontal"
+                    Margin="0,0,0,8">
+            <Button Content="Profile"
+                    Margin="0,0,6,0"
+                    Command="{Binding ShowCommand}"
+                    CommandParameter="{x:Type local:ProfileSectionView}" />
+            <Button Content="Orders"
+                    Margin="0,0,6,0"
+                    Command="{Binding ShowCommand}"
+                    CommandParameter="{x:Type local:OrdersSectionView}" />
+            <Button Content="Report"
+                    Command="{Binding ShowCommand}"
+                    CommandParameter="{x:Type local:ReportSectionView}" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal"
+                    Margin="0,0,0,8">
+            <TextBlock VerticalAlignment="Center"
+                       Margin="0,0,6,0"
+                       Text="Max cached (0 = unlimited):" />
+            <TextBox Width="40"
+                     Margin="0,0,12,0"
+                     aq:Directives.Model="{Binding Max}" />
+            <TextBlock VerticalAlignment="Center"
+                       Margin="0,0,6,0"
+                       Text="Exclude (comma-separated type names):" />
+            <TextBox Width="160"
+                     aq:Directives.Model="{Binding Exclude}" />
+        </StackPanel>
+
+        <!-- The whole feature. Each section's View is built on FIRST switch and never again -
+             go to Orders once and you will see exactly one "built for the first time" entry for
+             it, no matter how many times you come back. -->
+        <aq:KeepAlive Max="{Binding Max}"
+                      Exclude="{Binding Exclude}"
+                      MinHeight="120">
+            <aq:Component Is="{Binding CurrentView.Value}" />
+        </aq:KeepAlive>
+
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,8,0,0"
+                   FontStyle="Italic"
+                   Text="Try: set Max to 2, then click Profile - Orders - Report - Profile. The least recently used section is evicted for real (OnUnmounted in the log), so its text is gone when you return. Or type 'ReportSectionView' into Exclude - it matches the View's type name, the same way Vue's exclude matches a component's name." />
+    </StackPanel>
+</UserControl>

@@ -1,5 +1,6 @@
 using System.Net.Http;
 using Barbatos.Wpf.Apsu;
+using Barbatos.Wpf.Aquarius.Composition;
 using Barbatos.Wpf.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -80,9 +81,29 @@ public static class WpfProgram
             .Add<NonEmptyCartGuardInterceptor>()
             .Add(sp => new CheckoutCooldownInterceptor(TimeSpan.FromSeconds(3), sp.GetRequiredService<ApsuActivityLog>())));
 
+        // The KeepAlive demo. AddAquarius() is the DI entry point for the library's own options;
+        // UseAquarius() below is what points its markup-driven type resolution (aq:Setup.Enable,
+        // Component.Is) at this container.
+        builder.Services.AddAquarius();
+        builder.Services.AddSingleton<KeepAliveActivityLog>();
+
+        // Transient, not Singleton: KeepAlive builds a section View the first time it is shown
+        // and again after an eviction, and each of those genuinely wants its own fresh instance -
+        // a Singleton registration would silently hand back the evicted one, state and all, which
+        // is precisely the behavior the eviction demo is meant to show the absence of.
+        builder.Services.AddTransient<ProfileSectionView>();
+        builder.Services.AddTransient<OrdersSectionView>();
+        builder.Services.AddTransient<ReportSectionView>();
+        builder.Services.AddTransient<ProfileSectionViewModel>();
+        builder.Services.AddTransient<OrdersSectionViewModel>();
+        builder.Services.AddTransient<ReportSectionViewModel>();
+
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainWindow>();
 
-        return builder.Build();
+        var app = builder.Build();
+        app.Services.UseAquarius();
+
+        return app;
     }
 }

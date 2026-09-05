@@ -393,10 +393,10 @@ public sealed class Router
     /// <summary>
     /// The same DI-first-else-<see cref="Activator.CreateInstance(Type)"/> resolution
     /// <see cref="Setup"/> applies to a ViewModel, so a routed View and a route-declared ViewModel
-    /// both come out of the app's own container when there is one.
+    /// both come out of the app's own container when there is one - shared with <see cref="Setup"/>
+    /// and Aquarius's own <c>Component</c>/<c>KeepAlive</c> rather than reimplemented here.
     /// </summary>
-    private static object ResolveInstance(Type type) =>
-        Setup.ServiceProvider?.GetService(type) ?? Activator.CreateInstance(type)!;
+    private static object ResolveInstance(Type type) => Setup.Resolve(type);
 
     /// <summary>
     /// Discards the Views <see cref="ConstructEnteringViews"/> just built, for a navigation that

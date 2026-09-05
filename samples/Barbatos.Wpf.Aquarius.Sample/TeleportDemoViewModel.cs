@@ -20,6 +20,10 @@ public sealed partial class TeleportDemoViewModel : ObservableObject
     [ObservableProperty]
     private bool _showToast;
 
+    /// <summary>Bound by the "several Teleports, one host" toolbar widget - proves a teleported control's bindings keep working in its new home.</summary>
+    [ObservableProperty]
+    private string _toolbarSearch = "";
+
     [ObservableProperty]
     private string _dockableNotes = "Type here, then Undock/Redock - or just close the floating dialog with its own [X] and watch it come home on its own.";
 

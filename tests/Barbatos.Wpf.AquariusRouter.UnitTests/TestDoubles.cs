@@ -149,3 +149,96 @@ internal sealed class SelfWiredLifecycleLayoutView : ContentControl
         Content = NestedRouterView;
     }
 }
+
+/// <summary>
+/// A stand-in for an app's modal-route dialog: a plain <see cref="System.Windows.Window"/> hosting
+/// a named outlet, and nothing else.
+/// </summary>
+/// <remarks>
+/// Deliberately has no router wiring of its own - that is the whole point of
+/// <see cref="RouteRecord.Window"/>. <see cref="RouterWindows"/> resolves this type through
+/// <see cref="Setup.Resolve"/> (so a parameterless constructor is what it needs), sets the router
+/// scope on it, and pins the record the <see cref="RouterView"/> inside should render.
+/// </remarks>
+internal sealed class ProbeDialogWindow : System.Windows.Window
+{
+    public ProbeDialogWindow()
+    {
+        Width = 200;
+        Height = 200;
+        Outlet = new RouterView { OutletName = "inspector" };
+        Content = Outlet;
+    }
+
+    public RouterView Outlet { get; }
+}
+
+/// <summary>
+/// Records the full mount/unmount <b>and</b> activate/deactivate hook set, plus a scratch
+/// <see cref="State"/> value - what keep-alive tests need that
+/// <see cref="LifecycleRecordingViewModel"/> does not provide.
+/// </summary>
+/// <remarks>
+/// The activate/deactivate pair is the whole point: keep-alive's promise is that leaving a route
+/// produces <c>OnDeactivated</c> instead of <c>OnUnmounted</c>. <see cref="State"/> proves the
+/// second half of that promise - that the instance is genuinely the same one, still holding
+/// whatever it held before.
+/// </remarks>
+internal sealed class KeepAliveRecordingViewModel(string label) :
+    IOnBeforeMount, IOnMounted, IOnBeforeUnmount, IOnUnmounted, IOnActivated, IOnDeactivated
+{
+    public List<string> Calls { get; } = [];
+
+    public string? State { get; set; }
+
+    public void OnBeforeMount() => Calls.Add($"{label}.OnBeforeMount");
+
+    public void OnMounted() => Calls.Add($"{label}.OnMounted");
+
+    public void OnBeforeUnmount() => Calls.Add($"{label}.OnBeforeUnmount");
+
+    public void OnUnmounted() => Calls.Add($"{label}.OnUnmounted");
+
+    public void OnActivated() => Calls.Add($"{label}.OnActivated");
+
+    public void OnDeactivated() => Calls.Add($"{label}.OnDeactivated");
+}
+
+/// <summary>
+/// A routed View that wires <see cref="Lifecycle.EnableProperty"/> and its own
+/// <see cref="KeepAliveRecordingViewModel"/> in its constructor, so <see cref="Router"/>'s
+/// <see cref="Activator.CreateInstance(Type)"/> path produces a fully-wired, independently
+/// observable instance - the keep-alive counterpart of <see cref="SelfWiredLifecycleView"/>.
+/// </summary>
+internal abstract class KeepAliveProbeView : ContentControl
+{
+    protected KeepAliveProbeView(string label)
+    {
+        Lifecycle.SetEnable(this, true);
+        ViewModel = new KeepAliveRecordingViewModel(label);
+        DataContext = ViewModel;
+    }
+
+    public KeepAliveRecordingViewModel ViewModel { get; }
+}
+
+/// <summary>Four distinct probe View types, so several records in one test each get their own.</summary>
+internal sealed class KeepAliveProbeViewA() : KeepAliveProbeView("A");
+
+/// <inheritdoc cref="KeepAliveProbeViewA"/>
+internal sealed class KeepAliveProbeViewB() : KeepAliveProbeView("B");
+
+/// <inheritdoc cref="KeepAliveProbeViewA"/>
+internal sealed class KeepAliveProbeViewC() : KeepAliveProbeView("C");
+
+/// <summary>A layout probe with a nested <see cref="RouterView"/>, for keep-alive across a nested route chain.</summary>
+internal sealed class KeepAliveProbeLayoutView : KeepAliveProbeView
+{
+    public KeepAliveProbeLayoutView() : base("Layout")
+    {
+        NestedRouterView = new RouterView();
+        Content = NestedRouterView;
+    }
+
+    public RouterView NestedRouterView { get; }
+}

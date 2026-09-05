@@ -74,5 +74,35 @@
                 </StackPanel>
             </Border>
         </aq:Teleport>
+
+        <TextBlock FontWeight="Bold"
+                   Margin="0,16,0,4"
+                   Text="Several Teleports, one host" />
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,0,0,4"
+                   FontStyle="Italic"
+                   Text="A host is any Panel, so pick the one whose layout you want - this is a UniformGrid. The three widgets below are declared in the order Save, Search, Filter but render in Order order (0, 10, 20), which is what makes the result the same no matter which one happens to load first, or whether the host was registered before or after them." />
+        <UniformGrid Rows="1"
+                     aq:TeleportHost.RegisterHost="DemoToolbar"
+                     Margin="0,0,0,4" />
+
+        <aq:Teleport To="DemoToolbar"
+                     Order="20">
+            <Button Content="Save"
+                    Margin="2" />
+        </aq:Teleport>
+        <aq:Teleport To="DemoToolbar"
+                     Order="0">
+            <TextBox Margin="2"
+                     aq:Directives.Model="{Binding ToolbarSearch}" />
+        </aq:Teleport>
+        <aq:Teleport To="DemoToolbar"
+                     Order="10">
+            <ComboBox Margin="2"
+                      SelectedIndex="0">
+                <ComboBoxItem Content="All" />
+                <ComboBoxItem Content="Open" />
+            </ComboBox>
+        </aq:Teleport>
     </StackPanel>
 </UserControl>

@@ -2,6 +2,7 @@ using Barbatos.Wpf.AquariusRouter.Sample.Views.About;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Admin;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.CrossAssembly;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Dashboard;
+using Barbatos.Wpf.AquariusRouter.Sample.Views.Dialog;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Home;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.Login;
 using Barbatos.Wpf.AquariusRouter.Sample.Views.NotFound;
@@ -60,6 +61,11 @@ namespace Barbatos.Wpf.AquariusRouter.Sample.Routing;
 /// "đổi mật khẩu" (or its unaccented spelling, "doi mat khau" - see <see cref="RouteSearchIndex"/>'s
 /// own remarks on diacritic-insensitive matching) finds the same route. Try the search box in
 /// <c>MainWindow.xaml</c>'s nav bar.
+/// <c>/dashboard</c>'s two children are the <b>modal-route</b> demo: routes that render into a
+/// <see cref="RouteRecord.Window"/> rather than into the main window's outlet, opened and closed
+/// by <c>RouterWindows</c> straight from the current route. Note that the Inspector is reachable
+/// from the search box as well as the nav bar, with nothing extra written for either - the point
+/// of declaring the window on the record instead of on the link.
 /// </remarks>
 public static class AppRoutes
 {
@@ -118,6 +124,40 @@ public static class AppRoutes
                 ["sidebar"] = typeof(DashboardSidebarView),
             },
             Search = [new RouteSearchEntry { Title = "Dashboard" }],
+
+            // The modal-route demo (see RouterWindows): two children that render into a Window
+            // instead of into the main window's outlet. Everything about them is ordinary - a
+            // path, a name, a View, in-app search - except the one extra line saying WHERE they
+            // render. Because that lives on the record, every way of getting here works with no
+            // extra wiring at all: the nav bar's plain RouterLink.To, the search box below it,
+            // router.Push from a ViewModel, a keyboard shortcut, a deep link.
+            //
+            // One router, one history. /dashboard stays matched and keeps showing behind the
+            // dialog, Back closes it, and closing it with [X] navigates back to /dashboard - the
+            // route and what is on screen can never disagree.
+            //
+            // Two siblings rather than a parent and a child: they share one Window type, so
+            // stepping between them keeps the same window and only swaps its outlet - a dialog
+            // with its own internal navigation. Nest them instead and the dialog would need a
+            // nested RouterView of its own, exactly like /settings does in the main window.
+            Children =
+            [
+                new RouteRecord
+                {
+                    Path = "inspector",
+                    Name = "inspector",
+                    View = typeof(InspectorOverviewView),
+                    Window = typeof(InspectorWindow),
+                    Search = [new RouteSearchEntry { Title = "Inspector", Keywords = "dialog window modal" }],
+                },
+                new RouteRecord
+                {
+                    Path = "inspector/raw",
+                    Name = "inspector-raw",
+                    View = typeof(InspectorRawView),
+                    Window = typeof(InspectorWindow),
+                },
+            ],
         },
 
         // Guarded globally, via Meta - PreferencesViewModel has no guard interface of its own at

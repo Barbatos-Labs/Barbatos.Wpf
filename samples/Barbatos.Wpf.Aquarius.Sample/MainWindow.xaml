@@ -86,6 +86,10 @@
                 <local:ExprDemoView DataContext="{Binding ExprDemo}" />
             </TabItem>
 
+            <TabItem Header="KeepAlive">
+                <local:KeepAliveDemoView DataContext="{Binding KeepAliveDemo}" />
+            </TabItem>
+
             <TabItem Header="Apsu + Aquarius">
                 <local:ApsuInteropDemoView DataContext="{Binding ApsuInteropDemo}" />
             </TabItem>

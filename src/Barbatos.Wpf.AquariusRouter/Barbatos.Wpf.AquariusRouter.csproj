@@ -22,6 +22,12 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <!-- Abstractions only, never a container implementation - same reasoning as
+         Barbatos.Wpf.Aquarius.csproj: this package offers services.AddAquariusRouter() so the
+         route table, history and options are declared alongside every other registration, but it
+         never builds or owns a container. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
   <ItemGroup>

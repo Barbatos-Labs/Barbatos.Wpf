@@ -26,6 +26,10 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    <!-- Abstractions on its own (not the full container) is what Barbatos.Wpf.Aquarius and
+         Barbatos.Wpf.AquariusRouter reference: they only need IServiceCollection/ServiceDescriptor
+         to offer AddAquarius()/AddAquariusRouter(), never a container implementation of their own. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.Abstractions" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.FileProviders.Physical" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />

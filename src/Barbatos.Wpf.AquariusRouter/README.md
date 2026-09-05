@@ -5,8 +5,8 @@
 ### *A Vue Router-style navigation system - for WPF*
 
 **Path matching with params/optional/repeatable segments/custom regex, nested routes and named
-outlets via `RouterView`, navigation guards, redirect/alias, and `RouterLink` with live
-active-state styling - built directly on [Barbatos.Wpf.Aquarius](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md).**
+outlets via `RouterView`, navigation guards, redirect/alias, per-window router scopes, and
+`RouterLink` with live active-state styling - built directly on [Barbatos.Wpf.Aquarius](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md).**
 
 [![NuGet](https://img.shields.io/nuget/v/Barbatos.Wpf.AquariusRouter.svg)](https://www.nuget.org/packages/Barbatos.Wpf.AquariusRouter)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Barbatos.Wpf.AquariusRouter.svg)](https://www.nuget.org/packages/Barbatos.Wpf.AquariusRouter)
@@ -24,9 +24,13 @@ active-state styling - built directly on [Barbatos.Wpf.Aquarius](https://github.
   * [Default child routes](#default-child-routes)
   * [Pairing a View with its ViewModel](#pairing-a-view-with-its-viewmodel)
 * **[The Router](#the-router)**
+  * [Registering it with DI](#registering-it-with-di)
 * **[RouterView](#routerview)**
   * [Named Outlets](#named-outlets)
   * [Nested Routes](#nested-routes)
+* **[Dialog windows](#dialog-windows)**
+  * [Modal routes](#modal-routes---a-route-that-renders-into-a-window)
+  * [Independent stacks](#independent-stacks---a-window-with-its-own-router)
 * **[RouterLink](#routerlink)**
   * [RouteTo](#routeto)
 * **[Navigation Guards](#navigation-guards)**
@@ -174,6 +178,11 @@ new RouteRecord
   [Pairing a View with its ViewModel](#pairing-a-view-with-its-viewmodel) - this is the option for
   when the View ships inside a library you cannot edit.
 - **`Children`** - nested child records, joined onto this one's `Path` per the rule above.
+- **`Window`** - renders this record into a `Window` of its own instead of into the parent's outlet:
+  a **modal route**. The parent route stays matched and keeps showing behind it, and `Back` closes
+  the dialog. Declared here rather than on a link so that every way of navigating - a `RouterLink`,
+  a `Push` from a ViewModel, a shortcut, in-app search - reaches it with no extra wiring. See
+  [Dialog windows](#dialog-windows).
 - **`Redirect`** - `Func<RouteLocation, RouteLocationRaw>`. When set, navigating to this record
   immediately resolves to a different target instead, *before any navigation guard runs* - only
   the target's own guards ever run, never this record's. Always a delegate (`to => "/somewhere"`),
@@ -266,9 +275,31 @@ var router = new Router(routes, history: null, pathOptions: null);
 - **`Router.Current`** - a static, settable ambient default, consulted by `RouterView`/`RouterLink`
   when neither sets an explicit `Router` of its own. Set this once at startup for the common
   single-router app (mirroring `Application.Current`'s own shape); a multi-window app that wants
-  independent per-window navigation stacks can skip this and set `RouterView.Router`/
-  `RouterLink.Router` explicitly per window instead - a real WPF-specific capability with no Vue
-  Router equivalent, since a web SPA only ever has one router.
+  independent per-window navigation stacks can skip this and use
+  [`RouterScope.Router`](#dialog-windows) per window instead - a real WPF-specific capability with
+  no Vue Router equivalent, since a web SPA only ever has one router.
+
+### Registering it with DI
+
+```csharp
+var builder = WpfApp.CreateBuilder();
+builder.Services.AddSingleton<AuthState>();
+
+// The routes parameter is a factory, so a per-route guard can close over a DI-resolved
+// service without anything having to be constructed by hand first:
+builder.Services.AddAquariusRouter(
+    sp => AppRoutes.Build(sp.GetRequiredService<AuthState>()));
+
+var app = builder.Build();
+app.Services.UseAquarius().UseAquariusRouter();
+```
+
+`AddAquariusRouter` registers the `Router` singleton, an `IRouterHistory` and `RouterOptions`
+(`PathOptions`); `UseAquariusRouter` publishes the resolved router as
+`Router.Current` and returns it. Both the `Router` and the history go in with `TryAdd`, so an app
+that needs something else - a history that persists across restarts, say - registers it first and
+wins. It is optional: `new Router(routes)` plus `Router.Current = router` still works exactly as
+before.
 
 ### Pairing a View with its ViewModel
 
@@ -387,6 +418,152 @@ nested `RouterView`'s own constructor runs *before* the outer one even gets the 
 walking the tree at `Loaded` (once everything is genuinely connected) sidesteps that entirely. See
 `RouterView`'s own XML docs for the full reasoning, including why `Router` itself is centralized
 in `Router.Push`'s own pipeline rather than resolved per-`RouterView`.
+
+---
+
+## Dialog windows
+
+**Yes - a `RouterView` works inside a child `Window`.** Two shapes, and they answer different
+questions. Neither one is a command, an event, or a window factory.
+
+### Modal routes - a route that renders into a Window
+
+The dialog *is* a route. Declare the window on the record, as a child of whatever should stay
+showing behind it:
+
+```csharp
+new RouteRecord
+{
+    Path = "/dashboard", Name = "dashboard", View = typeof(DashboardView),
+    Children =
+    [
+        new RouteRecord
+        {
+            Path = "inspector", Name = "inspector",
+            View = typeof(InspectorOverviewView),
+            Window = typeof(InspectorWindow),   // <- the only extra line
+        },
+    ],
+}
+```
+
+Turn it on once, on the app's main window:
+
+```xml
+<Window x:Class="...MainWindow" aqr:RouterWindows.Enable="True" ...>
+```
+
+And the link is an ordinary link - it says nothing about a window at all:
+
+```xml
+<Button Content="Inspector" aqr:RouterLink.To="/dashboard/inspector" />
+```
+
+That is the whole point of putting it on the record: **every** way of navigating reaches it. A
+`RouterLink`, a `router.Push` in a ViewModel, a keyboard shortcut, in-app search, a deep link on
+cold start - none of them has to know a window is involved, and none of them needs a second
+implementation. A property on the link could only ever have worked for links.
+
+The dialog itself declares nothing:
+
+```xml
+<Window x:Class="...InspectorWindow" ...>
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+            <Button Content="Overview" aqr:RouterLink.To="/dashboard/inspector" />
+            <Button Content="Raw data" aqr:RouterLink.To="/dashboard/inspector/raw" />
+        </StackPanel>
+        <aqr:RouterView />
+    </DockPanel>
+</Window>
+```
+
+**One router, one history**, which is what makes it behave like a route rather than like a popup:
+
+- `/dashboard` stays matched, so the main window keeps showing the dashboard behind the dialog.
+- `Back` closes the dialog, because it is an ordinary entry on the ordinary history stack.
+- Closing the dialog with its own `[X]` navigates back to the parent route. The symmetry matters:
+  without it the route would go on claiming a window that is no longer on screen, and navigating to
+  it again would look like a no-op.
+- Two sibling records naming the same `Window` type share one window - stepping between them keeps
+  its position, size and focus and swaps only the outlet, which is what a dialog with its own
+  internal navigation should look like. Nest them instead and the dialog hosts a nested
+  `RouterView` of its own, exactly as it would in the main window.
+
+`RouterWindows` is the only piece of the library that opens a window, and it deliberately lives in
+the Xaml layer: `Router` itself never touches `Window` or `Application`, so the whole navigation
+pipeline stays testable with no `Application` at all. It watches `CurrentRoute` the same way
+`RouterView` does - pull-based, `Loaded`-gated, released on `Unloaded` (which also closes every
+window it opened).
+
+The window type is resolved through DI (`Setup.Resolve`), so register it - **transient**, since a
+closed WPF `Window` cannot be shown again:
+
+```csharp
+builder.Services.AddTransient<InspectorWindow>();
+```
+
+**How the outlet in a dialog knows what to render.** A dialog is its own visual-tree root, so a
+`RouterView` inside one cannot infer its depth by walking ancestors the way every other outlet
+does - it would always come out as 0, however deeply nested the route really is. `RouterWindows`
+hands the window the record it opened it for, and the outlet renders that record directly: exact,
+and immune to the route table being renested later.
+
+### Independent stacks - a window with its own Router
+
+The other question is a dialog that navigates *entirely on its own* - its own route table, its own
+history, unrelated to what the main window is showing. That needs a second `Router`, because a
+`Router` has exactly one `CurrentRoute`. Declare it once with the inherited `RouterScope.Router`;
+every `RouterView` and `RouterLink` inside the window picks it up:
+
+```csharp
+// A wrapper type rather than a second Router registration, because a container can only resolve
+// one Router by type and the app's own is already that one:
+public sealed class InspectorRouter
+{
+    public InspectorRouter() => Router = new Router([/* this window's own route table */]);
+
+    public Router Router { get; }
+}
+
+public InspectorWindow(InspectorRouter inspectorRouter)
+{
+    InitializeComponent();
+    RouterScope.SetRouter(this, inspectorRouter.Router);
+}
+```
+
+Property inheritance does not cross a `Window` boundary, which is exactly what makes this safe: the
+dialog gets its own scope and cannot accidentally inherit - or drive - the main window's. Depth 0
+is correct here, because that router's own chain genuinely starts at the window.
+
+Note that a `Router` owns its records' `Instances` (that is how a guard finds the instance to run
+against), so two routers must not share one route table - give the second scope a table of its own.
+
+### Choosing
+
+| | Modal route (`RouteRecord.Window`) | Independent stack (`RouterScope.Router`) |
+| --- | --- | --- |
+| History | one, shared with the app | its own |
+| `Back` | closes the dialog | moves within the dialog |
+| Parent route | stays matched, still showing behind | unrelated |
+| Reachable from | links, `Push`, shortcuts, search, deep links | whatever drives that router |
+| Route table | one | one per router |
+
+Reach for the modal route by default - a dialog is usually *part of* where the user already is, and
+the modal route is the shape that keeps the route and the screen from ever disagreeing. Reach for
+`RouterScope` when the window is genuinely a second application surface.
+
+Resolution order for both `RouterView` and `RouterLink` is: an explicit `Router` on the control
+itself, then the nearest inherited `RouterScope.Router`, then (for a nested `RouterView`) whatever
+its ancestor `RouterView` resolved, then `Router.Current`. All read at `Loaded`, by which point
+property inheritance has settled. Modal `ShowDialog` is not a special case either, and closing a
+dialog unmounts its routed View like any other unload.
+
+`samples/Barbatos.Wpf.AquariusRouter.Sample` has the modal route as a working demo (the "Inspector
+(dialog)" link in the nav bar - and the same dialog from the search box, with nothing extra written
+for it). `RouterModalRouteTests` pins the behaviors above; `RouterDialogWindowTests` pins the
+independent-stack ones.
 
 ---
 
@@ -715,11 +892,24 @@ across app restarts) - implement `IRouterHistory` directly.
   `to.Params`, achieving the same "don't reach into an ambient current-route singleton" decoupling
   goal `props` exists for, with one mechanism instead of two.
 - **`RouterView` composing with Aquarius's `Transition`/`TransitionGroup`** - Vue Router's own
-  `<RouterView>` explicitly warns against wrapping it directly in `<Transition>`/`<KeepAlive>` (only
-  a scoped-slot form works correctly), and `Transition` here is boolean-`Show`-driven, not "animate
+  `<RouterView>` explicitly warns against wrapping it directly in `<Transition>` (only a
+  scoped-slot form works correctly), and `Transition` here is boolean-`Show`-driven, not "animate
   whenever Content changes to something new" - a real semantic gap, not just wiring. Animate inside
   each routed View's own content instead (a `Transition` wrapping that View's internal layout,
   keyed off its own `IOnMounted`).
+- **Keep-alive for routed Views** - and note that Vue Router does not have this either: it has no
+  per-route keep-alive option, only the template composition
+  `<router-view v-slot="{ Component }"><keep-alive><component :is="Component"/></keep-alive></router-view>`.
+  The WPF equivalent, `<aq:KeepAlive>` around an `<aqr:RouterView>`, is not supported, and the
+  reason is a genuine structural difference rather than missing wiring: **this `Router` owns routed
+  View lifetimes**, because `IOnBeforeRouteLeave`/`IOnBeforeRouteUpdate` have to run against the
+  instance that is *currently mounted*, which it tracks centrally in `RouteRecord.Instances` (see
+  `Router`'s own remarks). Vue's renderer owns component instances instead, so its `<KeepAlive>` can
+  simply take over that ownership; here, a wrapper doing the same would be fighting the router for
+  it. Aquarius's [`KeepAlive`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#keepalive)
+  is fully supported for the ordinary case it was designed for - a `<aq:Component Is="...">`
+  switching between Views inside a single routed View, which covers most of what a "keep this
+  screen's state" request actually means.
 
 ---
 

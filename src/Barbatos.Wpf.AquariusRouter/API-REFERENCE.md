@@ -9,9 +9,9 @@ looking up a specific member's exact signature/behavior.
 | Namespace | Contents |
 | --- | --- |
 | [`Barbatos.Wpf.AquariusRouter.Matching`](#namespace-barbatoswpfaquariusroutermatching) | The path-matching engine: tokenizer, compiled path parser/ranker, route matcher. No WPF dependency. |
-| [`Barbatos.Wpf.AquariusRouter.Routing`](#namespace-barbatoswpfaquariusrouterrouting) | The route table, resolved locations, the `Router` orchestrator, guards, failures, history. |
+| [`Barbatos.Wpf.AquariusRouter.Routing`](#namespace-barbatoswpfaquariusrouterrouting) | The route table, resolved locations, the `Router` orchestrator, guards, failures, history, plus the `AddAquariusRouter`/`UseAquariusRouter` DI entry points and `RouterOptions`. |
 | [`Barbatos.Wpf.AquariusRouter.Searching`](#namespace-barbatoswpfaquariusroutersearching) | In-app search: opt-in per-route search entries and the query/ranking engine. No WPF dependency. |
-| [`Barbatos.Wpf.AquariusRouter.Xaml`](#namespace-barbatoswpfaquariusrouterxaml) | `RouterView` and `RouterLink`. |
+| [`Barbatos.Wpf.AquariusRouter.Xaml`](#namespace-barbatoswpfaquariusrouterxaml) | `RouterView`, `RouterLink`, `RouterWindows` (modal-route windows) and `RouterScope` (per-window router scoping). |
 
 All four are mapped onto one XAML namespace, `http://schemas.barbatos.co/aquariusrouter/2026/xaml`
 (prefix `aqr`), via `[assembly: XmlnsDefinition]` in `AssemblyInfo.cs`.
@@ -111,12 +111,13 @@ a worked example.
 | `ViewModel` | `Type?` | ViewModel assigned as the View's `DataContext`, pairing the two from the route table - the option when neither file may be edited. Shorthand for `ViewModels["default"]`; setting both throws at registration. Overrides the View's own `aq:Setup`. |
 | `ViewModels` | `IReadOnlyDictionary<string, Type>?` | Per-outlet ViewModels. Every key must name an outlet `View`/`Views` declares, or registration throws. |
 | `Children` | `IReadOnlyList<RouteRecord>?` | Nested child records. |
+| `Window` | `Type?` | Renders this record into a `Window` of its own - a **modal route**. Declare it on a child of the route that should stay showing behind it, give the window a `RouterView`, and set `RouterWindows.Enable` once on the main window; `RouterWindows` then opens, re-points and closes it purely from the current route. One router, one history: the parent stays matched, `Back` closes the dialog, and closing the dialog navigates back to the parent. See [Dialog windows](README.md#dialog-windows). |
 | `Redirect` | `Func<RouteLocation, RouteLocationRaw>?` | Resolved before any guard runs - see README. |
 | `Alias` | `IReadOnlyList<string>?` | Alternate paths resolving to this same record. |
 | `Meta` | `IReadOnlyDictionary<string, object?>?` | Arbitrary data, merged root-to-leaf into `RouteLocation.Meta`. |
 | `BeforeEnter` | `NavigationGuard?` | Per-route guard, only for a genuinely new entry. |
 | `Search` | `IReadOnlyList<RouteSearchEntry>?` | Opt-in in-app-search entries - see [In-App Search](README.md#in-app-search). |
-| `Instances` | `IDictionary<string, FrameworkElement>` | Runtime bookkeeping: the currently-mounted View per outlet name. Written by `Router`/`RouterView`; not part of route-table configuration. |
+| `Instances` | `IDictionary<string, FrameworkElement>` | Runtime bookkeeping: the live View per outlet name, and the single authority on what exists. Written only by `Router`; `RouterView` only reads it. Not part of route-table configuration. |
 
 ### `RouteLocation` (sealed record)
 
@@ -245,6 +246,33 @@ See [The Router](README.md#the-router) for a concept-first walkthrough.
 | `HasRoute` | `bool HasRoute(string name)` | |
 | `GetRoutes` | `IReadOnlyList<RouteRecord> GetRoutes()` | |
 
+### `RouterOptions` (sealed class)
+
+Configuration for the `Router` built by `AddAquariusRouter`. `SectionName` is
+`"Barbatos:AquariusRouter"`.
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `PathOptions` | `PathParserOptions?` | Applied uniformly to every route's compiled matcher. |
+
+### `AquariusRouterServiceCollectionExtensions` (static class)
+
+| Member | Signature |
+| --- | --- |
+| `AddAquariusRouter` | `IServiceCollection AddAquariusRouter(this IServiceCollection services, Func<IServiceProvider, IEnumerable<RouteRecord>> routes, Action<RouterOptions>? configure = null)` |
+
+Registers `RouterOptions`, an `IRouterHistory` (`MemoryRouterHistory`) and the `Router` singleton,
+all with `TryAdd` so an app's own prior registration wins. `routes` is a factory so a per-route
+`BeforeEnter` guard can close over a DI-resolved service.
+
+### `AquariusRouterServiceProviderExtensions` (static class)
+
+| Member | Signature |
+| --- | --- |
+| `UseAquariusRouter` | `Router UseAquariusRouter(this IServiceProvider services)` |
+
+Resolves the registered `Router`, publishes it as `Router.Current`, and returns it.
+
 ---
 
 ## Namespace: `Barbatos.Wpf.AquariusRouter.Searching`
@@ -298,11 +326,33 @@ at least one term only found via `Keywords`.
 
 | Member | Type | Meaning |
 | --- | --- | --- |
-| `RouterProperty` / `Router` | `DependencyProperty` / `Router?` | Explicit override; falls back to `Router.Current`. |
+| `RouterProperty` / `Router` | `DependencyProperty` / `Router?` | Explicit override. Resolution order: this, then the inherited `RouterScope.Router`, then the nearest ancestor `RouterView`'s effective router, then `Router.Current`. |
 | `OutletNameProperty` / `OutletName` | `DependencyProperty` / `string` | The named outlet fed from a matched record's `Views` map. Default `"default"`. |
 
 `Content` is entirely managed - never assign it directly. See
-[RouterView](README.md#routerview) for the depth-resolution/nesting model.
+[RouterView](README.md#routerview) for the depth-resolution/nesting model, and
+[Dialog windows](README.md#dialog-windows) for the two ways to place an outlet in a child `Window`
+(a modal route via `RouteRecord.Window`, or an independent stack via `RouterScope.Router`) and why a
+plain depth walk cannot answer it there.
+
+### `RouterWindows` (static class - attached property)
+
+Opens, re-points and closes the `Window`s declared by `RouteRecord.Window`, purely from the current
+route - the modal-route half of [Dialog windows](README.md#dialog-windows).
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `EnableProperty` / `Get/SetEnable` | `DependencyProperty` / `bool` | Set once on the app's main `Window`, and every modal route in the table works from then on - from a `RouterLink`, a `Push` in a ViewModel, a shortcut, in-app search or a deep link alike. Windows are resolved through `Setup.Resolve` (register them **transient**), owned to this window, and closed again when their record stops being matched - or when this window unloads. Closing one with its own `[X]` navigates back to the parent record, so the route and the screen can never disagree. Two records naming the same `Window` type share one window instance, swapping only its outlet. |
+
+This is the only piece of the library that opens a `Window`, and it lives in the Xaml layer
+deliberately: `Router` itself never touches `Window`/`Application`, so the navigation pipeline stays
+testable with no `Application` at all.
+
+### `RouterScope` (static class - attached property)
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `RouterProperty` / `Get/SetRouter` | `DependencyProperty` (inherited) / `Router?` | The `Router` every `RouterView`/`RouterLink` beneath this element navigates. Set once on a dialog `Window` to give it a navigation stack genuinely of its own - property inheritance does not cross a `Window` boundary, so a dialog cannot accidentally inherit or drive the main window's. For a dialog that should be *part of* the app's own history instead, use `RouteRecord.Window` above. See [Dialog windows](README.md#dialog-windows). |
 
 ### `RouterLink` (static class - attached properties)
 
@@ -310,7 +360,7 @@ at least one term only found via `Keywords`.
 | --- | --- | --- |
 | `ToProperty` / `Get/SetTo` | `DependencyProperty` / `object?` | A `string` path or a `RouteLocationRaw`. Settable on `ButtonBase` or `Hyperlink` only. |
 | `ReplaceProperty` / `Get/SetReplace` | `DependencyProperty` / `bool` | Navigate via `Replace` instead of `Push`. |
-| `RouterProperty` / `Get/SetRouter` | `DependencyProperty` / `Router?` | Explicit override; falls back to `Router.Current`. |
+| `RouterProperty` / `Get/SetRouter` | `DependencyProperty` / `Router?` | Explicit override. Resolution order: this, then the inherited `RouterScope.Router`, then `Router.Current`. |
 | `IsActiveProperty` / `GetIsActive` | `DependencyProperty` (read-only) / `bool` | Current route is this link's target or a descendant of it. |
 | `IsExactActiveProperty` / `GetIsExactActive` | `DependencyProperty` (read-only) / `bool` | Current route is exactly this link's target, including every param. |
 

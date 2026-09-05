@@ -32,13 +32,14 @@ public sealed partial class MainViewModel : ObservableObject
     public SuspenseDemoViewModel SuspenseDemo { get; }
     public SlotsDemoViewModel SlotsDemo { get; }
     public ExprDemoViewModel ExprDemo { get; }
+    public KeepAliveDemoViewModel KeepAliveDemo { get; }
     public ApsuInteropDemoViewModel ApsuInteropDemo { get; }
 
     /// <summary>Whether the Lifecycle tab's demo child is currently mounted - lives here (the parent), not on <see cref="LifecycleDemoViewModel"/> itself, the same way an If's Condition lives outside the content it shows.</summary>
     [ObservableProperty]
     private bool _showLifecycleDemo;
 
-    public MainViewModel(UserStore userStore, OrderStore orderStore, ApsuActivityLog activityLog)
+    public MainViewModel(UserStore userStore, OrderStore orderStore, ApsuActivityLog activityLog, KeepAliveActivityLog keepAliveLog)
     {
         ReactivityDemo = new ReactivityDemoViewModel(m => Log("Reactivity", m));
         LifecycleDemo = new LifecycleDemoViewModel(m => Log("Lifecycle", m));
@@ -48,6 +49,11 @@ public sealed partial class MainViewModel : ObservableObject
         SuspenseDemo = new SuspenseDemoViewModel(m => Log("Suspense", m));
         SlotsDemo = new SlotsDemoViewModel();
         ExprDemo = new ExprDemoViewModel();
+        KeepAliveDemo = new KeepAliveDemoViewModel(m => Log("KeepAlive", m));
+
+        // The KeepAlive sections are built by the KeepAlive control itself, from DI, so they
+        // report through this shared sink rather than a callback handed to them here.
+        keepAliveLog.Logged += m => Log("KeepAlive", m);
         ApsuInteropDemo = new ApsuInteropDemoViewModel(userStore, orderStore, activityLog, m => Log("Apsu+Aquarius", m));
     }
 

@@ -8,8 +8,8 @@ modeled after the official .NET API documentation.
 | Namespace | Description |
 |-----------|-------------|
 | **[`Barbatos.Wpf.Aquarius.Reactivity`](#barbatoswpfreactivity-namespace)** | `Ref<T>`, `Computed<T>`, `Watch`, `NextTick` - thin sugar over CommunityToolkit.Mvvm. |
-| **[`Barbatos.Wpf.Aquarius.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, `Setup` (ViewModel wiring), plus `Provide`/`Inject`. |
-| **[`Barbatos.Wpf.Aquarius.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
+| **[`Barbatos.Wpf.Aquarius.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, `Setup` (ViewModel wiring), `Provide`/`Inject`, plus the `AddAquarius`/`UseAquarius` DI entry points and `AquariusOptions`. |
+| **[`Barbatos.Wpf.Aquarius.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, the `Component`/`KeepAlive` pair, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
 | **[`Barbatos.Wpf.Aquarius.Animation`](#barbatoswpfanimation-namespace)** | `Transition`, `TransitionGroup`. |
 
 All four map onto the single `aq:` XAML namespace - see
@@ -121,10 +121,39 @@ in the README for exactly what triggers each one.
   View type.
 - **`ThrowOnUnresolved`** (`static bool`, default `false`) - throws `InvalidOperationException`
   instead of silently no-op-ing when `Enable="True"` but `Resolver` returns `null`.
+- **`static Resolve(Type type)`** → `object` - `ServiceProvider` first, else
+  `Activator.CreateInstance(type)`. The one place this rule lives: `Component`'s lazily-built
+  Views and AquariusRouter's entering Views both go through it, so everything this library
+  family constructs on an app's behalf resolves identically. Named `Resolve`, not `Create` -
+  with a container in play the result may well be a singleton it already had.
 
 Resolves and assigns `DataContext` once, at `FrameworkElement.Initialized` (not `Loaded`) -
 see [Setup](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#setup)
 in the README for why that timing matters alongside `Lifecycle`.
+
+### `AquariusOptions` Class
+
+```csharp
+public sealed class AquariusOptions
+```
+
+- **`const string SectionName`** - `"Barbatos:Aquarius"`.
+- **`ThrowOnUnresolvedViewModels`** (`bool`) - applied to `Setup.ThrowOnUnresolved`.
+- **`ThrowOnUnresolvedExprIdentifiers`** (`bool`) - applied to `Expr.ThrowOnUnresolvedIdentifiers`.
+- **`ViewModelResolver`** (`Func<Type, Type?>?`) - replaces `Setup.Resolver` when non-`null`.
+
+### `AquariusServiceCollectionExtensions` Static Class
+
+- **`static AddAquarius(this IServiceCollection services, Action<AquariusOptions>? configure = null)`**
+  → `IServiceCollection` - registers `AquariusOptions`. Declares only; nothing is resolved and
+  no static is touched until `UseAquarius`.
+
+### `AquariusServiceProviderExtensions` Static Class
+
+- **`static UseAquarius(this IServiceProvider services)`** → `IServiceProvider` - points
+  `Setup.ServiceProvider` at the container and applies `AquariusOptions`. Call once at startup,
+  right after the container is built. Safe to call without `AddAquarius` (the options lookup is
+  optional), and returns the provider so it can be chained with `UseAquariusRouter`.
 
 ### `Provide` Static Class
 
@@ -293,13 +322,17 @@ Use via `Converter={x:Static aq:Comparisons.Not}` etc.
 ### `TeleportHost` Static Class
 
 - **`RegisterHostProperty`** (`DependencyProperty`, `string`) - `SetRegisterHost`/
-  `GetRegisterHost`, settable on any `Panel`.
+  `GetRegisterHost`, settable on any `Panel` - `UniformGrid`, `StackPanel`, `WrapPanel`,
+  `DockPanel`, `Grid`, `Canvas`. Throws `InvalidOperationException` on anything else.
 - **`static event Action<string>? HostRegistered`**
 - **`static event Action<string>? HostUnregistered`** - raised when the currently-registered
   host under a name unregisters (its `Unloaded` fired, or another value replaced its
   `RegisterHostProperty`); lets a `Teleport` rendered there bring its content home instead
   of leaving it orphaned.
 - **`static TryGetHost(string name, out Panel panel)`** → `bool`
+
+Several `Teleport`s may share one host; their relative order is `Teleport.Order`, and they are
+kept contiguous and placed after whatever static children the host declares itself.
 
 ### `Teleport` Class
 
@@ -310,6 +343,53 @@ public class Teleport : ContentControl
 - **`To`** (`string?`) - the registered `TeleportHost` name to render into.
 - **`Disabled`** (`bool`, default `false`) - when `true`, content renders locally instead
   of teleporting.
+- **`Order`** (`int`, default `0`) - position among the other `Teleport`s rendering into the
+  same host, lower first; ties break by creation order. Without it, several `Teleport`s sharing
+  a host would land in load order, which is not stable. Changing it while teleported repositions
+  only this control's content (a real `Children` remove-then-insert, so it unmounts and remounts
+  that one element - siblings are untouched).
+
+### `Component` Class
+
+```csharp
+public class Component : ContentControl
+```
+
+The Aquarius counterpart of Vue's `<component :is="...">`.
+
+- **`IsProperty`** (`DependencyProperty`, `Type?`) - the View type to render, resolved on change
+  via `Setup.Resolve`; `null` renders nothing.
+
+Changing `Is` **destroys** the previous View, so it and its `DataContext` become collectable -
+which is exactly what `KeepAlive` wraps this control to opt out of. Inside a `KeepAlive` this
+control renders nothing itself: the wrapper hosts the resolved Views and this is only the
+declaration of which one, the same way Vue's `<component>` is replaced by whatever it resolves to.
+
+### `KeepAlive` Class
+
+```csharp
+[ContentProperty(nameof(Child))]
+public class KeepAlive : Panel
+```
+
+A single-cell panel that keeps every View it has shown mounted and reveals one at a time - Vue's
+`<KeepAlive>`, wrapping exactly one dynamic child. Cache keys are View **types**; `Include`/
+`Exclude` match the type **name**, the counterpart of Vue matching a component's `name` option.
+Throws `InvalidOperationException` if children are added to `Children` directly.
+
+- **`Child`** (`Component?`) - the XAML content property; a logical (never visual) child, so
+  `Is="{Binding ...}"` inherits this control's `DataContext`.
+- **`MaxProperty`** (`DependencyProperty`, `int`, default `0` = unlimited) - LRU cache cap; never
+  evicts the View being shown.
+- **`IncludeProperty`** / **`ExcludeProperty`** (`DependencyProperty`, `string`) - comma-separated
+  allow/deny lists of cacheable type names; applied retroactively when changed at runtime, except
+  to the View on screen (marked instead, and dropped on the next switch).
+- **`ActiveView`** (`FrameworkElement?`) - the View currently revealed.
+- **`CachedTypes`** (`IReadOnlyList<Type>`) - a snapshot, least-recently-activated first; safe to
+  iterate while releasing the entries it names.
+- **`IsCacheable(Type viewType)`** → `bool`
+- **`TryGetCached(Type viewType, out FrameworkElement element)`** → `bool`
+- **`Release(Type viewType)`** → `bool` / **`ReleaseAll()`** - real removal, so a genuine unmount.
 
 ### `Slot` Class
 

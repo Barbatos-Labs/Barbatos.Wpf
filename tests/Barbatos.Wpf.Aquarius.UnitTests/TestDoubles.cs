@@ -209,6 +209,42 @@ internal sealed class SetupProbeViewModel
 {
 }
 
+/// <summary>
+/// A View that wires <see cref="Lifecycle.EnableProperty"/> and its own
+/// <see cref="FakeLifecycleViewModel"/> in its own constructor, so
+/// <see cref="Setup.Resolve"/>'s <see cref="Activator.CreateInstance(Type)"/> fallback produces a
+/// fully-wired, genuinely independent instance every time one is built.
+/// </summary>
+/// <remarks>
+/// This is what lets an <see cref="Xaml.Component"/> be declared with nothing but a
+/// <see cref="Xaml.Component.Is"/> type, which is the whole point of those tests: the View must
+/// not exist until it is first shown, and must come back as a brand-new instance after an
+/// eviction. Modelled on AquariusRouter's own <c>SelfWiredLifecycleView</c>, which exists for the
+/// identical reason.
+/// <para>
+/// Three distinct types because <see cref="Xaml.KeepAlive"/> keys its cache by <b>type</b> (Vue
+/// keys by component) and matches <c>Include</c>/<c>Exclude</c> against the type name - one shared
+/// type could not express "three different cached things" at all.
+/// </para>
+/// </remarks>
+internal abstract class KeepAliveProbeView : System.Windows.Controls.ContentControl
+{
+    protected KeepAliveProbeView()
+    {
+        Lifecycle.SetEnable(this, true);
+        DataContext = new FakeLifecycleViewModel();
+    }
+}
+
+/// <inheritdoc cref="KeepAliveProbeView"/>
+internal sealed class KeepAliveProbeViewA : KeepAliveProbeView;
+
+/// <inheritdoc cref="KeepAliveProbeView"/>
+internal sealed class KeepAliveProbeViewB : KeepAliveProbeView;
+
+/// <inheritdoc cref="KeepAliveProbeView"/>
+internal sealed class KeepAliveProbeViewC : KeepAliveProbeView;
+
 /// <summary>A minimal <see cref="IServiceProvider"/> for proving <see cref="Setup.ServiceProvider"/> is consulted before the <see cref="Activator.CreateInstance(Type)"/> fallback.</summary>
 internal sealed class FakeServiceProvider : IServiceProvider
 {
