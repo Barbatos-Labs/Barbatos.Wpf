@@ -364,3 +364,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Claude Code local state. `.claude/skills` is a junction to the tracked `skills/` folder
+# (see CLAUDE.md) - the canonical copies live there, never here.
+.claude/skills/
+.claude/settings.local.json
+
+# Skill triggering eval results are machine-specific and re-generated on demand.
+skills/.evals/results/
