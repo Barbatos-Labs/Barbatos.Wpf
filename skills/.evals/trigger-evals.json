@@ -1,6 +1,6 @@
 {
   "suite": "barbatos-skills-triggering",
-  "note": "All nine skills are installed together, so each query records WHICH skill fired, not just whether one did. expected_skills lists every skill that would be a correct load; [] means nothing should fire.",
+  "note": "All nine skills are installed together, so each query records WHICH skill fired, not just whether one did. expected_skills is the set of ACCEPTABLE loads, not a checklist - a query passes when at least one of them fires and nothing outside the set does. [] means nothing should fire.",
   "queries": [
     {
       "id": 1,
@@ -121,6 +121,30 @@
       "id": 24,
       "query": "i have 3 messy commits on this branch, squash them into one with a proper message and force push",
       "expected_skills": []
+    },
+    {
+      "id": 25,
+      "query": "I want to add a new Settings screen with a form for email + phone number, both required and validated, and it has to appear in the left nav bar. How do I do that following this repo's conventions?",
+      "expected_skills": ["barbatos-valee-form", "barbatos-aquarius-router", "barbatos-aquarius-view"],
+      "note": "Language control for id 16, which is the same request in Vietnamese. Every skill description is written in English, so if 16 misses and this one fires, the gap is language rather than vocabulary."
+    },
+    {
+      "id": 26,
+      "query": "app của anh đóng cửa sổ là thoát luôn, anh muốn nó thu nhỏ xuống khay hệ thống và vẫn chạy nền, click đúp vào icon thì mở lại. thêm cả phím tắt Ctrl+Alt+K để bật nhanh nữa",
+      "expected_skills": ["barbatos-wpf-host"],
+      "note": "Vietnamese, targets a different skill than 16 - guards against tuning the descriptions to one example."
+    },
+    {
+      "id": 27,
+      "query": "form đăng ký của em cần validate email đúng định dạng, mật khẩu tối thiểu 8 ký tự và ô xác nhận mật khẩu phải khớp. thông báo lỗi hiện dưới mỗi ô, và phải đổi được sang tiếng Anh",
+      "expected_skills": ["barbatos-valee-form"],
+      "note": "Vietnamese, third skill."
+    },
+    {
+      "id": 28,
+      "query": "trong dự án WPF thuần của em, làm sao dùng CommunityToolkit.Mvvm để sinh ObservableProperty và RelayCommand? class có cần partial không",
+      "expected_skills": [],
+      "note": "Vietnamese near-miss. Adding Vietnamese trigger words must not make every Vietnamese WPF question pull a Barbatos skill - this is the control for that."
     }
   ]
 }

@@ -23,6 +23,23 @@ Each query is run in this repo with all nine skills installed, so it measures th
 competition between them. The run is cut short as soon as the routing decision is observable —
 the point is which skill Claude reaches for, not the quality of the answer.
 
+**What counts as a trigger.** Not "the very first tool call was Skill". Claude routinely runs a
+grep or an `ls` to see where it is before deciding anything, and a skill loaded on the second
+step still shapes the entire answer — scoring that as a miss would send you off rewriting a
+description that was working. So a query is given a small budget of orienting tool calls
+(`ORIENTING_TOOL_BUDGET`, currently 3) before it is settled as a no-trigger. `first_tool` and
+`tools_used` are recorded either way, so the stricter reading is still available in the results.
+
+**These are real agentic sessions in your working tree.** `Edit`, `Write` and `NotebookEdit`
+are disallowed, but that is not airtight: `Bash` stays enabled (orienting greps are part of the
+behaviour being measured) and a session can still change files through it. One run here did
+exactly that — a Vietnamese query asking for a tray-icon shortcut went ahead and implemented
+the feature in `Barbatos.Wpf.Core.Sample`, which then had to be reverted.
+
+So the script snapshots `git status --porcelain` before and after, and prints a loud warning
+listing anything that changed. **Commit or stash before a run**, and revert what the warning
+names — none of it is work you asked for.
+
 Results land in `results/trigger-<timestamp>.json`, and are not committed.
 
 Two Windows notes, both learned the hard way while building this:
@@ -36,6 +53,16 @@ Two Windows notes, both learned the hard way while building this:
 If the CLI is not logged in, the script prints `AUTH-ERROR` and exits non-zero rather than
 reporting no-triggers, because an unauthenticated reply is indistinguishable from a genuine
 "answered without a skill".
+
+**`AUTH-ERROR` on the tail of a run usually means a usage limit, not a broken login.** Across
+several runs here the failures clustered on the last few queries while everything before them
+measured fine — the account hit its limit partway through. Those queries were not measured at
+all; they are excluded from the pass rate, and re-running just those ids once the limit resets
+is enough. Lower `--concurrency` if it keeps happening.
+
+Read the script's own summary rather than re-scoring the JSON by hand. `actual: []` on an
+auth-errored query looks exactly like a correct no-trigger, so any ad-hoc scoring that forgets
+to check `auth_error` will silently count six dead queries as six passing negatives.
 
 ## Verdicts
 
@@ -58,6 +85,21 @@ something else: CommunityToolkit.Mvvm in a plain WPF app, DataAnnotations in ASP
 `beforeRouteLeave` in an actual Vue project, generic xUnit, calling OpenAI from a console app.
 An obviously-unrelated negative ("write a fibonacci function") tests nothing — keep new ones
 genuinely tempting.
+
+## What the measurements changed
+
+Three findings from building this suite, each of which had already produced a wrong conclusion
+before it was caught:
+
+- **A budget of 3 orienting calls was too tight.** A query about unsaved-changes guards scored
+  `NO-TRIGGER` at 3 and `PASS` at 10 — the description was never the problem. Default is now 6.
+- **Descriptions were written in library vocabulary, users type problem vocabulary.** Adding the
+  symptom wording a person actually uses ("the edit is silently lost when I click another item")
+  moved queries from miss to hit without touching any skill body.
+- **A Vietnamese prompt would not trigger a skill that its English translation triggered.** Every
+  description now carries a short Vietnamese trigger clause. The near-miss control (id 28, a
+  plain CommunityToolkit.Mvvm question in Vietnamese) still correctly triggers nothing, which is
+  what makes the addition safe rather than just louder.
 
 ## When to re-run
 

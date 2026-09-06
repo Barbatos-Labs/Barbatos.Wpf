@@ -9,8 +9,8 @@
 //
 // Usage:  node skills/.evals/run-trigger-evals.mjs [--model <id>] [--concurrency N] [--only 1,5,7]
 
-import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { spawn, execSync } from "node:child_process";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,7 +34,29 @@ const CONCURRENCY = Number(flag("concurrency", "4"));
 const ONLY = flag("only", null)?.split(",").map(Number) ?? null;
 const TIMEOUT_MS = Number(flag("timeout", "120")) * 1000;
 
+// "The very first tool must be Skill" is too strict a bar for a repo skill set: Claude
+// routinely runs a grep or two to see where it is before deciding, and a skill loaded on the
+// third step still shapes the whole answer. Allow a few orienting calls, then settle - letting
+// every query run to completion would be slow and would measure answer quality instead.
+// The default was 3 and that was measurably too tight: a query about unsaved-changes guards
+// scored NO-TRIGGER at 3 and PASS at 10, because Claude read it as a bug report and grepped
+// the code first. Three descriptions were nearly rewritten over what turned out to be this
+// number. When investigating a no-trigger, re-run it at a higher budget before touching any
+// description - if it passes there, the description was never the problem.
+const ORIENTING_TOOL_BUDGET = Number(flag("orienting-budget", "6"));
+
 const suite = JSON.parse(readFileSync(resolve(here, "trigger-evals.json"), "utf8"));
+
+// The skills that actually exist on disk, so a partially-streamed tool input can never be
+// mistaken for one. Read from the directory rather than hardcoded, so adding a skill needs
+// no edit here.
+const KNOWN_SKILLS = readdirSync(resolve(here, ".."), { withFileTypes: true })
+  .filter((e) => e.isDirectory() && e.name.startsWith("barbatos-"))
+  .map((e) => e.name);
+if (!KNOWN_SKILLS.length) {
+  console.error("No barbatos-* skills found next to this script - nothing to measure.");
+  process.exit(2);
+}
 const queries = ONLY ? suite.queries.filter((q) => ONLY.includes(q.id)) : suite.queries;
 
 // Detect a skill invocation from the streaming events. We watch partial messages so a run
@@ -49,21 +71,37 @@ function runQuery(q) {
     const env = { ...process.env };
     delete env.CLAUDECODE;
 
+    // These queries run as real agentic sessions in the working tree, so the tools that could
+    // modify it are taken away. Bash stays: Claude routinely orients with a grep or ls before
+    // deciding anything, and removing it would change the very behaviour being measured.
     const child = spawn(
       "claude",
-      ["-p", "--model", MODEL, "--output-format", "stream-json", "--verbose", "--include-partial-messages"],
+      [
+        "-p", "--model", MODEL,
+        "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+        "--disallowedTools", "Edit", "Write", "NotebookEdit",
+      ],
       { cwd: repoRoot, env, shell: true },
     );
     child.stdin.write(q.query);
     child.stdin.end();
 
     const skills = new Set();
+    const toolsUsed = [];
     let firstTool = null;
     let pendingTool = null;
     let partial = "";
     let buf = "";
     let settled = false;
     let authError = false;
+    let sawStreamEvents = false;
+
+    const noteTool = (name) => {
+      if (settled) return; // the decision is made; anything after it is not evidence
+      firstTool ??= name;
+      toolsUsed.push(name);
+      if (name !== "Skill" && toolsUsed.filter((t) => t !== "Skill").length >= ORIENTING_TOOL_BUDGET) finish();
+    };
 
     const finish = () => {
       if (settled) return;
@@ -76,15 +114,18 @@ function runQuery(q) {
         expected: q.expected_skills,
         actual: [...skills],
         first_tool: firstTool,
+        tools_used: toolsUsed,
         auth_error: authError,
       });
     };
 
     const timer = setTimeout(finish, TIMEOUT_MS);
 
+    // Matched against the real skill names rather than a loose pattern: the tool input arrives
+    // as a stream of JSON fragments, so a bare /barbatos-[a-z-]+/ also matches half-delivered
+    // prefixes ("barbatos-val") and records them as extra skills that never fired.
     const noteSkill = (raw) => {
-      const m = raw.match(/barbatos-[a-z-]+/g);
-      if (m) m.forEach((s) => skills.add(s));
+      for (const name of KNOWN_SKILLS) if (raw.includes(name)) skills.add(name);
     };
 
     const handleLine = (line) => {
@@ -101,33 +142,37 @@ function runQuery(q) {
       {
 
         if (ev.type === "stream_event") {
+          sawStreamEvents = true;
           const se = ev.event ?? {};
           if (se.type === "content_block_start" && se.content_block?.type === "tool_use") {
             pendingTool = se.content_block.name ?? null;
-            firstTool ??= pendingTool;
             partial = "";
+            noteTool(pendingTool);
           } else if (se.type === "content_block_delta" && pendingTool === "Skill") {
             partial += se.delta?.partial_json ?? "";
             noteSkill(partial);
           } else if (se.type === "content_block_stop") {
-            if (pendingTool === "Skill") noteSkill(partial);
-            // A skill fired, or the model committed to a different tool first: either way
-            // the routing decision is already made.
-            if (firstTool) finish();
+            if (pendingTool === "Skill") {
+              noteSkill(partial);
+              finish(); // the routing question is answered the moment a skill loads
+            }
             pendingTool = null;
-          } else if (se.type === "message_stop") {
-            finish();
           }
         } else if (ev.type === "assistant") {
-          const tools = (ev.message?.content ?? []).filter((c) => c.type === "tool_use");
-          for (const c of tools) {
-            firstTool ??= c.name;
-            if (c.name === "Skill") noteSkill(JSON.stringify(c.input ?? {}));
+          // Fallback for when partial-message events are unavailable: the same accounting,
+          // just arriving a whole message at a time. Skipped when the stream already reported
+          // this message's tools, or every call would be counted twice.
+          if (sawStreamEvents) return;
+          for (const c of (ev.message?.content ?? []).filter((c) => c.type === "tool_use")) {
+            noteTool(c.name);
+            if (c.name === "Skill") {
+              noteSkill(JSON.stringify(c.input ?? {}));
+              finish();
+            }
           }
-          // Only a tool call settles the question here. A tool-free reply looks identical
-          // whether Claude genuinely chose to answer unaided or the CLI failed to
-          // authenticate, so wait for `result` - which carries is_error - before scoring it.
-          if (tools.length) finish();
+          // A tool-free reply is deliberately not settled here: it looks identical whether
+          // Claude genuinely answered unaided or the CLI failed to authenticate, so wait for
+          // `result`, which carries is_error.
         } else if (ev.type === "result") {
           if (ev.is_error) authError = true;
           finish();
@@ -155,7 +200,20 @@ function runQuery(q) {
   });
 }
 
+// Disallowing Edit/Write is not enough on its own: a session that wants to change a file can
+// still do it through Bash, and one of these runs really did implement a whole feature in a
+// sample that way. Bash has to stay enabled (orienting greps are part of the behaviour being
+// measured), so the tree is snapshotted instead and any difference is reported loudly.
+function treeState() {
+  try {
+    return execSync("git status --porcelain", { cwd: repoRoot, encoding: "utf8" });
+  } catch {
+    return null; // not a git repo, or git unavailable - skip the check rather than fail the run
+  }
+}
+
 async function main() {
+  const treeBefore = treeState();
   console.log(`Running ${queries.length} queries against ${MODEL} (concurrency ${CONCURRENCY})\n`);
   const results = [];
   const queue = [...queries];
@@ -166,16 +224,20 @@ async function main() {
         const q = queue.shift();
         const r = await runQuery(q);
         results.push(r);
+        // expected_skills is the set of *acceptable* answers, not a checklist that must all
+        // fire. Claude loads the one skill it judges most relevant and gets on with the work;
+        // demanding that every plausible skill load at once measures nothing real and turns
+        // correct routing into a failure. So: at least one acceptable skill, and none outside.
         const want = new Set(r.expected);
         const got = new Set(r.actual);
-        const missed = [...want].filter((s) => !got.has(s));
-        const extra = [...got].filter((s) => !want.has(s));
+        const hit = [...got].filter((s) => want.has(s));
+        const outside = [...got].filter((s) => !want.has(s));
         r.verdict = r.auth_error ? "AUTH-ERROR"
           : want.size === 0 ? (got.size === 0 ? "PASS" : "FALSE-POSITIVE")
-          : missed.length === 0 ? (extra.length ? "PASS+extra" : "PASS")
-          : got.size === 0 ? "NO-TRIGGER" : "WRONG-SKILL";
-        r.missed = missed;
-        r.extra = extra;
+          : hit.length === 0 ? (got.size === 0 ? "NO-TRIGGER" : "WRONG-SKILL")
+          : outside.length ? "PASS+extra" : "PASS";
+        r.hit = hit;
+        r.outside = outside;
         console.log(`[${String(r.id).padStart(2)}] ${r.verdict.padEnd(14)} got=[${r.actual.map((s) => s.replace("barbatos-", "")).join(", ")}]`);
       }
     }),
@@ -201,6 +263,17 @@ async function main() {
   if (scored.length) {
     console.log(`${"-".repeat(58)}`);
     console.log(`pass rate        ${passed}/${scored.length} (${Math.round((100 * passed) / scored.length)}%)`);
+  }
+
+  const treeAfter = treeState();
+  if (treeBefore !== null && treeAfter !== null && treeBefore !== treeAfter) {
+    const before = new Set(treeBefore.split("\n"));
+    const touched = treeAfter.split("\n").filter((l) => l.trim() && !before.has(l));
+    console.error(
+      `\nWARNING: the working tree changed during this run - a session edited files through Bash:\n` +
+      touched.map((l) => `  ${l}`).join("\n") +
+      `\nReview and revert them (git checkout -- <path>); they are not part of any change you asked for.`,
+    );
   }
 
   mkdirSync(resolve(here, "results"), { recursive: true });
