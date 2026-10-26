@@ -5,6 +5,7 @@
 
 using Barbatos.Wpf.ApplicationModel;
 using Barbatos.Wpf.Dispatching;
+using Barbatos.Wpf.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Barbatos.Wpf.SingleInstance;
@@ -77,26 +78,9 @@ internal sealed class SingleInstanceService : ISingleInstanceService, IDisposabl
     void RaiseSecondInstanceLaunched()
     {
         if (_options.ActivateMainWindow && System.Windows.Application.Current?.MainWindow is { } window)
-            ActivateWindow(window);
+            WindowActivation.RestoreAndActivate(window);
 
         SecondInstanceLaunched?.Invoke(this, EventArgs.Empty);
-    }
-
-    static void ActivateWindow(System.Windows.Window window)
-    {
-        if (window.WindowState == System.Windows.WindowState.Minimized)
-            window.WindowState = System.Windows.WindowState.Normal;
-
-        if (!window.IsVisible)
-            window.Show();
-
-        // Window.Activate() alone can be silently ignored by Windows' foreground-lock rules
-        // when another app currently owns the foreground; briefly toggling Topmost is the
-        // standard, reliable way around that without SetForegroundWindow P/Invoke.
-        window.Topmost = true;
-        window.Activate();
-        window.Topmost = false;
-        window.Focus();
     }
 
     public void Dispose()
