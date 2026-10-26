@@ -16,7 +16,7 @@ indent_style = space
 
 # New line preferences
 end_of_line = unset
-insert_final_newline = false
+insert_final_newline = true
 
 #### Build files ####
 
