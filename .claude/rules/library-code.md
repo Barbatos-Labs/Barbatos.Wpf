@@ -14,9 +14,10 @@ for the feature's domain knowledge load the matching feature skill.
 
 1. **Does WPF already do it?** If a native equivalent exists, the answer is a README note, not new
    API.
-2. **Which package owns it?** `Barbatos.Wpf.Aquarius` stays Core-free and references only
-   `Microsoft.Extensions.DependencyInjection.Abstractions` + `Options`. Router and Valee may use
-   Aquarius. No new `src/` → `src/` reference without asking the maintainer.
+2. **Which package owns it?** `Barbatos.Wpf.Aquarius` stays Core-free; its only packages are
+   `CommunityToolkit.Mvvm`, `Microsoft.Extensions.DependencyInjection.Abstractions` and `Options`.
+   Router and Valee may use Aquarius. No new `src/` → `src/` reference or new package dependency
+   for these three without asking the maintainer.
 3. **Is it reachable through DI?** If not, redesign it until it is.
 
 ## Language features across net8 / net9 / net10
@@ -47,8 +48,10 @@ for the feature's domain knowledge load the matching feature skill.
 
 - XML docs on every public type and member; `<remarks>` records the *why* and what was verified
   empirically, never what the code obviously does.
-- `sealed` by default. Apsu stores are the exception: non-`sealed` with `virtual` `[Action]`
-  methods, because Castle DynamicProxy must subclass them.
+- New types are `sealed`. Apsu stores are the exception: non-`sealed` with `virtual` `[Action]`
+  methods, because Castle DynamicProxy must subclass them. Many shipped types (Core `*Options`,
+  the MCP descriptors, several Aquarius controls) are unsealed — never seal one later, that is a
+  breaking change.
 - Configuration and descriptor types get a pure `Validate()` that throws
   `InvalidOperationException` and does no I/O.
 - Rename = keep the old member as `[Obsolete]` returning the same value (`IAppInfo.AppGuid` →

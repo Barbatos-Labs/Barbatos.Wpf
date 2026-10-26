@@ -22,8 +22,8 @@ packages when missed:
 - **Target frameworks: .NET 8, 9 and 10 only.** No `netstandard`, `net6`, `net7`, and no shims.
   Core uses the SDK-suffixed form (`net10.0-windows10.0.17763.0;…`) because toast notifications
   need the WinRT projections; Aquarius / Router / Valee use bare `netX.0-windows`.
-- **`Directory.Build.props` already supplies** `LangVersion`, `Nullable`, `ImplicitUsings`,
-  versioning, license/icon packaging, SourceLink and `GeneratePackageOnBuild` — a `src/` project
+- **`Directory.Build.props` / `.targets` already supply** `LangVersion`, `Nullable`,
+  `ImplicitUsings`, versioning, README/license/icon packing, SourceLink and symbols — a `src/` project
   file carries only its own identity (`PackageId`, `TargetFrameworks`, `GeneratePackageOnBuild`,
   `UseWPF`, `CommonTags`, `Description`, `RootNamespace`, `PackageIconSourceFile`, `NoWarn`)
   plus its references.
@@ -37,7 +37,8 @@ packages when missed:
 - **Every new `NoWarn` entry gets a comment** naming the exact reflection call and why it is
   inherently dynamic, in the tone of the existing blocks. The trim/AOT analyzers are on
   repo-wide; an unexplained suppression hides real information.
-- **Each package packs its own `README.md`** (the NuGet landing page) beside its `.csproj`.
+- **Each package packs its own `README.md`** (the NuGet landing page) beside its `.csproj`;
+  `API-REFERENCE.md` is not packed.
 - **Release** (`.github/workflows/barbatos-wpf-cd-nuget.yml`) runs on a published GitHub Release
   or manually: it writes `src/barbatos.snk` from the `STRONG_NAME_KEY` secret, logs in to NuGet
   through OIDC trusted publishing, strips `samples/` and `tests/` from the solution, builds

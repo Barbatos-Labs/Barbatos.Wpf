@@ -1,176 +1,319 @@
 ---
 name: barbatos-wpf-testing
-description: Write or run tests for the Barbatos.Wpf packages - xUnit conventions, the STA-thread and TestApplication helpers WPF objects require, dispatcher pumping, GcProbe reachability assertions for leak fixes, testing DI registrations and attached properties, and the per-target-framework run discipline. Consult this before running dotnet test at all, when adding a test project or class, and especially when a result looks wrong - a test that passes alone but fails in a full run, a suite that aborts halfway through, an STA or dispatcher error, or a suspected memory leak where an object is not being collected. The per-TFM rule here is what separates a real failure from an artifact of the run, so check it before trusting or reporting any test result. Vietnamese prompts land here too: chạy test, viết unit test, test lúc chạy được lúc không, test chạy riêng thì pass chạy chung thì fail, rò rỉ bộ nhớ, lỗi STA hoặc dispatcher.
+description: "Writing and running the xUnit v3 suites under tests/ for Barbatos.Wpf - StaThread.Run vs TestApplication.Invoke, PumpDispatcher, GcProbe.AssertCollected/AssertAlive leak tests, ModuleInit warm-up, fake platforms, per-TFM dotnet test -f runs. Use before running or trusting a test result, when adding a test or test project, or when a test is flaky or passes alone but fails in a full run, the run aborts, a test hangs, 'The calling thread must be STA', 'The Application object is being shut down', NETSDK1005, an assertion misses a deferred update, or a memory leak (an object never garbage collected) needs a test. For changing library code use barbatos-package-authoring. Vietnamese prompts too - chạy test, viết unit test, test chạy riêng pass chạy chung fail, test bị treo, rò rỉ bộ nhớ, lỗi STA."
 ---
 
 # Testing Barbatos.Wpf
 
-One xUnit.net v3 project per package under `tests/`, each multi-targeting `net8.0-windows` and
-`net10.0-windows`. `Barbatos.Wpf.Core.UnitTests` uses the SDK-suffixed TFMs
-(`net8.0-windows10.0.17763.0`/`net10.0-windows10.0.17763.0`), and `-f` must name them exactly.
+Four xUnit.net v3 projects under `tests/`, one per package, on the VSTest runner
+(`xunit.v3.mtp-off` + `xunit.runner.visualstudio` + `Microsoft.NET.Test.Sdk`). WPF objects need
+an STA thread and some need a live `Application`, so each suite carries its own copies of a few
+helpers - there is no shared test-support project. What a feature *should* do lives in its
+feature skill; changing `src/` is `barbatos-package-authoring`.
 
----
+## Sources of truth
 
-## Running tests — read this before believing a result
+- Helpers: [StaThread.cs](../../../tests/Barbatos.Wpf.AquariusValee.UnitTests/StaThread.cs),
+  [TestApplication.cs](../../../tests/Barbatos.Wpf.AquariusRouter.UnitTests/TestApplication.cs),
+  [GcProbe.cs](../../../tests/Barbatos.Wpf.Aquarius.UnitTests/GcProbe.cs),
+  [AssemblyInfo.cs](../../../tests/Barbatos.Wpf.Aquarius.UnitTests/AssemblyInfo.cs) (why
+  parallelism is off). The per-project copies differ - see [Adding a test project](#adding-a-test-project).
+- Core: [ModuleInit.cs](../../../tests/Barbatos.Wpf.Core.UnitTests/ModuleInit.cs),
+  [FeatureTestFakes.cs](../../../tests/Barbatos.Wpf.Core.UnitTests/FeatureTestFakes.cs) (the
+  `Fake*` platform doubles), `TestServices.cs` (DI stubs), and the file-local `RunOnStaThread` in
+  `DialogServiceTests.cs`, `InputSystemScopeTests.cs`, `SplashScreenTests.cs`.
+- Tests that pin the patterns below: `LifecycleLeakTests.cs`, `RouterLeakTests.cs`,
+  `RouterViewTests.cs` + `ValeeXamlTests.cs` (deferred failures), `RouterDialogWindowTests.cs`,
+  `TransitionTests.cs`, `FormMetaStalenessTests.cs`, `AquariusDependencyInjectionTests.cs`,
+  `RunOnStartupFeatureTests.cs`, `PreferencesTests.cs`, `VersionTrackingTests.cs`.
+- Build: the four `tests/*/*.UnitTests.csproj`,
+  [Directory.Build.props](../../../Directory.Build.props) (derives `IsTestProject` from the
+  project name), [Directory.Packages.props](../../../Directory.Packages.props).
+- [patterns.md](patterns.md) - read when writing a test: copy-ready code, trimmed from the suites,
+  for every pattern named here (STA, pumping, timed pumps, Core's running dispatcher, deferred
+  failures, modal windows, XAML strings, both leak-test shapes, fake platforms + configuration,
+  restored statics, async gates, store keys, `Validate()`).
 
-> **A bare `dotnet test` at the solution level is not trustworthy here.**
->
-> Both TFMs run in parallel against one real per-user store (`Preferences` and `SecureStorage`
-> write to `%LocalAppData%`), and the WPF helpers below share one process-wide
-> `Application.Current`. A combined run produces failures that are artifacts of the run, not the
-> change. Separately, a full-suite run is known to **abort** on some machines — which reads as a
-> false green.
+## Running tests - read this before believing any result
 
-Run one project, one TFM:
+| Project | `-f` values |
+| --- | --- |
+| `tests/Barbatos.Wpf.Core.UnitTests` | `net8.0-windows10.0.17763.0`, `net10.0-windows10.0.17763.0` (a bare `net10.0-windows` fails with `NETSDK1005`) |
+| `tests/Barbatos.Wpf.Aquarius.UnitTests`, `…AquariusRouter.UnitTests`, `…AquariusValee.UnitTests` | `net8.0-windows`, `net10.0-windows` |
 
 ```bash
 dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows10.0.17763.0
-```
-
-Narrow further while investigating:
-
-```bash
 dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -f net8.0-windows --filter "FullyQualifiedName~KeepAliveTests"
 ```
 
-When a test fails, **re-run that class alone on that single TFM before treating it as real.**
-Two known-flaky-in-combination areas: `Barbatos.Wpf.Core.UnitTests` (the shared per-user store)
-and `AquariusValee`'s `ValeeXamlTests` (STA/`Application` interaction — a different cause, same
-remedy). Before judging a change, confirm the failure reproduces isolated.
+- **A bare `dotnet test` lies** (solution, or a project without `-f`). Both TFMs run in parallel
+  against one real per-user store (`Preferences`/`SecureStorage` under `%LocalAppData%`) and
+  process-wide WPF state, so a combined run fails spuriously - and on some machines the full run
+  aborts partway, which reads as a false green.
+- **A failure is real only once it reproduces with that class alone, on that one TFM.** Known
+  flaky in combination: `Barbatos.Wpf.Core.UnitTests` (the shared per-user store) and Valee's
+  `ValeeXamlTests` (STA/`Application` interaction) - different causes, same remedy.
+- Before calling a change done, run every affected project on **both** of its TFMs, one at a time.
+- Run Debug (the default). `BuildConfigurationTests.ThisTestAssemblyBuiltDebugIsReportedAsDebug`
+  correctly fails under `-c Release`.
+- net9.0 is built by every library but tested by no project: a `#if NET9_0_OR_GREATER` branch is
+  only exercised through the net10 run.
+- CI never runs tests: the release workflow strips the `/tests/` folder out of
+  `Barbatos.Wpf.slnx` before building. A green release says nothing about tests.
+- When the test host dies mid-run, rerun that project and TFM with `--blame-crash` to name the
+  test that was executing (how the crash behind `AssemblyInfo.cs` was confirmed).
 
----
+## Pick the thread helper
 
-## Conventions
+| The test touches | Use |
+| --- | --- |
+| Pure logic: `Ref`/`Computed`, `Expr` parsing, path parser/tokenizer, `RouteMatcher`, `RouteSearchIndex`, `MemoryRouterHistory`, `Form`/`Field<T>` validation, `PeriodicSchedule`, input interactions | plain `[Fact]` or `async Task` |
+| A `DependencyObject`, control, `Window`, deferred dispatcher work, or a `Router` navigation (it constructs the entering Views through `Setup.Resolve`) | `StaThread.Run(() => …)` |
+| `Application.Current` (its `Windows`, `DispatcherUnhandledException`, Lifecycle error capture), or a failure the library defers with `BeginInvoke` | `TestApplication.Invoke(() => …)` |
+| Core, a `Window` whose show/close/activation/focus must settle synchronously | a file-local `RunOnStaThread` that runs the body inside `Dispatcher.Run()` ([pattern](patterns.md#a-running-dispatcher-for-core-windows)) |
 
-- **Plain xUnit assertions** — `Assert.Equal`, `Assert.Throws`, `Assert.Same`, `Assert.Single`.
-  `AwesomeAssertions` is referenced but not used anywhere; do not introduce `.Should()` into a
-  file that does not already have it.
-- One test class per type under test, named `<Type>Tests`.
-- Method names are full sentences describing the behavior:
-  `SettingTheSameValueDoesNotRaisePropertyChanged`,
-  `ATeleportThatSawASecondLoadedIsStillCollectableAfterUnloading`.
-- Arrange / act / assert separated by blank lines, no comment headers.
-- A comment above a test explains *why the behavior matters* or *what bug it pins* — not what
-  the code does.
-- Package-specific namespaces come from `<Using Include="..."/>` in the test `.csproj`; add
-  there rather than repeating `using` lines.
-- MIT file header on every test file.
+- **Why two helpers.** `Application.Current` is a process-wide singleton bound to the thread that
+  constructed it. Created from a `StaThread.Run` thread, it works for the first test only; every
+  later test finds it pointing at a dispatcher whose thread has exited, and anything posted to it
+  never runs. `TestApplication` owns one background STA thread running `Dispatcher.Run()` for the
+  whole process - which is also the only place a `BeginInvoke`'d exception ever executes, since a
+  `StaThread.Run` body never pumps continuously.
+- **`TestApplication` is shared by every test in the process.** Unsubscribe
+  `DispatcherUnhandledException` handlers in `finally`, raise `Unloaded` on Lifecycle-enabled
+  elements before returning (Lifecycle subscribes `Application.Current.DispatcherUnhandledException`
+  while mounted and would intercept a later test's exception), and set `e.Handled = true` in an
+  observer so the host survives.
+- **Wait outside `TestApplication.Invoke`**, with a timeout (`signal.Wait(TimeSpan.FromSeconds(5))`).
+  Waiting inside blocks the very dispatcher that has to deliver the signal - a deadlock.
+- Core has no `StaThread`, `TestApplication` or `GcProbe`, and no Core test touches
+  `Application.Current`. A WPF dispatcher itself does not need STA: `DispatchingTests` and
+  `InputChordTests` pump `Barbatos.Wpf.Dispatching.Dispatcher.GetForCurrentThread()` on the xUnit
+  thread.
+- Never assert inside a bare `new Thread(...)`: an exception escaping that thread terminates the
+  test host instead of failing the test. Capture and rethrow on the test thread, as
+  `StaThread.Run` does.
 
----
+## Pumping and waiting
 
-## WPF objects need an STA thread
+- `StaThread.PumpDispatcher()` is `Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background)`:
+  it returns once everything queued at `Background` or higher has run, including WPF's own
+  `Loaded`-priority tree-connection work. Every deferral in `src/` posts at `Background` or higher
+  (`NextTick.Run`/`RunAsync`, `WatchFlush.Post`, Lifecycle's `IOnUpdated` batching, `FormMeta`
+  change notifications, `Valee` mask at `Input`), so one pump flushes them. Pump after
+  `window.Show()`, after anything deferred, after changing `Component.Is` or the route, and after
+  `window.Close()`. Inside `TestApplication.Invoke` it pumps the shared dispatcher.
+- **It does not let time pass.** Storyboards (`Transition`), dispatcher timers, chord
+  `StepTimeout`, hold interactions and periodic services need a bounded timed pump
+  ([pattern](patterns.md#time-based-behaviour)). A `Dispatcher.PushFrame` that only the code under
+  test can end hangs the whole run when that code is broken; end it from a one-shot timer.
+- **Values are not notifications.** `FormMeta` properties are computed on every read; only the
+  `PropertyChanged` is batched through `NextTick`. `FormMetaStalenessTests` deliberately never
+  pumps, proving there is no cache - do not add a pump there.
+- **Synthetic vs real lifecycle.** `element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element))`
+  drives `Loaded`/`Unloaded` with no window and is the direct way to reproduce a double `Loaded`.
+  Use a real `Window` + `Show()` + pump when layout, templates, bindings or the logical tree
+  matter, and close it in `finally`, then pump.
+- `Loaded` is broadcast root-first: at `Window.Loaded` an inner `RouterView` has not resolved
+  anything yet - hook the inner element's `Loaded`. `ShowDialog()` blocks, so assert from that
+  handler and `Close()` the dialog there ([pattern](patterns.md#modal-windows)). An `Owner` must
+  already be shown.
+- **Blocking on a task on the STA thread** (`router.Push("/x").GetAwaiter().GetResult()`,
+  `form.HandleSubmit(...).ExecuteAsync(null).GetAwaiter().GetResult()`) is safe only when nothing
+  in the chain awaits work that needs this thread - the suites do it with guards returning
+  `Task.FromResult(...)` and synchronous validators. Real async belongs in an `async Task` test off
+  the STA thread, driven by `TaskCompletionSource` gates (`AsyncValidationRaceTests`).
+- XAML-loader behaviour (content properties, DataContext through the logical tree,
+  `TemplatedParent` bindings in a `ControlTemplate`) needs `XamlReader.Parse` on a real string with
+  the `aq` xmlns ([pattern](patterns.md#real-xaml-strings)); building the graph in C# does not
+  reproduce it. `Setup` resolves at `Initialized`, so C#-built Views call
+  `((ISupportInitialize)element).BeginInit()`/`EndInit()` (`SetupTests`).
 
-Dependency properties, controls, and windows all require STA. Two helpers, and they are **not**
-interchangeable.
+## Process-wide state
 
-**`StaThread.Run(body)`** — a fresh STA thread per test. Use it for anything that does not touch
-`Application.Current`.
+- **Parallelism.** The three Aquarius-family assemblies set
+  `[assembly: Parallelization(Mode = ParallelMode.None)]`: with many `StaThread.Run` windows
+  alive at once, WPF's composition engine crashed the test host. Core does not, so Core test
+  classes run concurrently.
+- **Essentials facades** (`AppInfo.Current`, `Preferences.Default`, ...) use MAUI's lazy
+  `static` getter (`currentImplementation ??= new XxxImplementation()`), which is not thread-safe
+  on first access. `ModuleInit.WarmUpSingletons` touches each in a `[ModuleInitializer]` before
+  any test runs. **Add every new Essentials facade there.**
+- The facades' `SetCurrent`/`SetDefault` are internal, so a test cannot swap them: the
+  `Preferences`/`SecureStorage`/`VersionTracking` tests hit the real per-user store. Use a unique
+  key per test (`$"Test.{Guid.NewGuid():N}"`), `Remove` it at the end, call
+  `Preferences.Clear(sharedName)` only on a `sharedName` that is itself unique, and assert
+  `VersionTracking` invariants rather than first-launch booleans (its history persists across
+  runs).
+- To keep a service off the real store, register a fake for its interface instead -
+  `FakeFileSystem(tempPath)`, `FakeSecureStorage`, `FakeAppInfo`, `FakeDeviceInfo` - and delete
+  any temp directory in the test (`AgentFeatureTests.TempDirectory`).
+- Never mutate process environment variables (`DOTNET_ENVIRONMENT`): parallel Core classes see
+  the change. Feed configuration through `builder.Configuration.AddInMemoryCollection(...)`
+  (`WpfHostEnvironmentTests`).
+- **Statics written by `UseXxx` or by a test**: `Setup.ServiceProvider`, `Setup.Resolver`,
+  `Setup.ThrowOnUnresolved`, `Expr.ThrowOnUnresolvedIdentifiers`, `Router.Current`. Save and
+  restore them in `try/finally` ([pattern](patterns.md#aquarius-and-router-di-with-restored-statics)).
+- To prove "called from another thread", start a dedicated `Thread`, not `Task.Run` - the pool can
+  hand the work back to the calling thread (`DispatchingTests`).
 
-```csharp
-[Fact]
-public void ShowIsAppliedWhenTheBindingUpdates() => StaThread.Run(() =>
-{
-    var border = new Border();
-    Directives.SetShow(border, false);
+## Leak tests with GcProbe
 
-    Assert.Equal(Visibility.Collapsed, border.Visibility);
-});
-```
+`GcProbe.AssertCollected(WeakReference reference, string what)` and
+`GcProbe.AssertAlive(WeakReference reference, string what)` exist in the Aquarius and Router
+suites. `AssertCollected` makes up to five attempts - full blocking compacting collection,
+finalizer drain, second collection - with a `PumpDispatcher()` between, because WPF can still hold
+the graph in queued work on the first pass; a real leak fails all five. Call both on the thread
+that built the subject (inside `StaThread.Run`/`TestApplication.Invoke`), since the retry pumps
+the current dispatcher. Use `GcProbe` only when the leak is "something still holds a strong
+reference" and nothing in the type's own API shows it.
 
-**`TestApplication.Invoke(body)`** — one long-lived STA thread with a running `Dispatcher`,
-shared for the whole run. Use it for **anything that touches `Application.Current`**.
+1. **The subject must never be reachable from the test's frame.** Build it and take the
+   `WeakReference` in a separate `[MethodImpl(MethodImplOptions.NoInlining)]` helper; in Debug a
+   local is rooted for the whole method body and every assertion fails for the wrong reason.
+2. **Always pair `AssertCollected` with an `AssertAlive` control** (and a one-`Loaded` baseline
+   for a double-`Loaded` regression). Without the control you have not shown the probe can fail.
+3. **Root what is supposed to stay alive.** Return the still-open `Window` (or whatever owns the
+   live tree) so the caller keeps it rooted across the assertion; an unrooted `KeepAlive` is
+   collected with everything it caches and the two cases stop being comparable.
+4. **Root the long-lived owner the leak would hang off** (an app-lifetime `Router`): keep it in
+   the test's frame and `GC.KeepAlive(router)` after asserting. Unrooted, owner, orphaned
+   subscription and subject form one unreachable island that is collected together, and the test
+   passes with the leak present.
+5. **Remove legitimate references first.** A `Router` holds the current route's View in
+   `RouteRecord.Instances`, and that View's logical parent is the outlet - navigate away before
+   asserting the outlet is collectable.
 
-`Application.Current` is a process-wide singleton bound to whichever thread first constructed it.
-A fresh `StaThread.Run` thread works only for the *first* test that touches it; every later test
-finds `Application.Current` already set but pointing at a dispatcher whose thread has exited, so
-anything posted to it never runs. Route every `Application`-touching test through
-`TestApplication`.
+**The hazard these exist for:** WPF raises `Loaded` a second time with no `Unloaded` in between
+(a `TabControl` realizes every tab up front, then raises `Loaded` again on the one that becomes
+selected). A control that subscribes on `Loaded` and unsubscribes on `Unloaded` then leaves one
+subscription behind - against a `static` event or an app-lifetime object that is a
+process-lifetime root for the control, its subtree and, through `DataContext`, the ViewModel
+graph. `Teleport`, `RouterView`, `Lifecycle`, `Directives.Use`, `Directives.Event` and
+`RouterWindows` all guard it. When writing or reviewing lifecycle code: guard both edges, always
+re-hook what you unhook, and reproduce with two synthetic `Loaded` events and one `Unloaded`.
 
-**`StaThread.PumpDispatcher()`** blocks until everything queued at `DispatcherPriority.Background`
-or higher has run — including WPF's own `Loaded`-priority tree-connection work. Call it after
-anything that defers: `NextTick`, `WatchFlush.Post`, `IOnUpdated` batching, `FormMeta`
-notification, adding an element to a tree.
+## DI and feature tests
 
-Static-facade races: `Barbatos.Wpf.Core.UnitTests/ModuleInit.cs` warms every Essentials singleton
-in a `[ModuleInitializer]` because MAUI's `field ??= new Impl()` lazy pattern is not thread-safe
-on first access and xUnit runs classes in parallel. **Add any new Essentials facade there.**
+- **Core**: `WpfApp.CreateBuilder()` → `builder.Services.AddSingleton<IStartupRegistrar>(fake)`
+  (or `ITrayIconPlatform`, `INotificationPlatform`, `IHotkeyPlatform`, `IPowerManager`,
+  `IPushNotificationTransport`, ... with the matching `Fake*`) → `builder.ConfigureXxx(...)` →
+  `Build()` → `wpfApp.Services.GetRequiredService<...>()`. `ConfigureXxx` registers the real
+  OS-backed platform with `TryAddSingleton`, so registering the fake **first** is what keeps a test
+  off the registry, the tray and the toast system.
+- Per feature, pin: not registered without `ConfigureXxx` (`GetService` returns `null`); a
+  `Barbatos:Xxx` value from `AddInMemoryCollection` is applied; configuration overrides code values
+  ([pattern](patterns.md#core-feature-with-a-fake-platform-and-configuration)).
+- Internal implementations are reached through their public interface with fakes underneath -
+  `AgentFeatureTests` resolves the internal file-backed `IAiSessionStore` over `FakeFileSystem`.
+  Per CLAUDE.md, never `InternalsVisibleTo`; if that is not enough, the behaviour becomes public
+  API first (`barbatos-package-authoring`).
+- **Aquarius/Router**: `new ServiceCollection()` → `AddAquarius(...)`/`AddAquariusRouter(...)` →
+  `BuildServiceProvider()` → `UseAquarius()`/`UseAquariusRouter()`, inside the statics-restoring
+  wrapper. Prove `TryAdd` precedence by registering the app's own service before the `Add` call
+  (`AnAppsOwnHistoryRegistrationWins`).
+- **Apsu**: stores that interceptors must proxy are `public`, non-`sealed`, with `virtual`
+  `[Action]` methods (`StoreActionInterceptorTests`); a `sealed` store with interceptors registered
+  throws `InvalidOperationException` on resolve.
 
----
-
-## Leak tests
-
-`GcProbe` is the only GC-based assertion mechanism here. Use it when the bug is "something still
-holds a strong reference" and nothing about it is observable through the type's own API.
-
-```csharp
-[Fact]
-public void ATeleportThatSawASecondLoadedIsStillCollectableAfterUnloading() =>
-    StaThread.Run(() => GcProbe.AssertCollected(RunTeleport(loadedCount: 2), "the Teleport"));
-
-[Fact]
-public void ATeleportStillLoadedIsDeliberatelyNotCollectable() =>
-    StaThread.Run(() => GcProbe.AssertAlive(RunTeleport(loadedCount: 1, unload: false), "a still-loaded Teleport"));
-```
-
-Three rules, all of which are the difference between a real test and one that passes for the
-wrong reason:
-
-1. **The subject must never be reachable from the calling frame.** Build it and take the
-   `WeakReference` inside a separate `[MethodImpl(MethodImplOptions.NoInlining)]` helper. In
-   Debug builds a local is rooted for the whole method body, which would fail every assertion for
-   the wrong reason.
-2. **Root what is supposed to stay alive.** Return the still-open `Window` (or whatever owns the
-   live tree) so the caller keeps it rooted across the assertion — otherwise an unrooted
-   `KeepAlive` is collected along with everything it caches and the two cases stop being
-   comparable.
-3. **Always pair `AssertCollected` with an `AssertAlive` control case.** Without one you have not
-   shown the probe can fail. `LifecycleLeakTests` does this for every hazard it covers.
-
-`AssertCollected` retries five times with a full blocking compacting collection, a finalizer
-drain, and a `PumpDispatcher()` between attempts — WPF can still be holding the graph on the
-first pass. A genuinely leaked object fails all five just as reliably as one.
-
-The recurring hazard this exists for: **WPF raises `Loaded` a second time with no `Unloaded` in
-between** (a `TabControl` realizes every tab up front, then raises `Loaded` again on the one that
-becomes selected). A control that subscribes on `Loaded` and unsubscribes on `Unloaded` then
-leaves one subscription behind — and against a `static` event that is a process-lifetime root.
-When reviewing or writing lifecycle code: **guard both edges, and always re-hook what you
-unhook.**
-
----
-
-## What to test
+## What to test, and how
 
 | Surface | How |
 | --- | --- |
-| Reactivity (`Ref`/`Computed`/`Watch`) | plain objects, no STA needed |
-| Attached properties / controls | `StaThread.Run` + direct `SetXxx`/assert |
-| Anything reading `Application.Current` | `TestApplication.Invoke` |
-| Deferred behavior (`NextTick`, `Post` flush, `IOnUpdated`) | act, then `PumpDispatcher()`, then assert |
-| DI entry points (`AddXxx`/`ConfigureXxx`) | build a `ServiceCollection`, assert the descriptors and that `TryAdd` lets a prior registration win |
-| Navigation pipeline | headless — `Router` never touches `Window`/`Application`, so guard order, failures and redirects need no UI at all |
-| Input shortcuts | `IInputSystemService.ProcessKeyDown`/`ProcessKeyUp` — no window, no keyboard |
-| Schedules | `PeriodicSchedule.GetNextOccurrence(now, lastRun)` is pure and never reads the clock — pass the time in |
-| Options `Validate()` | assert the exact exception type and that it does no I/O |
+| Reactivity (`Ref`, `Computed`, sync `Watch`) | plain objects, no STA |
+| `WatchFlush.Post`, `NextTick`, `IOnUpdated` | `StaThread.Run`; assert the deferral, `PumpDispatcher()`, assert the effect |
+| Attached properties, directives, controls | `StaThread.Run` + `SetXxx` + assert; real `Window` when layout or bindings matter |
+| Anything reading `Application.Current`; deferred `BeginInvoke` failures | `TestApplication.Invoke` + wait outside |
+| Navigation pipeline (guards, redirects, failures, history) | `StaThread.Run`, no window: `router.Start(...)`/`Push(...)` + `GetAwaiter().GetResult()`, assert the returned failure and `CurrentRoute.Value` |
+| Path parsing, matching, search | plain objects, no STA |
+| `Form`/`Field<T>` and rules | `async Task`, `TaskCompletionSource` gates for races; `aqv:` markup needs `StaThread.Run` + window |
+| Input shortcuts | `IInputSystemService.ProcessKeyDown(key, modifiers)`/`ProcessKeyUp(...)` - no window, no keyboard; timed pump for chords/holds |
+| Schedules | `PeriodicSchedule.GetNextOccurrence(now, lastRun)` is pure and never reads the clock - pass fixed instants |
+| Descriptor/options `Validate()` | `Assert.Throws<InvalidOperationException>` + the offending property's `nameof` in the message; `Record.Exception` is `null` for valid input |
+| DI entry points | descriptors/resolution, default-off, config-over-code, `TryAdd` precedence |
 | Leak fixes | `GcProbe`, per the rules above |
 
-Prefer the headless seam when one exists — `ProcessKeyDown`, `GetNextOccurrence`, `Validate`,
-and `Router`'s whole pipeline all exist partly so tests need no UI.
+Prefer the headless seam when one exists - `ProcessKeyDown`, `GetNextOccurrence`, `Validate()`,
+the platform interfaces and `Router`'s window-free pipeline exist partly so tests need no UI.
 
----
+## Conventions
+
+- Plain xUnit assertions (`Assert.Equal`, `Assert.Same`, `Assert.Throws`, `Assert.Single`,
+  `Record.Exception`); `[Theory]` + `[InlineData]` for tables. `AwesomeAssertions` is referenced but
+  used nowhere - do not introduce `.Should()`.
+- A class per type under test, `<Type>Tests`, or `<Type><Concern>Tests` for a focused concern
+  (`LifecycleLeakTests`, `RouterNavigationGuardOrderTests`, `AsyncValidationRaceTests`). Method
+  names are sentences describing the behaviour (`SettingTheSameValueDoesNotRaisePropertyChanged`);
+  `PeriodicScheduleTests` uses `Frequency_Case_Result` for its matrix.
+- Arrange/act/assert separated by blank lines, no `// Arrange` headers. A comment above a test says
+  why the behaviour matters or which bug it pins - not what the code does.
+- In the Aquarius-family projects the package's own namespaces come from `<Using Include="..."/>`
+  in the test `.csproj`; add there rather than repeating `using` lines. Core's `.csproj` adds only
+  `Xunit` and `Barbatos.Wpf.Hosting`, so Core test files carry per-file `using` lines
+  (`Barbatos.Wpf.Storage`, `Microsoft.Extensions.DependencyInjection`, ...) - match the project.
+- Shared doubles: `TestDoubles.cs` (`internal sealed`, Aquarius and Router) and
+  `FeatureTestFakes.cs` (`public sealed`, Core). Reuse before adding.
+- Start every new file with the MIT header from `.editorconfig` - copy it from any Core test file.
+  No Aquarius-family test file carries it yet; do not copy their headerless first line.
+
+## Symptom → cause → fix
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Passes alone, fails in a full or solution run | Both TFMs and many classes against one per-user store / process-wide state | Rerun that class alone on one TFM; only that result counts |
+| Run stops partway, fewer tests reported, host crashed | Concurrent STA windows (parallelism), or a synchronous throw from `Loaded` inside WPF's render pipeline | Keep `ParallelMode.None` in WPF suites; `--blame-crash`; the library must defer that throw with `BeginInvoke` and a test must pin it ([pattern](patterns.md#a-deferred-failure-through-dispatcherunhandledexception)) |
+| `InvalidOperationException`: "The calling thread must be STA" | WPF object built on the xUnit thread | `StaThread.Run` |
+| Only the first `Application` test works; later ones never see posted work | `Application.Current` created on a short-lived `StaThread.Run` thread | `TestApplication.Invoke` for every `Application`-touching test |
+| Later tests fail with "The Application object is being shut down" | A test closed the last window on the shared `Application` without `ShutdownMode.OnExplicitShutdown` | Use the Router/Valee `TestApplication` copy |
+| Assertion sees the old value | Deferred work not flushed | `StaThread.PumpDispatcher()` before asserting |
+| Animation/timer/chord assertion fails although the logic is right | `PumpDispatcher` does not advance time | Bounded `PumpFor`/`PumpUntil` |
+| Test hangs | Waiting inside `TestApplication.Invoke`; `ShowDialog()` never closed; unbounded `PushFrame`; `GetResult()` on real async on the STA thread | Wait outside with a timeout; close from the inner `Loaded`; bound every wait; make it an `async Task` test |
+| `AssertCollected` fails though the fix is right | Subject rooted by the test frame, or legitimately held (current route's View) | `NoInlining` helper; navigate away / close first |
+| `AssertCollected` passes with the bug still present | Owner unrooted, so the whole island was collected | Root the owner and `GC.KeepAlive` it; add the `AssertAlive` control |
+| A later test's dispatcher exception is swallowed or misattributed | A handler or mounted Lifecycle element left on the shared dispatcher | Unsubscribe in `finally`; raise `Unloaded` before returning |
+| Sporadic Core failure around a facade's first access (two instances created by racing classes) | New Essentials facade not warmed | Add it to `ModuleInit.WarmUpSingletons` |
+| `DataContext` or resolved View leaks into the next test | `Setup.ServiceProvider`/`Resolver`/`Router.Current` not restored | Save and restore in `try/finally` |
+| `NETSDK1005` | Core run with `-f net10.0-windows` | Use `net10.0-windows10.0.17763.0` |
+| `ThisTestAssemblyBuiltDebugIsReportedAsDebug` fails | Ran `-c Release` | Run Debug |
 
 ## Adding a test project
 
-Match the existing csproj exactly: `TargetFrameworks` = `net8.0-windows;net10.0-windows`,
-`UseWPF`, `IsTestProject`, `IsPackable=false`, `OutputType=Exe` (xUnit.net v3 test projects
-are self-hosting executables), the shared package references from `Directory.Packages.props`
-(`xunit.v3`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`, `coverlet.collector`,
-`AwesomeAssertions` - no versions), and `<Using Include="..."/>` for the package's namespaces
-plus `Xunit`. Copy `StaThread.cs`/`TestApplication.cs`/`GcProbe.cs` from
-`Barbatos.Wpf.Aquarius.UnitTests` rather than reinventing them. A suite that creates many
-STA-thread Windows also copies its `AssemblyInfo.cs`, which turns off cross-class parallelism
-with `[assembly: Parallelization(Mode = ParallelMode.None)]` (the comment there explains the
-test-host crash it prevents).
+- Name it `Barbatos.Wpf.<Package>.UnitTests`. `Directory.Build.props` sets `IsTestProject` from
+  the name containing `Test` and derives `IsCoreProject=False` from it, which turns off
+  `IsPackable`, `GeneratePackageOnBuild`, `GenerateDocumentationFile` and publishing, adds
+  `NoWarn` `CS8002;SA0001`, and keeps `Directory.Build.targets` from strong-name signing it in a
+  SourceLink build. A project named otherwise is built as a library - setting `IsTestProject` in
+  its own `.csproj` comes too late to change that.
+- `.csproj`: `TargetFrameworks` `net8.0-windows;net10.0-windows` (SDK-suffixed
+  `…windows10.0.17763.0` when it references Core), `UseWPF`, `IsPackable=false`,
+  `IsTestProject=true`, `OutputType=Exe` with the existing comment (xUnit.net v3 test projects are
+  self-hosting executables). `PackageReference`s without versions: `AwesomeAssertions`,
+  `coverlet.collector`, `Microsoft.NET.Test.Sdk`, `xunit.v3.mtp-off`, `xunit.runner.visualstudio`,
+  plus `CommunityToolkit.Mvvm` / `Microsoft.Extensions.DependencyInjection` when needed. One
+  `ProjectReference` to the package; `<Using Include="Xunit" />` plus its namespaces. Do not set
+  `Nullable`, `ImplicitUsings` or `LangVersion`.
+- The trim/AOT analyzers from `Directory.Build.targets` apply to test projects too; a suppression
+  carries a comment, as Valee's `IL2026` does.
+- Copy the helpers and change the namespace: `StaThread.cs` (Valee's has `Run<T>`),
+  `TestApplication.cs` from Router or Valee (Aquarius's lacks `ShutdownMode.OnExplicitShutdown`),
+  `GcProbe.cs` if it will have leak tests, and `AssemblyInfo.cs` whole (`ParallelMode.None` plus
+  `ThemeInfo`) if it creates windows.
+- Add it to `Barbatos.Wpf.slnx` inside the `/tests/` folder, which CI strips.
 
-**Never add `InternalsVisibleTo`.** If a test needs internal behavior, that behavior must become
-real public API first — see `barbatos-package-authoring`.
+## Checklist: adding or changing a test
+
+- [ ] Helper chosen from [Pick the thread helper](#pick-the-thread-helper); pure logic stays off STA.
+- [ ] Every deferred effect pumped; every timed effect pumped with a bound; every wait has a timeout.
+- [ ] Windows closed in `finally` and pumped; handlers on the shared dispatcher removed.
+- [ ] Statics restored; store keys unique and removed; no environment variables touched.
+- [ ] Core feature: fake platform registered before `ConfigureXxx`; default-off and config-over-code pinned.
+- [ ] Leak test: `NoInlining` helper, rooted owner, `AssertAlive` control.
+- [ ] The class run alone on both TFMs of its project, then the whole project per TFM.
+
+## Related skills
+
+- `barbatos-package-authoring` - changing `src/`, csproj and TFMs, and turning internal behaviour
+  into public API a test can reach.
+- `barbatos-aquarius-view`, `barbatos-aquarius-router`, `barbatos-valee-form`,
+  `barbatos-apsu-store`, `barbatos-wpf-host`, `barbatos-wpf-essentials`, `barbatos-mcp-ai` - what
+  each feature is supposed to do.
+- `barbatos-docs-sync` - the docs a behaviour change also touches.

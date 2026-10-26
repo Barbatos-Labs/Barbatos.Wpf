@@ -1,27 +1,51 @@
 ---
 name: barbatos-valee-form
-description: Build or fix a validated form with Barbatos.Wpf.AquariusValee - Form and Field<T>, schema mode via Form.FromModel and DataAnnotations vs ad-hoc DefineField, FieldMeta touched/dirty/valid/pending, HandleSubmit, validation triggers, cross-field rules (DependsOn, Compare, PropertyRangeAttribute, IDependsOnProperties), async rules with cancellation, and the aqv: markup (Valee.Field/PasswordField/Form/For/Mask/Numeric, FieldTemplateSelector, SafeMessageConverter). Use this for any input validation - required fields, email or phone format, password confirmation, digits-only or masked input, numeric range clamping, checking a username against the server while typing, localized or i18n validation messages, showing a server-returned field error, disabling or gating a submit button, and "the error message does not show up". Vietnamese prompts land here too: form nhập liệu, validate, kiểm tra dữ liệu, bắt buộc nhập, sai định dạng email hoặc số điện thoại, xác nhận mật khẩu, chỉ cho nhập số, thông báo lỗi, đa ngôn ngữ.
+description: "Forms and validation with Barbatos.Wpf.AquariusValee - Form.FromModel over DataAnnotations or ad-hoc DefineField, Field<T>, HandleSubmit, DependsOn/PropertyRange cross-field and async rules, and aqv: markup (Valee.Field/PasswordField/Mask/Numeric, SafeMessageConverter). Use when a form needs required, email or phone checks, password confirmation, a username-taken check while typing, digits-only or masked input, a number clamped to a range, or a server error on a field - or when an error never shows, the submit button stays disabled, or a message stays in the old language. For View/ViewModel wiring use barbatos-aquarius-view. Vietnamese prompts too - form nhập liệu, validate, bắt buộc nhập, sai định dạng email, xác nhận mật khẩu, chỉ cho nhập số, thông báo lỗi, lỗi không đổi ngôn ngữ."
 ---
 
-# Barbatos.Wpf.AquariusValee
+# Forms and validation with Barbatos.Wpf.AquariusValee
 
-vee-validate's shape for WPF, with `System.ComponentModel.DataAnnotations` as the schema
-mechanism and `INotifyDataErrorInfo` as the error channel.
+vee-validate's `useField`/`useForm` ported to WPF: `Field<T>` holds one value and its validation
+state, `Form` aggregates fields and drives submit, `System.ComponentModel.DataAnnotations` is the
+schema language, and errors reach the screen through `INotifyDataErrorInfo`. It is **not** a DI
+feature (there is no `AddXxx`/`UseXxx` - a ViewModel constructs and owns its `Form`), it does not
+localize anything itself, and it does not use WPF's `Binding.ValidationRules`.
 
-Full docs: [`src/Barbatos.Wpf.AquariusValee/README.md`](../../../src/Barbatos.Wpf.AquariusValee/README.md) ·
-[`API-REFERENCE.md`](../../../src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md).
-Reference app: [`samples/Barbatos.Wpf.AquariusValee.Sample`](../../../samples/Barbatos.Wpf.AquariusValee.Sample)
-— Login (ad-hoc), Signup (both modes side by side), ProfileEdit (schema), CustomRules, Showcase.
+Namespaces `Barbatos.Wpf.AquariusValee.Validation` (`Form`, `Field<T>`, metas, rule delegates),
+`.Rules` (extra attributes) and `.Xaml` (`Valee` attached properties, converters) all map to
+`xmlns:aqv="http://schemas.barbatos.co/aquariusvalee/2026/xaml"`.
 
-```xml
-xmlns:aqv="http://schemas.barbatos.co/aquariusvalee/2026/xaml"
-```
+## Sources of truth
 
----
+- [README](../../../src/Barbatos.Wpf.AquariusValee/README.md) (concepts, rationale) and
+  [API-REFERENCE](../../../src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md) (signatures). The
+  behaviour itself is in [`Validation/Field.cs`](../../../src/Barbatos.Wpf.AquariusValee/Validation/Field.cs)
+  and [`Validation/Form.cs`](../../../src/Barbatos.Wpf.AquariusValee/Validation/Form.cs) - read them
+  before trusting a doc sentence.
+- Sample [`samples/Barbatos.Wpf.AquariusValee.Sample`](../../../samples/Barbatos.Wpf.AquariusValee.Sample):
+  `Views/Login` (ad-hoc + `SetFieldError`), `Views/Signup` (both modes side by side),
+  `Views/ProfileEdit` (schema + `Valee.Numeric` bounds from `[Range]`), `Views/CustomRules`
+  (standalone fields, async rule, dynamic range, eagerly localized messages), `Views/Showcase`
+  (`FieldTemplateSelector`, `Valee.Mask`, `[PropertyRange]`), `MainWindow.xaml.cs` (language switch).
+- Scaffolds: `dotnet new aqv-form` ([item template](../../../templates/Barbatos.Wpf.AquariusValee/item-templates/valee-form),
+  schema mode) and `dotnet new barbatos-wpf-app --IncludeValee true` (`SignUpViewModel.cs`, ad-hoc).
+- [`tests/Barbatos.Wpf.AquariusValee.UnitTests`](../../../tests/Barbatos.Wpf.AquariusValee.UnitTests)
+  pins it, one class per area (`FormTests`, `FieldTests`, `CrossFieldDependencyTests`, ...).
+- [reference.md](reference.md) - read when choosing an attribute, wiring `Valee.Mask`/`Valee.Numeric`,
+  building a template-driven form, or checking what `Form.FromModel` reads from a model.
 
-## Choose the mode first — they are not interchangeable
+## Choose the mode first - they are not interchangeable
 
-**Schema mode** — you already have (or can write) a model class:
+| | Schema: `Form.FromModel(model)` | Ad-hoc: `form.DefineField(...)` | Standalone: `new Field<T>(...)` |
+| --- | --- | --- | --- |
+| Rules come from | attributes on the model's properties | attributes or delegates per call | same as ad-hoc |
+| `[Compare]`, `[PropertyRange]`, `IValidatableObject` | work | do not | do not |
+| `AddRule(ValidationAttribute)` | **silently ignored** | works | works |
+| `AddRule(ValidationRule<T>)` / async overload | works | works | works |
+| Values end up in | the model instance, live (`GetModel<TModel>()`) | `GetValues()` and the typed fields | the field |
+| `HandleSubmit`, focus-first-invalid | yes | yes | no `Form`, so no |
+
+Schema mode (adapted from `Views/Signup/SignupModel.cs` and `SignupViewModel.cs`):
 
 ```csharp
 public sealed class SignupModel
@@ -33,18 +57,15 @@ public sealed class SignupModel
     [Required, MinLength(8)]
     public string Password { get; set; } = "";
 
-    [Required]
-    [Compare(nameof(Password), ErrorMessage = "Validation.PasswordsMustMatch")]
+    [Required, Compare(nameof(Password))]
     public string ConfirmPassword { get; set; } = "";
 }
-```
 
-```csharp
 SchemaForm = Form.FromModel(new SignupModel());
 SchemaEmail = (Field<string>)SchemaForm.Fields["Email"];
 ```
 
-**Ad-hoc mode** — no model class:
+Ad-hoc mode (from `Views/Login/LoginViewModel.cs`):
 
 ```csharp
 public Form LoginForm { get; } = new();
@@ -54,221 +75,290 @@ Email = LoginForm.DefineField("Email", "",
     new EmailAddressAttribute { ErrorMessage = "Validation.InvalidEmail" });
 ```
 
-**`[Compare]`, `[PropertyRange]`, and `IValidatableObject` only work in schema mode** — they
-reflect `ValidationContext.ObjectInstance`, which an ad-hoc field does not have. Conversely,
-`Field<T>.AddRule(ValidationAttribute)` has **no effect** on a `FromModel`-built field (its
-validation is driven entirely by the live model property's own attributes) — declare the
-attribute on the model instead. `AddRule(ValidationRule<T>)` and `AddRule(AsyncValidationRule<T>)`
-work in both modes.
-
-`GetModel<TModel>()` throws unless the form was built via `FromModel<TModel>()`.
-
----
+- `FromModel` makes a field of **every** public instance property with a getter and a setter of
+  any accessibility, `private`/`init` included (indexers skipped), so non-input state on the model
+  also counts toward `Meta.Valid` and `GetValues()`. Cast `Fields["Name"]` to `Field<TProperty>` with the property's exact type.
+- Attributes that read a sibling property need a real model: ad-hoc fields validate with
+  `new ValidationContext(this)` (the `Field<T>` itself), so `[Compare]` finds no sibling and fails
+  every pass, and `[PropertyRange]` throws `InvalidOperationException`.
+- `DefineField` overloads take no rules or one kind (`params ValidationAttribute[]`,
+  `ValidationRule<T>[]` or `AsyncValidationRule<T>[]`); layer other kinds with `AddRule` (chainable).
+  A `ValidationRule<T>` returns `null` for valid, otherwise the message.
+- Every `Field<T>` constructor runs one **silent** pass with its rules, so `Meta.Valid` is right
+  from the start without showing errors. `AddRule` rules miss that pass (`Meta.Valid` ignores them
+  until the next one), and an async rule given to the constructor is called once, at construction.
 
 ## Submitting
 
 ```csharp
 LogInCommand = LoginForm.HandleSubmit(async values =>
 {
-    await Task.Delay(...);
-    if ((string)values["Password"]! != expected)
+    await Task.Delay(TimeSpan.FromSeconds(1));
+    if ((string)values["Password"]! != "correct-password")
     {
-        LoginForm.SetFieldError("Password", "Login.InvalidCredentials");  // server-driven
+        LoginForm.SetFieldError("Password", "Login.InvalidCredentials");   // server-driven
         return;
     }
 });
 ```
 
-Stage order (identical to vee-validate):
+`HandleSubmit(onValid, onInvalid = null)` returns an `IAsyncRelayCommand` that, as vee-validate:
+(1) touches **every** field, (2) sets `IsSubmitting` and increments `SubmitCount`, (3) runs
+`ValidateAllAsync()` (forced pass on every field, then `IValidatableObject` for a schema form),
+(4) calls `onValid(GetValues())`, or `onInvalid(GetValues(), GetErrors())` plus `SubmitInvalid`
+with `GetFirstInvalidField()`, (5) clears `IsSubmitting` in a `finally` - even when `onValid` throws.
 
-1. Touch **every** field, regardless of what the user edited.
-2. `IsSubmitting = true`, `SubmitCount++`.
-3. Validate every field (plus `IValidatableObject` in schema mode).
-4. `onValid` if the whole form is valid, else `onInvalid(values, errors)`.
-5. `IsSubmitting = false`, in a `finally`.
+- **`CanExecute` is gated only on `!IsSubmitting`, never on `Meta.Valid`.** Submitting an empty
+  form is what touches every field and surfaces every error. Do not bind the button's `IsEnabled`
+  to validity; show progress with `IsSubmitting`.
+- `Form.SetFieldError(name, message)` shows a server error immediately (`ArgumentException` for an
+  unknown name; `null` clears). It marks the field validated, so the user's next edit re-runs the
+  rules and replaces it.
+- `aqv:Valee.Form` subscribes to `SubmitInvalid` and focuses + `BringIntoView()`s the control
+  bound to the first invalid field. Without it, subscribe to the headless event yourself.
+  `ValidateAllAsync()` alone never raises it.
+- `ResetForm()` restores initial values and clears touched/validated/errors and `SubmitCount`;
+  after a save, `field.Reset(savedValue)` rebases the initial value so `Dirty` tracks the saved one.
 
-**`CanExecute` is gated only on `!IsSubmitting`, never on `Meta.Valid`.** Clicking Submit on an
-empty form is *supposed* to touch every field and surface every error — do not "fix" this by
-binding the button's enablement to validity.
+## Field and form state
 
-`Form.SubmitInvalid` fires with `GetFirstInvalidField()` on an invalid submit. `Valee.Form`
-subscribes automatically and focuses + `BringIntoView()`s the offending control — so **focus
-management is free wherever `Valee.Form` is set**. Without it, subscribe to the plain headless
-event yourself.
+`FieldMeta` has `Touched` (blur or submit only), `Validated` (a pass that writes errors has
+run), `Valid` (written by every pass, default `true`), `Pending` (async rule in flight) and `Dirty`
+(live comparison with the initial value); setters are `internal`. Full table and `FormMeta` aggregation
+in [reference.md](reference.md#field-and-form-state-in-detail). Which pass may write visible errors
+(the internal `ValidationWriteMode`):
 
----
-
-## Field state
-
-| `FieldMeta` | Meaning |
+| Pass | Writes `Errors`? |
 | --- | --- |
-| `Touched` | flips only via `HandleBlur()` or a submit's touch-all step |
-| `Validated` | a real (non-`Silent`) pass has run at least once; gates whether a `ValidatedOnly` pass may write errors |
-| `Pending` | an async rule is in flight; a sync-only field never raises it |
-| `Valid` | updated on every pass regardless of write mode |
-| `Dirty` | on-demand comparison of current vs initial — never cached |
+| Constructor, `Reset` | never (silent) - updates `Meta.Valid` only |
+| `HandleChange` / `Value` setter (`OnChange`), a `DependsOn` source changing | only if already `Validated` |
+| `HandleBlur` (`OnBlur`), `ValidateAsync()`, submit, `RevalidateValidatedAsync()` | always |
 
-`FormMeta`'s four members are all on-demand getters too, never cached; their `PropertyChanged`
-is batched through `NextTick`. Every setter is `internal` — read-only from outside the package.
+So typing into a pristine field shows nothing until the first blur or submit; afterwards errors
+update per keystroke. That is the intended vee-validate behaviour, not a bug.
 
-Triggers are `[Flags] ValidateTrigger { None, OnChange = 1, OnBlur = 2, Default = OnChange | OnBlur }`.
-`OnChange` fires from `HandleChange` whatever WPF event caused it; `OnBlur` fires from
-`Valee.Field`'s `LostFocus` hook even if nothing changed. Set per field:
-`Email.Triggers = ValidateTrigger.OnBlur;`.
+- Triggers per field: `Email.Triggers = ValidateTrigger.OnBlur;` (`None`, `OnChange`, `OnBlur`,
+  `Default = OnChange | OnBlur`). `HandleBlur()` always sets `Touched`.
+- Every failing rule adds its message (no bailing), except that the BCL runs `[Required]` first and
+  short-circuits the other attributes: `[Required, MinLength(3)]` on `""` reports one message.
+  Delegate rules still run on the empty value.
+- `Valid` defaults to `true`; pair it with `Dirty`/`Touched` before any "looks good" UI.
 
-Two behaviors worth knowing:
+## Cross-field validation - three mechanisms
 
-- Every failing rule contributes its message — rules are **not** bailed after the first — with
-  one BCL exception: `Validator` special-cases `RequiredAttribute` to run first and short-circuit,
-  so `[Required, MinLength(3)]` on an empty value reports only the Required message.
-- `Errors`/`ErrorMessage` notifications fire **only when the list actually changes**. Validation
-  re-runs per keystroke and usually produces the identical result; notifying regardless would make
-  WPF re-evaluate every adorner on every character.
-
----
-
-## Cross-field validation — three mechanisms
-
-**Ad-hoc:** `DependsOn` + a closure reading the other field.
+**Ad-hoc: `DependsOn` + a closure** (`Views/Signup/SignupViewModel.cs`):
 
 ```csharp
-ConfirmPassword.AddRule(value => value == Password.Value ? null : "Signup.PasswordMismatch");
-ConfirmPassword.DependsOn(Password);
+AdHocConfirmPassword.AddRule(value => value == AdHocPassword.Value ? null : "Signup.PasswordMismatch");
+AdHocConfirmPassword.DependsOn(AdHocPassword);
 ```
 
-Call `DependsOn` once per source for a dynamic range:
+Call it once per source for bounds driven by other fields (`Views/CustomRules`: two rules reading
+`MinPrice.Value`/`MaxPrice.Value`, then `Price.DependsOn(MinPrice)` and `Price.DependsOn(MaxPrice)`);
+`[Range]` cannot, its arguments are constants. `DependsOn` returns an `IDisposable`, re-validates
+validated-only (no error appears on an untouched field), and uses `Watch.On`, which reacts only to
+the source's value - never `Errors`/`Meta` - so mutual dependencies cannot loop.
 
-```csharp
-Price = form.DefineField(nameof(Price), 50,
-    v => v < MinPrice.Value ? $"Must be at least {MinPrice.Value}." : null,
-    v => v > MaxPrice.Value ? $"Must be at most {MaxPrice.Value}." : null);
-Price.DependsOn(MinPrice);
-Price.DependsOn(MaxPrice);
-```
+**Schema, one sibling: `[Compare(nameof(Password))]`.** Right verdict whenever the confirm field
+validates, but **no automatic re-validation** when `Password` changes - add
+`ConfirmPassword.DependsOn(Password)` (the `aqv-form` template does), or fixing the password leaves
+a stale "don't match" error.
 
-`[Range(MinPrice, MaxPrice)]` cannot express this — attribute arguments must be compile-time
-constants. `DependsOn` re-validates in `ValidatedOnly` mode so a sibling change never surfaces an
-error on an untouched field, and it is built on `Watch.On` (not `Watch.Effect`) specifically so
-that a validation pass's own `Errors`/`Meta` changes cannot cause an infinite loop.
+**Schema, dynamic bounds: `[PropertyRange(nameof(MinPrice), nameof(MaxPrice))]`.** It implements
+`IDependsOnProperties`, so `FromModel` wires `DependsOn` itself once all fields exist (any custom
+attribute can opt in the same way). The message is `ErrorMessage` formatted with display name, min
+and max (`"The {0} field must be between {1} and {2}."`); a placeholder-free key works like any
+key but loses the live bounds, so localized text **with** bounds needs ad-hoc `DependsOn`.
 
-**Schema, one sibling:** `[Compare(nameof(Password))]`. It gives the right verdict when the
-confirm field is validated, but **does not auto-wire re-validation** — add
-`ConfirmPassword.DependsOn(Password)` yourself or fixing the password leaves a stale error.
-
-**Schema, dynamic bounds:** `[PropertyRange(nameof(MinPrice), nameof(MaxPrice))]`. It implements
-`IDependsOnProperties`, which `Form.FromModel` scans for after every field exists, so
-`DependsOn` **is** wired automatically. Any custom `ValidationAttribute` can opt into the same
-auto-wiring by implementing that interface.
-
-`PropertyRangeAttribute` gives up one thing: **its `ErrorMessage` cannot be an i18n key**
-(`{0}` = display name, `{1}`/`{2}` = live bounds). An attribute has no DI access. Pick ad-hoc
-`DependsOn` when the message must be localized.
-
----
+**Model-level: `IValidatableObject`** on a schema model runs only in `ValidateAllAsync`/submit (and
+`RevalidateValidatedAsync`), never per keystroke. Each result must name its members -
+`new ValidationResult("You must accept the terms.", [nameof(AcceptedTerms)])` - and the message is
+appended to each named field; a result with no member names, or naming a non-field, is dropped.
+The BCL's `Validator.TryValidateObject` does not call `Validate` while a `[Required]` property is
+empty, so model-level errors appear only once required fields are filled. It reports that
+`[Required]` failure instead, and `Form` appends it like any model-level result. After a submit, a
+schema field's `Errors` then lists the Required message twice (`ErrorMessage` is unaffected).
 
 ## Async rules
+
+Adapted from `Views/CustomRules/CustomRulesViewModel.cs`, plus the `try`/`catch` explained below:
 
 ```csharp
 Username.AddRule(async (value, cancellationToken) =>
 {
-    var available = await service.IsAvailableAsync(value, cancellationToken);
-    return available ? null : "Validation.UsernameTaken";
+    if (string.IsNullOrWhiteSpace(value))
+        return null;                                   // rules run in order and never bail - guard
+
+    try
+    {
+        var available = await availabilityService.IsAvailableAsync(value, cancellationToken);
+        return available ? null : "Validation.UsernameTaken";
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+    {
+        return "Validation.UsernameCheckFailed";      // never let it escape - see below
+    }
 });
 ```
 
-**Always forward the token.** A per-field `CancellationTokenSource` is cancelled and replaced on
-every new pass — forwarding is what turns a superseded call into genuinely cancelled work rather
-than a discarded result. `Field<T>.Dispose()` cancels in-flight work and clears `Pending`, so a
-cancelled field cannot strand its form as permanently pending.
-
----
+- **Forward the token.** Every new pass cancels the previous pass's token and the latest pass wins
+  (`AsyncValidationRaceTests`); forwarding turns a superseded call into cancelled work, not just a
+  discarded result. There is no debounce: start the rule with
+  `await Task.Delay(300, cancellationToken)` if each keystroke should not hit the server.
+- **Never let an exception escape.** `Field<T>` catches only `OperationCanceledException`, and
+  catches it whoever cancelled. Anything else - or an `HttpClient` timeout surfacing as
+  `TaskCanceledException` - skips the code that lowers `Meta.Pending`, leaving the field and its
+  form "checking..." forever; in a keystroke/blur/`DependsOn` pass nobody even observes the exception.
+- Show progress with `{Binding Username.Meta.Pending}` or `Form.Meta.Pending`. Add the rule with
+  `AddRule` after construction, as the sample does, so the constructor's silent pass never calls
+  the service (a later `Reset`/`ResetForm` silent pass still does).
+- `Field<T>.Dispose()` cancels in-flight work, clears `Pending` and stops every `DependsOn`;
+  `Form.Dispose()` disposes all fields. Dispose when the owning ViewModel goes away mid-check.
 
 ## XAML
 
 ```xml
 <StackPanel aqv:Valee.Form="{Binding LoginForm}">
-    <TextBox aqv:Valee.For="Email" />
+    <TextBox aqv:Valee.Field="{Binding Email}" />          <!-- or aqv:Valee.For="Email" -->
     <TextBlock Text="{Binding Email.ErrorMessage}" Foreground="Red" />
-
     <PasswordBox aqv:Valee.PasswordField="{Binding Password}" />
     <TextBlock Text="{Binding Password.ErrorMessage}" Foreground="Red" />
-
     <Button Content="Log in" Command="{Binding LogInCommand}" />
 </StackPanel>
 ```
 
-- `Valee.Field` binds the control's natural value property, wires `LostFocus` → `HandleBlur`, and
-  sets `UpdateSourceTrigger=PropertyChanged` (WPF's default for `TextBox.Text` is `LostFocus`,
-  which would make `OnChange` only fire on blur).
-- `Valee.PasswordField` is `PasswordBox`-only and **never creates a `Binding` on `Password`**
-  (not a DP, for security). Consequence: **no native adorner** — always show a `PasswordBox`'s
-  error with a bound `TextBlock`.
-- `Valee.For="Email"` resolves the ambient `Valee.Form` by a one-shot ancestor walk at `Loaded`.
-  **The `Form` must already be non-null by load time** — construct it synchronously in the
-  ViewModel's constructor. There is no retry.
-- `Valee.Form` also suppresses WPF's own native adorner **on that panel only** (`Form` implements
-  `INotifyDataErrorInfo`, so the whole panel would otherwise get a red border whenever any field
-  is invalid). `Validation.HasError`/`GetErrors` stay intact for a form-level banner.
-- Error display is **already native** — a plain `TextBlock` bound to `ErrorMessage`, plus WPF's
-  red adorner from `Field<T>`'s own `INotifyDataErrorInfo`. No `ErrorMessage` control ships.
+- **`Valee.Field`** (value: any `IField`) binds `TextBox.Text`, `ToggleButton.IsChecked`,
+  `Selector.SelectedItem` or `RangeBase.Value` TwoWay with `UpdateSourceTrigger=PropertyChanged`
+  (WPF's `TextBox.Text` default is `LostFocus`), and wires `LostFocus` to `HandleBlur`. It throws
+  `InvalidOperationException` on a `PasswordBox`, an unsupported element, or a non-`IField` value.
+  Inside a `DataTemplate` whose item is the field, use `aqv:Valee.Field="{Binding}"`.
+- **`Valee.PasswordField`** (`PasswordBox` only, value `Field<string>`) pushes `PasswordChanged`
+  into the field and never binds `Password`. So: no native adorner - always add an error
+  `TextBlock` - and it is one-way: `Reset`, `ResetForm` and `SetFieldValue` do not clear the box.
+- **`Valee.Form`** on a container enables `Valee.For` and focus-first-invalid, and suppresses the
+  native adorner on that element only (`Form` is itself `INotifyDataErrorInfo`; the whole panel
+  would turn red). `Validation.HasError` there still works for a form-level banner.
+- **`Valee.For="Email"`** finds the ancestor `Valee.Form` by a visual-tree walk at `Loaded`, with
+  no retry: the `Form` must be non-null by then (build it in the ViewModel constructor). A missing form or
+  field name is an `InvalidOperationException` posted to the dispatcher. `Popup` content has no
+  visual path to the panel - use `Valee.Field` there.
+- Error display is native: a `TextBlock` on `ErrorMessage` plus WPF's red adorner from
+  `Field<T>`'s `INotifyDataErrorInfo`. No error control ships; do not write one.
 
-### Input helpers
+Input helpers (`TextBox` only; details in [reference.md](reference.md)):
+`aqv:Valee.Mask=">AAA-0000"` shapes typing but does not validate - pair it with `PatternAttribute`.
+A positional mask fits fixed layouts only; Showcase hand-rolls international phone input instead
+(`Views/Showcase/InputMask.cs`). `aqv:Valee.Numeric="Integer"` (or `Decimal`) filters keystrokes
+and clamps **on `LostFocus` only** to `aqv:Valee.Minimum`/`aqv:Valee.Maximum`, else to a numeric
+`[Range]` on the field when bound through `Valee.Field`/`Valee.For` - keep the `[Range]`, clamping
+corrects but does not validate. `FieldTemplateSelector` renders a whole form from
+`ItemsSource="{Binding Form.Fields.Values}"`.
 
-```xml
-<TextBox aqv:Valee.Field="{Binding Sku}"   aqv:Valee.Mask=">AAA-0000" />
-<TextBox aqv:Valee.Field="{Binding Age}"   aqv:Valee.Numeric="Integer" />
-<TextBox aqv:Valee.Field="{Binding Price}" aqv:Valee.Numeric="Decimal" aqv:Valee.Minimum="0" />
-```
+## Localized messages
 
-`Valee.Mask` (`TextBox` only): `0` digit, `A` letter, `*` alphanumeric, `>`/`<` casing, `\`
-escape, anything else a literal auto-inserted once preceding slots fill. Backspace deletes
-through separators, paste is filtered, length is capped. The **formatted** text reaches the field.
-**A mask guides, an attribute decides** — a mask is deliberately permissive, so pair it with
-`PatternAttribute`.
+Valee takes no localization dependency; literal messages are fine. To localize, pick per message:
 
-`Valee.Numeric` (`TextBox` only): filters typing and paste to a valid numeric prefix — `-`, `.`,
-`-.` all pass as legal intermediate states. Clamps **on `LostFocus`, never while typing**. Bounds
-are optional and independent; unset, they come from `IField.Minimum`/`Maximum`, which
-`Form.FromModel` fills from `[Range]`. A `Minimum >= 0` also removes the minus key.
+| Message | Store as | After a language switch |
+| --- | --- | --- |
+| fixed text | a lookup key in `ErrorMessage`, `SetFieldError` or a rule's return value | resolved by a converter when the binding re-reads |
+| text with runtime values (`{0} is taken`, "at least {MinPrice}") | text resolved eagerly in the rule | `await form.RevalidateValidatedAsync()` |
 
-`FieldTemplateSelector` picks a `DataTemplate` by `IField.UIHint` → `DataTypeHint` enum name →
-a resource named `"Default"`, so a whole form can render from
-`ItemsSource="{Binding Form.Fields.Values}"`. `[Display(Prompt = "...")]` → `IField.Prompt`
-(guidance text) is a separate concern from `[UIHint]`/`[DataType]` (which control). `[Editable(false)]`
-→ `IField.IsReadOnly` is a hint your template must honor — Valee does not enforce it.
-
-`SafeMessageConverter` wraps a localizing `IValueConverter` and falls back to the raw value when
-the inner one returns nothing or throws — so an untranslated key or a deliberately literal
-message stays visible instead of rendering as empty text:
+Wrap the localizing converter in `SafeMessageConverter` (its XAML content property) so an unknown
+key or literal prose shows as written instead of blank - it returns the input when the inner
+converter returns null/empty or throws:
 
 ```xml
 <aqv:SafeMessageConverter x:Key="LocalizeConverter">
     <i18n:LocalizeConverter />
 </aqv:SafeMessageConverter>
+<TextBlock Text="{Binding Email.ErrorMessage, Converter={StaticResource LocalizeConverter}}" />
 ```
 
-Set `ErrorMessage` to a **lookup key**, never pre-resolved text — the converter resolves it at
-display time, so a language switch is reflected. After a language change call
-`Form.RevalidateValidatedAsync()` to refresh already-displayed messages without touching pristine
-fields.
+**"The error stays in the old language after switching"** has three causes:
 
----
+1. **Eager text.** A rule that returned resolved text (and BCL default messages, which are
+   formatted when the rule runs) captured the old language. Call `RevalidateValidatedAsync()` after
+   changing culture: it re-runs only `Meta.Validated` fields (no new errors on pristine ones) and
+   re-applies `IValidatableObject` messages for them. For standalone fields, call `ValidateAsync()`
+   on each `Meta.Validated` field (`CustomRulesViewModel.RefreshLocalizedMessagesAsync`).
+2. **Key + converter, but the binding never re-read.** A converter runs when `ErrorMessage`
+   changes, and a culture switch does not change it. The sample rebuilds each tab's View against
+   the same ViewModel (`MainWindow.xaml.cs`), so form state survives; anything that makes the
+   binding re-evaluate works.
+3. **A key spliced into another message.** `{0}` is formatted with the raw `[Display(Name)]` when the
+   rule runs, so a key there renders as the key. Keep key messages placeholder-free (the Showcase
+   `[PropertyRange]` message drops `{0}` for this reason).
 
 ## Rules: prefer the BCL
 
-Check `System.ComponentModel.DataAnnotations` first. Shipped here only for confirmed gaps:
+BCL `ValidationAttribute` first, then `Barbatos.Wpf.AquariusValee.Rules`, then
+`[CustomValidation]`/`IValidatableObject` (schema) or a `ValidationRule<T>` (ad-hoc). Valee adds
+attributes only for confirmed BCL gaps - `Pattern` (`RegexOptions`, anchored, timeout fails),
+`PropertyRange`, `Alpha*` (`AsciiOnly`), `Digits`/`NumericString`/`IntegerString`, and loose
+`OneOf`/`NotOneOf` (prefer the strict BCL `AllowedValues`/`DeniedValues`). No `ExactLength`: use
+`[Length(n, n)]`. Semantics, including which skip `""` or non-strings, are in
+[reference.md](reference.md#attribute-catalogue). Optional `[Url]`/`[EmailAddress]`/`[Phone]`
+strings must be `string?` defaulting to `null`: those accept `null` but fail `""`.
 
-| Attribute | Why it exists |
-| --- | --- |
-| `PatternAttribute` | `[RegularExpression]` has no `RegexOptions` property; this adds `Options`, `MustMatchEntireValue` (default true), `MatchTimeoutInMilliseconds` (default 2000, a timeout fails the field) |
-| `PropertyRangeAttribute` | dynamic bounds from sibling properties + `IDependsOnProperties` auto-wiring |
-| `AlphaAttribute` / `AlphaNumeric` / `AlphaDash` / `AlphaSpaces` | with an `AsciiOnly` switch |
-| `DigitsAttribute` / `NumericString` / `IntegerString` | exact-count / ASCII-digit checks |
-| `OneOfAttribute` / `NotOneOfAttribute` | **loose** cross-type matching (`1` matches `"1"`). Prefer the BCL's strict `AllowedValues`/`DeniedValues` (.NET 8+) unless you specifically want loose |
+## Hard rules
 
-No `ExactLength` ships — `new LengthAttribute(n, n)` (.NET 8+) already covers it. All of these
-except `PropertyRange` treat null/empty as valid; pair with `[Required]`.
+- **Create and mutate forms on the UI thread.** `FormMeta` queues its notification with `NextTick`
+  on `Dispatcher.CurrentDispatcher`; on a worker thread that dispatcher never runs, its
+  "scheduled" flag never resets, and `Form.Meta` bindings freeze for good. Build the `Form` in the
+  ViewModel constructor and never touch a field or form after `ConfigureAwait(false)` in `onValid`.
+- Never gate submit on `Meta.Valid`; never `AddRule(attribute)` on a `FromModel` field; always
+  `DependsOn` a `[Compare]` source; build the `Form` before the View loads; never put
+  `[DataType(...)]` beside `[Phone]`/`[CreditCard]`/`[EmailAddress]`/`[Url]`/`[EnumDataType]`
+  (they are `DataTypeAttribute`s already; `FromModel` throws a `TargetInvocationException` wrapping
+  `AmbiguousMatchException`).
+- Lifetimes: `DependsOn` subscribes to the source, so a dependent field stays reachable from a
+  longer-lived source (a store, a singleton ViewModel) until disposed. `Valee` keeps the last
+  control bound to each field in a `ConditionalWeakTable` keyed by the field, so a `Form` that
+  outlives its View keeps that control and its tree alive - scope the form with its View.
 
-Modeling note: make an optional string field `string?` with a `null` default, not `""`.
-`[Url]`/`[EmailAddress]` treat `null` as valid but `""` as a format failure, so a `""` default
-makes an optional field permanently invalid until typed into.
+## Symptom -> cause -> fix
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Nothing shows while typing in a fresh field | validated-only passes before the first blur/submit | by design; it appears after blur or submit |
+| No error even after blur | plain `{Binding X.Value}` (no blur hook, `LostFocus` timing), `Triggers` without `OnBlur`, or a rule that throws | use `Valee.Field`/`Valee.For`; check `Triggers`; catch inside rules |
+| Error area blank though `Meta.Valid` is false | field not validated yet (silent pass), or a localizing converter returned null for an unknown key | blur/submit; wrap the converter in `SafeMessageConverter` |
+| Raw key such as `Validation.Required` on screen | key missing from the locale files, or no converter on that binding | register the key / add the converter |
+| Message stays in the old language | eager text, an unrefreshed binding, or a key in `{0}` | see [Localized messages](#localized-messages) |
+| Submit button disabled on an empty form | `IsEnabled` bound to `Meta.Valid` | rely on `HandleSubmit`'s `CanExecute` |
+| "Passwords don't match" persists after fixing the password | `[Compare]` not wired for re-validation | `ConfirmPassword.DependsOn(Password)` |
+| `[Compare]` in `DefineField` always fails; `AddRule(attribute)` on a schema field does nothing | each works only in the other mode | `DependsOn` + closure; put the attribute on the model |
+| Optional URL/email field invalid from the start, or again after clearing it | `""` default / the box writes `""` when cleared | `string?` with `null` default / a rule that returns `null` for `""` |
+| `IValidatableObject` message never appears | no member names, a `[Required]` field still empty, or only per-keystroke validation ran | name members; it runs on submit/`ValidateAllAsync` |
+| "checking..." never clears, `Form.Meta.Pending` stuck | async rule threw or timed out | catch inside the rule, return a message |
+| Field bindings update but `Form.Meta.*` bindings are frozen | form created or mutated off the UI thread | UI thread only |
+| Unhandled `InvalidOperationException` mentioning `Valee.For` | `Form` null at `Loaded`, misspelt field name, or element inside a `Popup` | construct the form in the constructor; fix the name; use `Valee.Field` |
+| `PasswordBox` keeps its dots after `ResetForm()` | `Valee.PasswordField` is one-way | clear `PasswordBox.Password` in the View |
+| `TargetInvocationException` (inner `AmbiguousMatchException`) / `InvalidOperationException` from `Form.FromModel` | two `DataTypeAttribute`s on a property / an `IDependsOnProperties` name that does not exist | drop the explicit `[DataType]` / use `nameof` |
+| Numeric box ignores `[Range]` | box bound without `Valee.Field`/`Valee.For`, a non-numeric `[Range]` overload, or the `RangeAttribute` added with `AddRule` (only the constructor/`DefineField` copies its bounds) | bind with `Valee.Field`; pass the `[Range]` to `DefineField` or set `Valee.Minimum`/`Valee.Maximum` |
+| Letters typed into a number box: no `ErrorMessage`, `Value` keeps the old number | text the binding cannot convert never reaches a `Field<int>`, so no rule runs | `Valee.Numeric`, or a `Field<string>` with `[IntegerString]` parsed on submit |
+| Numeric box rejects `,` or the value stops updating | separator comes from `FrameworkElement.Language` (default `en-US`) | set `Language` on the box or window |
+| Service called with the initial value at startup | async rule passed to the constructor runs in the silent pass | `AddRule` after construction and guard empty input |
+
+## Checklist: adding a form to an app
+
+1. Pick the mode; build the `Form` and typed `Field<T>` properties in the ViewModel constructor on
+   the UI thread (`dotnet new aqv-form` scaffolds the schema shape).
+2. Rules: BCL first, Valee `Rules` second, delegates last; `string?` for optional formatted strings.
+3. Cross-field: `DependsOn`, `[Compare]` + `DependsOn`, or `[PropertyRange]`; name members in
+   `IValidatableObject` results. Async rules forward the token, guard empty input, never throw.
+4. `HandleSubmit`, server errors via `SetFieldError`, no validity gate on the button.
+5. View: `aqv:Valee.Form` on the container, `Valee.Field`/`For`/`PasswordField`, an error
+   `TextBlock` per field (mandatory for `PasswordBox`), `SafeMessageConverter` when localized.
+6. Language switch: rebind key-based messages, `RevalidateValidatedAsync()` for eager text.
+7. Dispose forms that die while async checks or cross-lifetime `DependsOn` are live.
+
+## Related skills
+
+- `barbatos-aquarius-view` - the View/ViewModel the form lives in (`aq:Setup.Enable`, reactivity).
+- `barbatos-aquarius-router` - a form screen as a route, or a leave guard on unsaved `Meta.Dirty`.
+- `barbatos-wpf-testing` - STA helpers and per-TFM runs for Valee tests.
+- `barbatos-package-authoring`, `barbatos-docs-sync`, `barbatos-templates` - changing Valee itself.
+  It depends on Aquarius (`Watch.On`, `NextTick`) and `CommunityToolkit.Mvvm`, never on Core; a
+  change also updates README (and its menu), API-REFERENCE, the sample and both templates. Test one
+  TFM at a time: `dotnet test tests/Barbatos.Wpf.AquariusValee.UnitTests -f net8.0-windows`.

@@ -25,10 +25,10 @@ build/      package icons
 
 | Package | TFMs | Depends on | Owns |
 | --- | --- | --- | --- |
-| `Barbatos.Wpf.Core` | `net{8,9,10}.0-windows10.0.17763.0` | MEDI, MEAI, MCP SDK, Castle.Core, Toolkit.Uwp.Notifications, System.Management | Hosting, LifecycleEvents, Dispatching, Essentials, Dialogs, Tray, Power, Startup, Input, Notifications, PushNotifications, SingleInstance, Apsu, Mcp |
-| `Barbatos.Wpf.Aquarius` | `net{8,9,10}.0-windows` | **`Microsoft.Extensions.DependencyInjection.Abstractions` + `Options` only** | Reactivity, Composition, Xaml, Animation |
-| `Barbatos.Wpf.AquariusRouter` | `net{8,9,10}.0-windows` | → Aquarius (ProjectReference) | Matching, Routing, Searching, Xaml |
-| `Barbatos.Wpf.AquariusValee` | `net{8,9,10}.0-windows` | → Aquarius (ProjectReference) | Validation, Rules, Xaml |
+| `Barbatos.Wpf.Core` | `net{8,9,10}.0-windows10.0.17763.0` | MEDI + configuration/options/logging, MEAI, MCP SDK, Agent Framework, OpenAI, Anthropic, SignalR client, Castle.Core, CommunityToolkit.Mvvm, Toolkit.Uwp.Notifications, System.Management | Hosting, LifecycleEvents, Dispatching, Essentials, Dialogs, Tray, Power, Startup, Input, Notifications, PushNotifications, SingleInstance, Apsu, Mcp |
+| `Barbatos.Wpf.Aquarius` | `net{8,9,10}.0-windows` | **`CommunityToolkit.Mvvm` + `Microsoft.Extensions.DependencyInjection.Abstractions` + `Options` only** | Reactivity, Composition, Xaml, Animation |
+| `Barbatos.Wpf.AquariusRouter` | `net{8,9,10}.0-windows` | → Aquarius (ProjectReference), same three packages | Matching, Routing, Searching, Xaml |
+| `Barbatos.Wpf.AquariusValee` | `net{8,9,10}.0-windows` | → Aquarius (ProjectReference), `CommunityToolkit.Mvvm` | Validation, Rules, Xaml |
 
 **Aquarius has no dependency on Core** and must stay that way — it is installable standalone.
 The two `src/` → `src/` references (Router → Aquarius, Valee → Aquarius) were each confirmed
@@ -99,8 +99,9 @@ The file-specific detail behind each of these loads with the matching rule
 - **No `InternalsVisibleTo`.** If a test needs internal behaviour, that behaviour becomes real,
   documented public API, or the test uses the public surface.
 - **Public API discipline.** XML docs on every public member with `<remarks>` for the *why*;
-  `sealed` by default (Apsu stores excepted); pure `Validate()` on configuration types; a rename
-  keeps the old member as `[Obsolete]` instead of deleting it.
+  new types are `sealed` (Apsu stores excepted), and a shipped unsealed type is never sealed later
+  — that breaks subclasses; pure `Validate()` on configuration types; a rename keeps the old
+  member as `[Obsolete]` instead of deleting it.
 - **Central Package Management.** All versions live in `Directory.Packages.props`.
   `Microsoft.Extensions.AI*` moves in lockstep with `ModelContextProtocol.Core`'s floor.
 - **`.editorconfig` is the style authority**, including the MIT header on every `.cs` file in
@@ -111,9 +112,9 @@ The file-specific detail behind each of these loads with the matching rule
 ## 4. Documentation is part of the change
 
 Every package ships `src/<Package>/README.md` (concept-first walkthrough, worked examples,
-rationale) and `src/<Package>/API-REFERENCE.md` (member-by-member signatures and exact
-behaviour), both packed into the `.nupkg`. **A public API change is not done until both are
-updated**, plus the sample that demonstrates it, the template if the scaffolded shape changed,
+rationale — packed into the `.nupkg` as the NuGet landing page) and
+`src/<Package>/API-REFERENCE.md` (member-by-member signatures and exact behaviour, read on
+GitHub). **A public API change is not done until both are updated**, plus the sample that demonstrates it, the template if the scaffolded shape changed,
 and the root `README.md` if the package's summary changed. See `barbatos-docs-sync`.
 
 ---

@@ -9,9 +9,11 @@ paths:
 
 # Package documentation
 
-These files are packed into the `.nupkg` (each package's `README.md` is what a NuGet visitor
-reads first), so they are part of the product. Load `barbatos-docs-sync` for the full checklist,
-the README skeleton and the house voice.
+These files are part of the product: each package's `README.md` is packed into its `.nupkg`
+and is the first thing a NuGet visitor reads; `API-REFERENCE.md` is read on GitHub (it is not
+packed, so a link from a README to it must be an absolute GitHub URL, or it is dead on
+nuget.org). Load `barbatos-docs-sync` for the full checklist, the README skeleton and the house
+voice.
 
 - **Split, don't duplicate.** `src/<Package>/README.md` is concept-first: what, how, worked
   examples, and the rationale for every non-obvious decision. `src/<Package>/API-REFERENCE.md` is
@@ -27,7 +29,8 @@ the README skeleton and the house voice.
   why; say when something was verified by running it; name limits honestly; say what a Vue /
   vee-validate / Pinia / Vue Router concept maps to and where the port differs; keep "already
   native in WPF" notes instead of inventing API. No marketing adjectives, no "simply"/"just".
-  `> [!IMPORTANT]` / `> [!NOTE]` only for things that genuinely bite.
+  `> [!IMPORTANT]` (the only callout the docs use; it renders on nuget.org too) only for things
+  that genuinely bite.
 - Wrap prose at roughly 95 characters, like the rest of the file.
 - A removed or renamed member stays documented as `[Obsolete]` with its replacement.
 - A documented feature also needs its sample (and template, if the scaffolded shape changed).

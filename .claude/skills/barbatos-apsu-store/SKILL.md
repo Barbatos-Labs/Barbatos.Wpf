@@ -1,22 +1,45 @@
 ---
 name: barbatos-apsu-store
-description: Manage shared application state with Barbatos.Wpf.Apsu (part of Barbatos.Wpf.Core) - StoreBase with batched StateChanged and Patch, Getter<T> cached derived values, [Action]-marked virtual methods wrapped by IStoreActionInterceptor middleware, IStorePlugin, IStoreRegistry, and the AddStore/AddStoreInterceptor registrations including InterceptorHandle.Eject. Use this whenever state has to be shared across several ViewModels or screens rather than owned by one, when a value should be derived from other state and cached, when an action needs logging, timing, retry, rate-limiting, auditing or guarding without editing the action itself, when a store should reset to its initial state, when a store's [Action] is not being intercepted at all, and when an intercepted action mysteriously hangs and never returns. Vietnamese prompts land here too: trạng thái dùng chung, chia sẻ state giữa các màn hình, store, giá trị tính toán từ state khác, ghi log hành động, hành động bị treo không trả về.
+description: "Shared state with Barbatos.Wpf.Apsu (in Barbatos.Wpf.Core), Pinia-style stores - StoreBase, StateChanged/Patch/Reset, Getter<T>, [Action] methods wrapped by IStoreActionInterceptor, AddStore, InterceptorHandle.Eject, IStorePlugin, IStoreRegistry. Use when state is shared by several ViewModels or windows, deriving a value from stores, logging, auditing or blocking an action without editing it, persisting a store, or when an [Action] is never intercepted, an action hangs forever, a sealed store throws on resolve, or a getter shows a stale value. For view-local state and Provide/Inject use barbatos-aquarius-view. Vietnamese prompts too - trạng thái dùng chung, chia sẻ state giữa màn hình, store kiểu Pinia, giá trị tính từ store, ghi log hành động, hành động bị treo, lưu trạng thái store."
 ---
 
-# Barbatos.Wpf.Apsu — state management
+# Barbatos.Wpf.Apsu - stores
 
-A Pinia-shaped store layer on `CommunityToolkit.Mvvm.ObservableObject`, part of
-`Barbatos.Wpf.Core`. Interception is ASP.NET Core-style middleware over Castle DynamicProxy.
+Pinia's `defineStore`/getters/actions/plugins, ported to WPF and shipped inside
+`Barbatos.Wpf.Core` (namespace `Barbatos.Wpf.Apsu`). A store is an app-lifetime DI singleton
+deriving from `StoreBase` (a CommunityToolkit `ObservableObject`). Action interception is
+ASP.NET Core-style middleware over a Castle DynamicProxy class proxy. Not here: view-local state,
+`Ref`/`Computed`, Provide/Inject (`barbatos-aquarius-view`); persistence primitives such as
+`IPreferences` (`barbatos-wpf-essentials`). Nothing in Apsu persists itself.
 
-Full docs: [`README.md#state-management-barbatoswpfapsu`](../../../src/Barbatos.Wpf.Core/README.md) ·
-[`API-REFERENCE.md#barbatoswpfapsu-namespace`](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md).
-Reference: [`samples/Barbatos.Wpf.Core.Sample/CounterStore.cs`](../../../samples/Barbatos.Wpf.Core.Sample/CounterStore.cs)
-and the six-interceptor chain in
-[`samples/Barbatos.Wpf.Aquarius.Sample/WpfProgram.cs`](../../../samples/Barbatos.Wpf.Aquarius.Sample/WpfProgram.cs).
+## Sources of truth
 
----
+- Docs: README [State management](../../../src/Barbatos.Wpf.Core/README.md#state-management-barbatoswpfapsu)
+  ([Stores](../../../src/Barbatos.Wpf.Core/README.md#stores),
+  [Getters](../../../src/Barbatos.Wpf.Core/README.md#getters),
+  [Actions and action interceptors](../../../src/Barbatos.Wpf.Core/README.md#actions-and-action-interceptors),
+  [Removing an interceptor](../../../src/Barbatos.Wpf.Core/README.md#removing-an-interceptor-at-runtime),
+  [Plugins](../../../src/Barbatos.Wpf.Core/README.md#plugins),
+  [Registry](../../../src/Barbatos.Wpf.Core/README.md#registry)) and
+  [API-REFERENCE `Barbatos.Wpf.Apsu`](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md#barbatoswpfapsu-namespace).
+- Code wins over docs: `src/Barbatos.Wpf.Core/Essentials/Apsu/` - `StoreServiceCollectionExtensions.cs`
+  (registration, proxy vs plain path, plugin/registry order), `ActionInterceptor.cs` (pipeline,
+  return-type handling), `StoreBase.cs`, `Getter.cs`, `IStoreActionInterceptor.cs` (the hang rule).
+- Samples: `samples/Barbatos.Wpf.Core.Sample/` - `CounterStore.cs`,
+  `SampleActionLoggingInterceptor.cs`, `WpfProgram.cs`, `MainViewModel.cs` (forwarding a getter).
+  `samples/Barbatos.Wpf.Aquarius.Sample/` - `UserStore.cs`/`OrderStore.cs` (cross-store),
+  `WpfProgram.cs` (3 global + 3 local chain), the six `*Interceptor.cs`,
+  `UserSessionPersistencePlugin.cs`, `ApsuActivityLog.cs`, `ApsuInteropDemoViewModel.cs`.
+- Tests that pin behaviour: `tests/Barbatos.Wpf.Core.UnitTests/StoreBaseTests.cs` (StateChanged,
+  Patch, Reset, Getter), `StoreFeatureTests.cs` (singleton, laziness, registry, plugins),
+  `StoreActionInterceptorTests.cs` (chain order, short-circuit, errors, async, eject, sealed).
+- [patterns.md](patterns.md) - read when you need a complete worked example: cross-store store,
+  argument/state/cooldown guards, error reporting, persistence plugin, exposing a getter to XAML,
+  an ejectable toggle, or a test harness for an interceptor.
 
 ## A store
+
+Adapted from `samples/Barbatos.Wpf.Core.Sample/CounterStore.cs`:
 
 ```csharp
 public class CounterStore : StoreBase
@@ -24,12 +47,15 @@ public class CounterStore : StoreBase
     int _count;
     readonly Getter<string> _doubleCountLabel;
 
-    public CounterStore() => _doubleCountLabel = new Getter<string>(() => $"Double: {Count * 2}", this);
+    public CounterStore()
+    {
+        _doubleCountLabel = new Getter<string>(() => $"Double: {Count * 2}", this);
+    }
 
     public int Count
     {
         get => _count;
-        set => SetProperty(ref _count, value);
+        private set => SetProperty(ref _count, value);
     }
 
     public string DoubleCountLabel => _doubleCountLabel.Value;
@@ -45,148 +71,280 @@ public class CounterStore : StoreBase
 builder.Services.AddStore<CounterStore>();
 ```
 
-**Four shape requirements — violating any of them fails, sometimes late:**
+Shape rules - each one fails differently, some only after the first interceptor is registered:
 
-| Requirement | Failure if broken |
+| Rule | What breaks otherwise |
 | --- | --- |
-| Class is **not `sealed`** | `InvalidOperationException` at first resolution, once an interceptor applies |
-| **Exactly one public constructor** | same |
-| Action methods are `public virtual` and `[Action]`-marked | silently never intercepted |
-| `Reset()` is overridden | `NotSupportedException` naming the store type — deliberate, so a forgotten override fails loudly |
+| Not `sealed` | `InvalidOperationException` ("must not be sealed ...") at first resolution once any interceptor applies. A **global** interceptor applies to every store, so adding one can break a store that worked before. |
+| Exactly one public constructor, every parameter a registered service | The proxy path resolves each parameter with `GetRequiredService`, so >1 public constructor throws `InvalidOperationException` ("must have exactly one public constructor ... (found N)") and optional/default parameters are not honoured. The plain path uses `ActivatorUtilities.CreateInstance`, which is more lenient - again, the break appears with the first interceptor. |
+| `public` type (and any enclosing type) | Castle cannot subclass a type its generated assembly cannot see. Every intercepted store in the tests and samples is `public`. |
+| Actions are `public virtual` and `[Action]`-marked | Non-virtual or unmarked methods silently pass through (`NonAttributedVirtualMethodIsNotIntercepted`). |
+| Actions return `void`, a value, `Task` or `Task<T>` | See [Return types](#return-types-and-blocking). |
+| `Reset()` overridden | The default throws `NotSupportedException` "... does not support Reset()". Deliberate: a forgotten override fails loudly. |
+| State set via `SetProperty`, setters `private` | Public setters and `Patch` bypass interceptors; mutate through actions when audits/guards must see every change (`UserStore`/`OrderStore` use `private set`). |
 
-`AddStore<TStore>()` registers a **singleton**, created lazily and cached. A store's constructor
-may take other services or other stores. A store with no applicable interceptor gets a plain
-`ActivatorUtilities`-created instance — no proxy, no cost.
+## Registering
 
-`StateChanged` fires once per property set outside `Patch`, or **once per `Patch` call** however
-many properties it touched (individual `PropertyChanged` still fires per property). A nested
-`Patch` lets the outermost call be the one that fires.
+- `AddStore<TStore>(Action<StoreInterceptorBuilder<TStore>>? configureInterceptors = null)`
+  registers a **singleton factory**, run lazily on first resolution
+  (`StoreIsNotConstructedUntilFirstResolved`). The store is resolvable as `TStore` only.
+- Always register with `AddStore`. `AddSingleton<TStore>()` or `new TStore()` in app code
+  skips the proxy, the plugins and the registry.
+- Call `AddStore<TStore>` once per type. It uses `AddSingleton`, not `TryAdd`: a second call adds
+  a second descriptor, and a repeated callback registers its local interceptors again (they then
+  run twice).
+- A store's constructor may take services and other stores (`OrderStore(HttpClient, UserStore)`).
+  It lives for the app's lifetime, so depend on singletons only.
+- Interceptors and plugins are read when the store is **first resolved**, not when `AddStore`
+  runs, so registering them before or after `AddStore` makes no difference; only their order
+  among themselves matters. After that the chain is frozen - `Eject` is the only runtime change.
+- No interceptor applies -> plain instance, `GetType() == typeof(TStore)`
+  (`StoreWithoutInterceptorsRegisteredUsesThePlainNonProxiedPath`). Otherwise the instance is a
+  generated subclass: test with `is OrderStore`, never `GetType() ==`.
 
----
+## State, StateChanged, Patch, Reset
+
+- `StateChanged` (the `$subscribe` counterpart) fires on **every** `PropertyChanged` the store
+  raises - `StoreBase` subscribes to its own `PropertyChanged` in its constructor. That includes a
+  manual `OnPropertyChanged(nameof(Derived))`. Setting an equal value raises nothing.
+- Never raise the store's own `PropertyChanged` from its own `StateChanged` handler: each raise
+  fires `StateChanged` again, recursing until the stack overflows.
+- `Patch(Action<StoreBase> mutate)` batches: `PropertyChanged` still fires per property, but
+  `StateChanged` fires once when the outermost `Patch` returns, and only if something changed.
+  The callback parameter is typed `StoreBase` - ignore it and close over the typed store:
+  `store.Patch(_ => { store.Count = 1; store.Name = "a"; })` (`StoreBaseTests`), or inside the
+  store `Patch(_ => { A = 1; B = 2; })`.
+- `Patch` is not a transaction: if `mutate` throws, changes already made stay, `StateChanged`
+  still fires (from `finally`), then the exception propagates. Batching is per store - another
+  store mutated inside the callback notifies on its own.
+- `Patch` and `Reset` are not actions, so interceptors never see them. Call them from an
+  `[Action]` when they must be audited or guarded.
+- Wrap a multi-property `Reset` in `Patch`. `UserStore.Reset` sets three properties without it,
+  so `StateChanged` fires up to three times and `UserSessionPersistencePlugin` writes each time.
 
 ## Getters
 
+- `new Getter<T>(Func<T> compute, params StoreBase[] dependencies)`. List **every** store
+  `compute` reads, `this` included - there is no auto-tracking. Invalidation is deliberately
+  coarse (a simplification, not a gap to close): any `StateChanged` on any dependency invalidates
+  (`GetterInvalidatesEvenWhenAnUnrelatedPropertyChanges`); `Value` recomputes on the next read only.
+- **A getter raises no change notification.** `{Binding OrderStore.Summary}` reads once and never
+  updates (the Aquarius sample's own `ApsuInteropDemoView.xaml` binds exactly that). Expose the
+  value through a ViewModel that re-raises it on `StateChanged` of every dependency store - see
+  [patterns.md](patterns.md#exposing-a-getter-to-xaml).
+- Forward on `StateChanged`, not `PropertyChanged`. Outside a `Patch`, `StoreBase`'s own handler
+  runs first, so the getter is already invalidated when other `PropertyChanged` subscribers run -
+  that is why `MainViewModel` in the Core sample works. Inside a `Patch`, `PropertyChanged`
+  arrives **before** the getter is invalidated, so a forwarded read returns the stale value and
+  nothing re-notifies afterwards. The same applies to reading a getter inside the `Patch` callback.
+- Create `Getter<T>` only inside stores. It subscribes to each dependency's `StateChanged` and has
+  no `Dispose`, so a getter built in a short-lived ViewModel over a singleton store is kept alive
+  by that store forever, with everything its closure captures. In ViewModels use Aquarius
+  `Computed<T>.From(getter, params INotifyPropertyChanged[] dependencies)` (stores are
+  `INotifyPropertyChanged`; `Computed<T>` is `IDisposable`) and read raw store state in it, not a
+  store getter (same `Patch` staleness).
+
+## Actions and interceptors
+
+`IStoreActionInterceptor.InterceptAsync(StoreActionContext context, StoreActionDelegate next)`
+returns `Task<object?>`. `context` carries `Store`, `ActionName` and `Arguments` (declaration
+order). From `samples/Barbatos.Wpf.Core.Sample/SampleActionLoggingInterceptor.cs`:
+
 ```csharp
-_summary = new Getter<string>(
-    () => $"{OrderCount} order(s) for {userStore.UserName}",
-    this, userStore);          // list EVERY store the callback reads
-```
-
-C# has no proxy-based tracking, so dependencies are explicit and invalidation is **coarse** — any
-`StateChanged` on any listed dependency recomputes. That is a deliberate simplification, not a
-gap to close. `Value` recomputes only if invalidated since the last read.
-
----
-
-## Interceptors
-
-```csharp
-public sealed class TimingInterceptor(ActivityLog log) : IStoreActionInterceptor
+public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
 {
-    public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+    var label = $"{context.Store.GetType().Name}.{context.ActionName}()";
+    _activityLog.Log($"[Interceptor] {label} starting");
+    var stopwatch = Stopwatch.StartNew();
+    try
     {
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var result = await next();
-            log.Log($"{context.Store.GetType().Name}.{context.ActionName}() took {sw.ElapsedMilliseconds}ms");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            log.Log($"failed: {ex.Message}");
-            throw;                 // still propagates to the caller
-        }
+        var result = await next();
+        _activityLog.Log($"[Interceptor] {label} finished in {stopwatch.Elapsed.TotalMilliseconds:0}ms");
+        return result;
+    }
+    catch (Exception ex)
+    {
+        _activityLog.Log($"[Interceptor] {label} failed: {ex.Message}");
+        throw;
     }
 }
 ```
 
-`StoreActionContext` carries `Store`, `ActionName`, and `Arguments` (declaration order) — enough
-to reject an out-of-range argument by simply **not calling `next`**.
+(`context.Store.GetType()` is the proxy subclass, so that label shows the generated type's name;
+use `GetType().BaseType!.Name` for the store's own.)
+
+- **Short-circuit** by returning without calling `next` - the action body never runs. Return
+  `Task.FromResult<object?>(null)` for `void`/`Task` actions; for value-returning actions return
+  a boxed value of the declared type (`ShortCircuitMiddleware` returns `-1` for `int GetDoubled()`).
+  The chain's result is cast back to the declared type, so `null` for a `Task<int>` action throws.
+- Outer interceptors still run their after-code when an inner one short-circuits - from their
+  side `next()` just returned (`AnyInterceptorBlockingInASixDeepChainPreventsTheActionAndEverythingAfterIt`).
+- A local interceptor wraps **every** action of its store. Filter with
+  `context.ActionName == nameof(OrderStore.CheckoutAsync)` and `return next();` for the rest.
+- Read state from `context.Store` (`context.Store is OrderStore { OrderCount: 0 }`) instead of
+  injecting the store the interceptor wraps.
+- Errors: a synchronous action throws out of `next()` synchronously; an async one faults its
+  task. An `async` interceptor with `await next()` inside `try`/`catch` sees both. `throw;`
+  propagates the original exception type (not `AggregateException`); returning a value from the
+  `catch` substitutes a fallback (`MiddlewareCanCatchAnErrorAndReturnAFallbackInstead`).
+- The store instance is the proxy, so an action calling another action on `this`, a cross-store
+  call (`OrderStore.CheckoutAsync` -> `UserStore.RefreshProfileAsync`) and a plugin calling an
+  action each run the full chain again. Expect nested log lines; guards see inner calls too.
 
 ### The one rule that will hang your app
 
-> **Call `next` as your first meaningful step, if you call it at all. Never `await` anything
-> genuinely asynchronous before it.**
+> **Call `next` as your first meaningful step, if you call it at all. Never `await` anything that
+> genuinely suspends before it.**
 
-Castle's underlying `IInvocation.Proceed()` is not safe to reach from a continuation that already
-crossed a real `await` suspension relative to `InterceptAsync`'s synchronous call — doing so
-**hangs the action forever rather than throwing**. Awaiting real async work *after* `next`
-returns (flushing a log, persisting) is fully supported.
+`next` ends in Castle's `IInvocation.Proceed()`. After a real suspension the Castle interception
+call has already returned, and `Proceed()` then re-enters `ActionInterceptor` instead of the
+action: the whole chain is rebuilt, suspends at the same `await`, re-enters again - forever. No
+exception, no timeout. Recorded by running it: an earlier test fixture that awaited a delay
+before `next()` hung the test host until it was killed (`DelayingMiddleware` remarks in
+`StoreActionInterceptorTests.cs`).
 
-### Composition order
+- Safe: synchronous checks before `next`; awaiting already-completed tasks; awaiting real work
+  **after** `next` returns for a `Task` action (`MiddlewareCanGenuinelyAwaitAsynchronousWorkAfterCallingNext`).
+- Retry is the same trap. Calling `next` again after `await next()` genuinely suspended (an
+  async action that failed after its first real `await`) is exactly the forbidden shape. Retry
+  only synchronous actions; no test covers retry.
+- An async precondition (a server check) belongs inside the action, or in a separate action the
+  caller awaits first - not before `next`.
 
-- **Global** (`services.AddSingleton<IStoreActionInterceptor, T>()`) — wraps every action on every
-  store, in registration order, **outside** every local one.
-- **Local** (one store type) — register inside `AddStore`:
+### Return types and blocking
 
-  ```csharp
-  builder.Services.AddStore<OrderStore>(i => i
-      .Add<NonEmptyCartGuardInterceptor>()                 // DI-constructed
-      .Add(existingInstance)                               // an instance you built
-      .Add(sp => new CooldownInterceptor(TimeSpan.FromSeconds(3), sp.GetRequiredService<Log>())));
-  ```
+| Action returns | Chain behaviour |
+| --- | --- |
+| `Task` / `Task<T>` | Awaited properly; the caller gets a task that completes after every interceptor finished (`AwaitingTheReturnedTaskGuaranteesTheMiddlewareAlreadyRanToCompletion`). |
+| `void` / a value | The proxy blocks: `pipeline().GetAwaiter().GetResult()`. |
+| `ValueTask`, `ValueTask<T>`, `async void` | Treated as synchronous (`next()` returns the unfinished `ValueTask` itself, boxed): after-code runs before the work finishes and misses exceptions from its async part. Use `Task`. |
 
-  `Add` overloads chain and mix freely; they run in `Add` order, innermost relative to globals.
-  Use the factory overload when a constructor needs a value the container cannot invent (a
-  threshold, a duration) alongside services it can.
+- Because sync actions block, an interceptor that genuinely suspends **anywhere** in a sync
+  action's chain - even after `next` - waits for a UI-thread continuation while the UI thread is
+  blocked: the classic WPF sync-over-async deadlock. Global interceptors wrap sync actions too,
+  so a global interceptor must not genuinely `await`; hand async I/O (a remote log flush) off to
+  something that runs on its own instead.
+- After `await next()` the interceptor resumes on the caller's context (the pipeline deliberately
+  omits `ConfigureAwait(false)`), so after-code may touch UI-bound state. Keep it that way in
+  your interceptors.
 
-**Order locals by cost:** a guard that rejects a call should run *before* an interceptor that
-spends a rate-limit token on it.
+### Registration and order
 
-`AddStoreInterceptor<TStore, TInterceptor>()` (keyed DI) is the standalone equivalent; prefer the
-`AddStore` callback so one call covers a store and every local interceptor it needs.
+| Registration | Scope | Built |
+| --- | --- | --- |
+| `services.AddSingleton<IStoreActionInterceptor, T>()` | global | by DI |
+| `services.AddSingleton<IStoreActionInterceptor>(sp => new T(...))` | global | factory |
+| `services.AddStoreInterceptor(interceptor, out InterceptorHandle handle)` | global, ejectable | instance |
+| `AddStore<TStore>(i => i.Add<T>().Add(instance).Add(sp => new T(...)))` | local | DI / instance / factory |
+| `AddStoreInterceptor<TStore, TInterceptor>()`, `AddStoreInterceptor<TStore>(instance)`, `AddStoreInterceptor<TStore>(factory)` | local | standalone equivalents of the builder |
+| `AddStoreInterceptor<TStore>(interceptor, out InterceptorHandle handle)` | local, ejectable | instance - the builder has no ejectable `Add` |
 
-### Return types
+- Every global runs outside every local; each group runs in registration (`Add`) order,
+  outermost first. Globals A, B, C plus locals D, E, F give `A B C D E F ... F E D C B A`
+  (`SixChainedInterceptorsAllRunInOrderWhenEveryOneCallsNext`).
+- Order locals by cost: a guard that rejects goes before an interceptor that spends a token on
+  the call (`NonEmptyCartGuardInterceptor` before `CheckoutCooldownInterceptor` in the Aquarius
+  `WpfProgram.cs`).
+- Use a factory when the constructor needs a value the container cannot invent (a `TimeSpan`)
+  next to services it can. Type and factory registrations are built once, at the store's first
+  resolution (`AddStoreInterceptorFactoryIsInvokedLazilyOnlyOnceOnFirstStoreResolution`).
+- Locals are keyed by exactly `typeof(TStore)`: one registered for a base store type does not
+  apply to a derived store registered as itself.
+- One global instance serves every store's chain, so its fields are shared state.
+- Interceptors are registered only as `IStoreActionInterceptor` (keyed for locals); the concrete
+  type is not resolvable. Surface their output through a shared injectable sink, as
+  `ApsuActivityLog` does, rather than injecting interceptors into ViewModels.
 
-Sync returns and `Task`/`Task<TResult>` are handled. **`ValueTask`/`ValueTask<T>` is not
-recognized as asynchronous** — it is treated as synchronous and the unfinished `ValueTask` itself
-becomes the chain's result. Use `Task` for any action that must be intercepted.
+### Ejecting
 
-For a *synchronous* action the proxy blocks on the chain (`GetAwaiter().GetResult()`). That is
-safe only if every interceptor in that chain does purely synchronous work — one that genuinely
-suspends risks the classic WPF sync-over-async deadlock.
-
-### Removing an interceptor at runtime
-
-```csharp
-services.AddStoreInterceptor(interceptor, out var handle);
-// later:
-handle.Eject();
-```
-
-Idempotent. The slot stays but becomes a transparent pass-through; a call already in flight keeps
-using it. There is no re-attach — register a new one.
-
----
+`handle.Eject()` (idempotent; `handle.IsEjected` reports it) turns that slot into a pass-through
+from the next call on; the chain is not rebuilt. A call already in flight keeps the interceptor.
+Ejecting before the first call works; ejecting a short-circuiting interceptor lets later calls
+reach the action. There is no re-attach, and a store's chain is fixed once the store exists, so
+getting the behaviour back means a new container. For an on/off setting, give the interceptor
+its own enabled flag instead; use `Eject` for a one-way removal. Keep the handle where the code
+that ejects can reach it.
 
 ## Plugins and registry
 
-```csharp
-services.AddSingleton<IStorePlugin, UserSessionPersistencePlugin>();
-```
+- `IStorePlugin.Apply(StoreBase store)`, registered with `services.AddSingleton<IStorePlugin, T>()`,
+  runs once per `AddStore` store, in registration order, after the constructor and after the
+  proxy is built, inside that store's DI resolution. It runs for every store - start with
+  `if (store is not UserStore userStore) return;`.
+- A plugin can read/write state, subscribe to `StateChanged`, and call actions (through the
+  chain). It cannot wrap actions - that is an interceptor's job.
+- State a plugin restores is set while the store is still being resolved, before anything else
+  can subscribe. In the Aquarius sample, `OrderStore` wires its watch on `SelectedUserId` after
+  `UserSessionPersistencePlugin` restored it, so the restored user does not refresh orders.
+  Whatever reacts to restored state must read the current value when it subscribes.
+- `IStoreRegistry.Stores` is a snapshot of the stores resolved so far, in the order each finished
+  resolving (after its plugins; a store's dependency stores come first); a registered but
+  never-resolved store is absent. It is registered by the first `AddStore` call
+  and exists for introspection only - the container is the cache.
 
-`Apply(StoreBase)` runs once per store created via `AddStore<TStore>()`, in registration order,
-right after that store's own constructor. Use it for cross-cutting behavior (persistence,
-telemetry) that should not be written per store.
-
-`IStoreRegistry.Stores` lists every store **actually resolved so far** — a registered but never
-injected store does not appear. It exists for introspection only; the container, not this
-registry, is what makes a store a singleton. It bootstraps on the first `AddStore` call.
-
----
-
-## Store vs ViewModel vs Provide/Inject
+## Store, ViewModel or Provide/Inject
 
 | Need | Use |
 | --- | --- |
-| State shared across unrelated ViewModels, app-lifetime | an Apsu store |
-| State owned by one screen | the ViewModel itself (`[ObservableProperty]`, `Ref<T>`) |
-| A value scoped to one visual subtree | Aquarius `Provide`/`Inject` |
+| State shared by unrelated ViewModels/windows for the app's lifetime | an Apsu store |
+| State owned by one screen | the ViewModel (`[ObservableProperty]`, Aquarius `Ref<T>`) |
+| A value scoped to one visual subtree | Aquarius `Provide`/`Inject` (`barbatos-aquarius-view`) |
+| Derivation across stores | `Getter<T>` in a store |
+| View-shaped derivation of store state | `Computed<T>` in the ViewModel, disposed with it |
 
-An Apsu store composes cleanly with Aquarius: `Getter<T>` for cross-store derivation,
-`Computed<T>` in the ViewModel for View-shaped derivation. See the sample's
-"Apsu + Aquarius" tab.
+Cross-store wiring (`OrderStore.cs`): inject the other store; "watch" it with an ordinary
+`PropertyChanged` subscription (store-to-store subscriptions are fine - both are singletons); or
+call its action directly. An `async` lambda handler is `async void`: when the change is raised on
+the UI thread its exceptions reach `OnDispatcherUnhandledException` (`barbatos-wpf-host`), never a
+caller. A ViewModel that is not a
+singleton must unsubscribe from store events when it goes away - the store outlives it.
 
-**Nothing here persists itself.** Wire persistence through an `IStorePlugin` or the store's own
-constructor.
+## Symptom -> cause -> fix
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Interceptor never runs for an action | Method not `virtual`, missing `[Action]`, store not registered via `AddStore`, local registered for another `TStore`, or handle ejected | Fix the shape/registration; check `IsEjected` |
+| Intercepted action never completes, no exception | Interceptor awaited real async work before `next`, or retried after an async failure | Move the work after `next` or into the action |
+| UI freezes when a sync action runs | An interceptor genuinely suspends inside a sync action's chain | Make the action return `Task`, or keep interceptors synchronous |
+| `InvalidOperationException` "must not be sealed" right after adding a global interceptor | A `sealed` store now needs a proxy | Remove `sealed` |
+| `InvalidOperationException` "must have exactly one public constructor ... (found N)" | Proxy path needs one constructor | Collapse to one |
+| "No service for type ..." resolving a store that worked before interceptors | Proxy path ignores optional/default constructor parameters | Register the dependency or drop the parameter |
+| Castle error that the store type is not accessible | Store or an enclosing type is not `public` | Make it `public` |
+| `NotSupportedException` "... does not support Reset()" | `Reset()` not overridden (when proxied, the message names the generated type) | Override `Reset()` |
+| Getter-backed property never updates in the UI | `Getter<T>` raises no `PropertyChanged` | Re-raise from a ViewModel on `StateChanged` |
+| Getter shows the old value after a `Patch` | Forwarded on `PropertyChanged`, which precedes invalidation inside `Patch` | Forward on `StateChanged` |
+| Getter stale after another store changed | That store is not in `dependencies` | List every store `compute` reads |
+| `StackOverflowException` in a store | Store raises its own `PropertyChanged` from its `StateChanged` handler | Raise on the ViewModel instead |
+| ViewModel never garbage-collected | `Getter<T>` built in it over a singleton store, or store events never unsubscribed | `Computed<T>` + `Dispose`; unsubscribe |
+| Interceptor logs a call twice | Action called from another action / store / plugin (nested chain), or `AddStore` called twice | Expected for nesting; register once |
+| Logging/timing ends before an async action finishes; interceptors never see its error | Action returns `ValueTask` or is `async void` | Return `Task` |
+| Exception (e.g. `NullReferenceException`, `InvalidCastException`) after a short-circuit | Returned `null` or the wrong boxed type for a value-returning action | Return a boxed value of the declared type |
+| Log shows a generated type name instead of the store's | `context.Store` is the proxy subclass | `GetType().BaseType!.Name` |
+| `IStoreRegistry` cannot be resolved | No `AddStore` call registered it | Register at least one store |
+| Restored state did not trigger another store's watch | Plugin ran during resolution, before the watcher subscribed | Read current state at subscribe time |
+
+## Checklist
+
+Adding a store: `public`, non-`sealed`, one public constructor over singletons; state via
+`SetProperty` with `private set`; actions `public virtual`, `[Action]`, returning `Task` when async;
+`Reset()` overridden (multi-property in `Patch`); getters list every store they read; one
+`AddStore<TStore>` call with its local interceptors in the callback; getter-backed values reach
+XAML through a ViewModel forwarding `StateChanged`.
+
+Adding an interceptor: `next` first; no genuine `await` at all if it may wrap a sync action
+(every global does); filter by `nameof` action; short-circuit with a correctly typed value;
+`throw;` after observing; guards before token-spending interceptors; a test in the style of
+`StoreActionInterceptorTests.BuildStore` - never one that awaits before `next`.
+
+Changing `src/Barbatos.Wpf.Core/Essentials/Apsu/` itself: follow `barbatos-package-authoring`
+(stores stay the documented `sealed` exception; the pipeline's reflection is why the Core
+`.csproj` suppresses IL2075/IL2060); extend the three test files; update README "State management" and the
+API-REFERENCE namespace (`barbatos-docs-sync`); keep both samples demonstrating it. Run tests per
+TFM: `dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows10.0.17763.0 --filter "FullyQualifiedName~UnitTests.Store"`.
+
+## Related skills
+
+`barbatos-wpf-host` (builder, lifecycle hooks such as `OnDispatcherUnhandledException`),
+`barbatos-wpf-essentials` (`IPreferences` for persistence plugins), `barbatos-aquarius-view`
+(`Ref`/`Computed`/`Watch`, Provide/Inject), `barbatos-wpf-testing` (running and writing tests),
+`barbatos-package-authoring` (changing the library), `barbatos-docs-sync` (README/API-REFERENCE).

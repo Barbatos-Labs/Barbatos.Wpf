@@ -31,7 +31,9 @@ A failure is real only once it reproduces with that class alone, on that one TFM
 - WPF objects need STA: `StaThread.Run(...)` for plain controls, `TestApplication.Invoke(...)`
   for anything that touches `Application.Current` — they are not interchangeable. Each
   Aquarius-family test project carries its own copy of these helpers (and `GcProbe` where leak
-  tests exist); copy them from `Barbatos.Wpf.Aquarius.UnitTests` rather than reinventing them.
+  tests exist). For a new suite copy `TestApplication` from the Router or Valee project — the
+  Aquarius copy lacks `ShutdownMode.OnExplicitShutdown`, so a test that closes the last window
+  shuts the shared `Application` down for every later test.
 - After anything deferred (`NextTick`, watcher flush, `IOnUpdated`, adding to a tree) call
   `StaThread.PumpDispatcher()` before asserting.
 - Leak fixes are proven with `GcProbe.AssertCollected` **paired with** an `AssertAlive` control,
@@ -39,7 +41,9 @@ A failure is real only once it reproduces with that class alone, on that one TFM
 - A new Essentials static facade gets warmed in `Barbatos.Wpf.Core.UnitTests/ModuleInit.cs`.
 - Plain xUnit `Assert.*`; one `<Type>Tests` class per type; method names are sentences
   describing the behaviour; a comment says why the behaviour matters, not what the code does.
-- Namespaces come from `<Using Include="…"/>` in the test `.csproj`.
-- MIT file header on every test file.
+- Match the project's using style: the Aquarius-family test projects take package namespaces
+  from `<Using Include="…"/>` in the `.csproj`; Core's test files carry their own `using` lines.
+- MIT file header on every new or edited test file. Many older Aquarius-family test files lack
+  it, and nothing catches a missing one at build time (`IDE0073` is not enforced in the build).
 - **Never add `InternalsVisibleTo`.** Test through public API, or make the behaviour real public
   API first (`barbatos-package-authoring`).
