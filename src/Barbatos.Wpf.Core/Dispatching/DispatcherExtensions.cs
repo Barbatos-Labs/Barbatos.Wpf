@@ -16,25 +16,11 @@ public static class DispatcherExtensions
         _ = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _ = action ?? throw new ArgumentNullException(nameof(action));
 
-        var tcs = new TaskCompletionSource<bool>();
-
-        var dispatched = dispatcher.Dispatch(() =>
+        return dispatcher.DispatchAsync(() =>
         {
-            try
-            {
-                action();
-                tcs.SetResult(true);
-            }
-            catch (Exception ex)
-            {
-                tcs.SetException(ex);
-            }
+            action();
+            return true;
         });
-
-        if (!dispatched)
-            tcs.SetException(new InvalidOperationException("Unable to dispatch the action on the dispatcher."));
-
-        return tcs.Task;
     }
 
     public static Task<T> DispatchAsync<T>(this IDispatcher dispatcher, Func<T> func)
