@@ -259,6 +259,8 @@ The prose records decisions and evidence, not mechanics.
 10. **Pinned claims** - if the change alters behavior a test pins (see Sources of truth), update
     the test and the claim together.
 11. **Run `check-docs.mjs`** and fix every line your change introduced.
+12. **Agent skills** - for any API or behaviour change, not only a rename, grep `.claude/skills`
+    for the member and fix every claim the change invalidated.
 
 ## Symptom -> cause -> fix
 

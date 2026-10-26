@@ -1,6 +1,6 @@
 ---
 name: barbatos-wpf-essentials
-description: "Barbatos.Wpf.Core Essentials (interface + static facade via UseEssentials) - AppInfo/PublisherInfo/AppId metadata, Preferences, SecureStorage (DPAPI), VersionTracking, Connectivity, DeviceDisplay, DeviceIdentity, Launcher, Email, AppActions. Use when saving a setting, storing a token securely, app version or what's-new after an update, checking offline, opening a URL, sending email, the app data folder, a Jump List, per-machine licensing, screen DPI, keeping the screen on, settings that vanish after a rename, or a null InstallDate. For startup, DI and ConfigureXxx features use barbatos-wpf-host; for AI keys, barbatos-mcp-ai. Vietnamese prompts too - lưu cài đặt, lưu token bảo mật, phiên bản ứng dụng, chạy lần đầu sau cập nhật, kiểm tra mạng, mở trình duyệt, gửi email, bản quyền theo máy."
+description: "Barbatos.Wpf.Core Essentials (UseEssentials facades) - AppInfo/PublisherInfo/AppId metadata, Preferences, SecureStorage (DPAPI), VersionTracking, Connectivity, DeviceDisplay, DeviceIdentity, Launcher, Email, AppActions. Use when saving a setting, storing a token securely, app version or what's-new after an update, checking offline, opening a URL, sending email, the app data folder, a Jump List, per-machine licensing, screen DPI, keeping the screen on while presenting, settings that vanish after a rename, or a null InstallDate. For startup, DI, ConfigureXxx features and keep-awake toggles use barbatos-wpf-host; for AI keys, barbatos-mcp-ai. Vietnamese prompts too - lưu cài đặt, lưu token bảo mật, phiên bản ứng dụng, chạy lần đầu sau cập nhật, kiểm tra mạng, mở trình duyệt, gửi email, bản quyền theo máy."
 ---
 
 # Barbatos.Wpf.Core Essentials
@@ -347,10 +347,13 @@ Load `barbatos-package-authoring` as well. Then:
 2. Register it in `UseEssentials()` as `TryAddSingleton<IXxx>(sp => Xxx.Current)`. Unsupported
    on Windows: keep the type surface, throw `FeatureNotSupportedException` naming the WinRT API.
 3. Tests: warm the facade in `tests/Barbatos.Wpf.Core.UnitTests/ModuleInit.cs` (the `??=` race
-   under parallel xUnit), then the three `AppInfoTests.cs` shapes - cached, registered and
-   `Assert.Same` as the facade, absent without defaults. Run per TFM (`barbatos-wpf-testing`).
+   under parallel xUnit), add an `Assert.Same(Xxx.Current, wpfApp.Services.GetService<IXxx>())`
+   line to `EssentialsExtensionsTests`, then the three `AppInfoTests.cs` shapes - cached,
+   registered and `Assert.Same` as the facade, absent without defaults. Run per TFM
+   (`barbatos-wpf-testing`).
 4. Docs: the README Essentials table and section, the API-REFERENCE namespace section
-   (`barbatos-docs-sync`), and a line in the sample's `GreetingService.cs`/`MainViewModel.cs`.
+   (`barbatos-docs-sync`), a line in the sample's `GreetingService.cs`/`MainViewModel.cs`, and a
+   row in this skill's [reference.md](reference.md#module-map).
 5. A new metadata key or a changed fallback chain is a behaviour change for shipped apps: update
    the template csproj comments too (`barbatos-templates`).
 

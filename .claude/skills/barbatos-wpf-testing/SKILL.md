@@ -298,6 +298,7 @@ the platform interfaces and `Router`'s window-free pipeline exist partly so test
   `GcProbe.cs` if it will have leak tests, and `AssemblyInfo.cs` whole (`ParallelMode.None` plus
   `ThemeInfo`) if it creates windows.
 - Add it to `Barbatos.Wpf.slnx` inside the `/tests/` folder, which CI strips.
+- Add its `-f` values to the table in `.claude/rules/tests.md` and the examples in `CLAUDE.md` §2.
 
 ## Checklist: adding or changing a test
 

@@ -5,10 +5,13 @@ unpackaged desktop WPF. Everything here is a **library**: public API is the prod
 careless signature is a breaking change for someone else's app.
 
 **How guidance reaches you.** This file is always loaded and holds only what every task needs.
-Conventions for a kind of file live in [`.claude/rules/`](.claude/rules/) and load by themselves
-the first time you read or edit a matching file. Task playbooks live in
-[`.claude/skills/`](.claude/skills/) and load when the task matches — the index is at the bottom.
-[`.claude/README.md`](.claude/README.md) explains the layout.
+Conventions for a kind of file live in [`.claude/rules/`](.claude/rules/) and are attached
+automatically when you open a matching file with the Read tool (an Edit always needs that Read
+first). A file seen only through Bash (`cat` of several files, `grep`, a shell loop) or created
+fresh with Write may not attach its rule — before changing such a file, Read it or read the rule
+directly. Task playbooks live in [`.claude/skills/`](.claude/skills/) and load when the task
+matches — the index is at the bottom. [`.claude/README.md`](.claude/README.md) explains the
+layout.
 
 ---
 
@@ -25,7 +28,7 @@ build/      package icons
 
 | Package | TFMs | Depends on | Owns |
 | --- | --- | --- | --- |
-| `Barbatos.Wpf.Core` | `net{8,9,10}.0-windows10.0.17763.0` | MEDI + configuration/options/logging, MEAI, MCP SDK, Agent Framework, OpenAI, Anthropic, SignalR client, Castle.Core, CommunityToolkit.Mvvm, Toolkit.Uwp.Notifications, System.Management | Hosting, LifecycleEvents, Dispatching, Essentials, Dialogs, Tray, Power, Startup, Input, Notifications, PushNotifications, SingleInstance, Apsu, Mcp |
+| `Barbatos.Wpf.Core` | `net{8,9,10}.0-windows10.0.17763.0` | MEDI + configuration/options/logging + Hosting.Abstractions, MEAI, MCP SDK, Agent Framework, OpenAI, Anthropic, System.ClientModel, SignalR client, Castle.Core, CommunityToolkit.Mvvm, Toolkit.Uwp.Notifications, System.Management | Hosting, LifecycleEvents, Dispatching, Essentials (namespaces `ApplicationModel`, `ApplicationModel.Communication`, `Devices`, `Devices.Sensors`, `Networking`, `Storage` — there is no `Barbatos.Wpf.Essentials` namespace), Dialogs, Tray, Power, Startup, Input, Notifications, PushNotifications, SingleInstance, Apsu, Mcp (+ `Mcp.Providers`) |
 | `Barbatos.Wpf.Aquarius` | `net{8,9,10}.0-windows` | **`CommunityToolkit.Mvvm` + `Microsoft.Extensions.DependencyInjection.Abstractions` + `Options` only** | Reactivity, Composition, Xaml, Animation |
 | `Barbatos.Wpf.AquariusRouter` | `net{8,9,10}.0-windows` | → Aquarius (ProjectReference), same three packages | Matching, Routing, Searching, Xaml |
 | `Barbatos.Wpf.AquariusValee` | `net{8,9,10}.0-windows` | → Aquarius (ProjectReference), `CommunityToolkit.Mvvm` | Validation, Rules, Xaml |
@@ -86,26 +89,32 @@ The file-specific detail behind each of these loads with the matching rule
 
 - **.NET 8, 9, 10 only.** Never add a `netstandard`, `net6` or `net7` target or a shim for one.
   Consumers of **Core** must use the SDK-suffixed TFM (`net10.0-windows10.0.17763.0`) — the bare
-  form has no WinRT projections and toast notifications fail to restore (`NU1201`).
+  form resolves to `windows7.0`, which has no WinRT projections and no Core asset, so restoring
+  Core fails (`NU1201` through a `ProjectReference`, `NU1202` through a `PackageReference`).
 - **C# 14 everywhere, three runtimes underneath.** Compiler-only features (`field`, extension
   members, collection expressions, primary constructors, `required`, …) are fine on every TFM;
   anything whose *type* ships with the runtime (`System.Threading.Lock`) needs
   `#if NET9_0_OR_GREATER` or is not used.
 - **Every feature is reachable through DI.** Core: `ConfigureXxx(this WpfAppBuilder, …)` binding
-  `Barbatos:Xxx` (file values override code). Aquarius/Router/Valee: `AddXxx(IServiceCollection)`
-  declares, `UseXxx(IServiceProvider)` wires after `Build()`; they never own a container.
-  Replaceable services use `TryAdd*`. Anything constructed for the app goes through
-  `Setup.Resolve` — never a second construction path.
+  `Barbatos:Xxx` (file values override code). Aquarius and Router: `AddAquarius` /
+  `AddAquariusRouter(IServiceCollection, …)` declare, `UseAquarius` / `UseAquariusRouter`
+  (`IServiceProvider`) wire after `Build()`; they never own a container. Valee has no `Add`/`Use`
+  pair — a `Form` is plain state its ViewModel constructs. Replaceable services use `TryAdd*`. In
+  Aquarius/Router/Valee, anything constructed for the app goes through `Setup.Resolve` — never a
+  second construction path (Core cannot see `Setup`; it resolves from the container).
 - **No `InternalsVisibleTo`.** If a test needs internal behaviour, that behaviour becomes real,
   documented public API, or the test uses the public surface.
 - **Public API discipline.** XML docs on every public member with `<remarks>` for the *why*;
   new types are `sealed` (Apsu stores excepted), and a shipped unsealed type is never sealed later
-  — that breaks subclasses; pure `Validate()` on configuration types; a rename keeps the old
-  member as `[Obsolete]` instead of deleting it.
-- **Central Package Management.** All versions live in `Directory.Packages.props`.
-  `Microsoft.Extensions.AI*` moves in lockstep with `ModelContextProtocol.Core`'s floor.
-- **`.editorconfig` is the style authority**, including the MIT header on every `.cs` file in
-  `src/` and `tests/`.
+  — that breaks subclasses; a pure `Validate()` on user-built descriptor/schedule types
+  (`McpServerDescriptor`, `PeriodicSchedule`, …); a rename keeps the old member as `[Obsolete]`
+  instead of deleting it.
+- **Central Package Management.** All versions live in `Directory.Packages.props`. The one
+  deliberate exception is the `barbatos-wpf-app` template's `.csproj`, which pins `Version=`
+  because it is generated outside the repo. `Microsoft.Extensions.AI*` moves in lockstep with
+  `ModelContextProtocol.Core`'s floor.
+- **`.editorconfig` is the style authority** (except `var`: follow the code), including the MIT
+  header on every new `.cs` file in `src/` and `tests/`.
 
 ---
 
@@ -114,8 +123,12 @@ The file-specific detail behind each of these loads with the matching rule
 Every package ships `src/<Package>/README.md` (concept-first walkthrough, worked examples,
 rationale — packed into the `.nupkg` as the NuGet landing page) and
 `src/<Package>/API-REFERENCE.md` (member-by-member signatures and exact behaviour, read on
-GitHub). **A public API change is not done until both are updated**, plus the sample that demonstrates it, the template if the scaffolded shape changed,
-and the root `README.md` if the package's summary changed. See `barbatos-docs-sync`.
+GitHub). **A public API change is not done until both are updated**, plus the sample that
+demonstrates it, the template if the scaffolded shape changed, the root `README.md` if a package
+summary, the package list or the templates changed, the root `API-REFERENCE.md` if a namespace
+or package was added or removed, and every file under `.claude/skills/` that names the changed
+member or states its changed default, exception or timing (`grep -rn "<Member>" .claude/skills`)
+— a stale skill is an instruction the next agent will follow. See `barbatos-docs-sync`.
 
 ---
 

@@ -22,9 +22,13 @@ voice.
 - **A public API change updates both files.** The root `README.md` changes only when a package's
   one-paragraph summary, the package list or the templates change; the root `API-REFERENCE.md`
   only when a namespace is added or removed.
-- **The 📖 Documentation Menu lists every `##` and `###` heading.** Adding a section without its
-  menu entry makes it unfindable. Anchors are GitHub slugs — lowercase, spaces → `-`,
-  punctuation dropped — so verify each one against the heading you link to.
+- **Each package `README.md` carries a 📖 Documentation Menu** listing every `##` and `###`
+  section below it (the italic tagline under the title is not a section). The root README and the
+  `API-REFERENCE.md` files have no menu; an API reference opens with a `## Namespaces` table.
+  Adding a section without its menu entry makes it unfindable — and the menus already lag, so
+  run `node .claude/skills/barbatos-docs-sync/check-docs.mjs` after editing. Anchors are GitHub
+  slugs (lowercase, spaces → `-`, punctuation dropped: `AI chat + MCP` → `ai-chat--mcp`); verify
+  each one against the heading it links to.
 - **Voice:** record decisions and evidence, not mechanics. Say what a design was chosen over and
   why; say when something was verified by running it; name limits honestly; say what a Vue /
   vee-validate / Pinia / Vue Router concept maps to and where the port differs; keep "already

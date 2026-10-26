@@ -1,6 +1,6 @@
 ---
 name: barbatos-package-authoring
-description: "Change the Barbatos.Wpf libraries in src/ and their build - public API design (ConfigureXxx on WpfAppBuilder, AddXxx/UseXxx, TryAdd*, Setup.Resolve, Validate(), [Obsolete] renames), csproj/TFMs, Directory.Packages.props, C# 14 on net8/9/10, XmlnsDefinition, Version bumps, strong naming and the NuGet release workflow. Use when adding or reviewing public API, deprecating a member, adding a dependency to a library or a new package, cutting a release, or when restore fails with NU1605/NU1008, the release ran but nuget.org shows the old version, or a new aq: control is not found in XAML. To use a feature in an app, load its feature skill. Vietnamese prompts too - thêm API công khai, sửa thư viện trong src, đánh dấu lỗi thời, thêm gói NuGet, phát hành phiên bản mới, tăng version, ký strong name."
+description: "Change the Barbatos.Wpf libraries in src/ and their build - public API design (ConfigureXxx on WpfAppBuilder, AddXxx/UseXxx, TryAdd*, Setup.Resolve, Validate(), [Obsolete] renames), csproj/TFMs, Directory.Packages.props, C# 14 on net8/9/10, XmlnsDefinition, strong naming and the NuGet release workflow. Use when adding or reviewing public API, deprecating a member, adding a dependency to a library or a new package, preparing a release or version bump (every file that pins it), or when restore fails with NU1605/NU1008, nuget.org still shows the old version, or a new aq: control is not found in XAML. For app-side use, load the feature skill. Vietnamese prompts too - thêm API công khai, sửa thư viện trong src, đánh dấu lỗi thời, thêm gói NuGet, phát hành phiên bản mới, tăng version, ký strong name."
 ---
 
 # Changing the Barbatos.Wpf libraries
@@ -309,10 +309,15 @@ Detail and the reasons: [build-and-release.md](build-and-release.md). The rules 
 4. XML docs with `<remarks>`; `XmlnsDefinition` for any new XAML namespace.
 5. Builds for all three TFMs with no new warnings; any new `NoWarn` commented.
 6. Tests added and run per TFM (`barbatos-wpf-testing`).
-7. `src/<Package>/README.md` **and** `API-REFERENCE.md` updated, root `README.md` if the summary
-   changed (`barbatos-docs-sync`).
+7. `src/<Package>/README.md` **and** `API-REFERENCE.md` updated; root `README.md` if a summary,
+   the package list or the templates changed; root `API-REFERENCE.md` if a namespace was added or
+   removed (`barbatos-docs-sync`).
 8. The package's sample demonstrates it; a template updated if the scaffolded shape changed
    (`barbatos-templates`).
+9. `grep -rn "<member or option name>" .claude/` and correct every skill claim (signature,
+   default, thrown exception, ordering) the change made false; then `node .claude/evals/lint.mjs`.
+   A new control, attached property or directive also follows the `Loaded`-guard and leak/XAML
+   test rules in `.claude/rules/library-code.md`.
 
 New package or release: the checklists in [build-and-release.md](build-and-release.md).
 

@@ -8,7 +8,7 @@ file-specific rules in [`rules/`](rules/), and the task playbooks in [`skills/`]
 CLAUDE.md                  always loaded - what the repo is, build/test, non-negotiables, skill index
 .claude/
   README.md                this file
-  rules/                   loaded automatically when an agent reads or edits a matching file
+  rules/                   attached automatically when an agent opens a matching file (Read)
   skills/barbatos-*/       loaded automatically when a task matches the skill's description
   evals/
     lint.mjs               static checks for all of the above
@@ -21,7 +21,7 @@ CLAUDE.md                  always loaded - what the repo is, build/test, non-neg
 | Piece | When it enters an agent's context | Holds |
 | --- | --- | --- |
 | `CLAUDE.md` | At the start of every session | Facts every task needs: the package map, how to build and test, the rules nobody may break |
-| `rules/*.md` | The first time the agent reads or edits a file matching the rule's `paths:` globs | The conventions for that kind of file, short, pointing to the skill with the detail |
+| `rules/*.md` | When the agent opens a file matching the rule's `paths:` globs with the Read tool (so always before an Edit of it). Reading through Bash or creating a file with Write does not reliably trigger it | The conventions for that kind of file, short, pointing to the skill with the detail |
 | `skills/*/SKILL.md` | Name and description are always listed; the body loads when the agent (or `/barbatos-…`) invokes it | A task playbook: how to do it, the decisions behind it, the failure modes |
 | `skills/*/<reference>.md` | Only when the skill body points the agent at it | Long tables, full examples, rarely needed detail |
 
@@ -29,12 +29,12 @@ CLAUDE.md                  always loaded - what the repo is, build/test, non-neg
 
 | Rule | Loads for | Point it makes |
 | --- | --- | --- |
-| [`library-code.md`](rules/library-code.md) | `src/**/*.cs`, `src/**/*.xaml` | Public API discipline, DI entry points, C# 14 across net8/9/10, no `InternalsVisibleTo`, definition of done |
-| [`csharp-style.md`](rules/csharp-style.md) | `*.cs` in `src/`, `tests/`, `samples/`, `templates/` | File header, naming, braces, nullable, comment voice |
+| [`library-code.md`](rules/library-code.md) | `src/**/*.cs`, `src/**/*.xaml` | Public API discipline, DI entry points, C# 14 across net8/9/10, control `Loaded` guards and leak tests, no `InternalsVisibleTo`, definition of done |
+| [`csharp-style.md`](rules/csharp-style.md) | `*.cs` in `src/`, `tests/`, `samples/`, `templates/`; `.editorconfig` | File header, naming, braces, nullable, `var`, comment voice, what never to change in `.editorconfig` |
 | [`tests.md`](rules/tests.md) | `tests/**` | Per-TFM test runs, STA helpers, leak tests |
 | [`docs.md`](rules/docs.md) | Package and root `README.md` / `API-REFERENCE.md`, `templates/README.md` | README vs API-REFERENCE split, menu anchors, house voice |
 | [`build-and-packages.md`](rules/build-and-packages.md) | `*.csproj`, `Directory.*`, `nuget.config`, the solution, CI workflows | Central Package Management, TFMs, `NoWarn` comments, versioning, release pipeline |
-| [`samples.md`](rules/samples.md) | `samples/**` | One sample per package, never sample-to-sample references |
+| [`samples.md`](rules/samples.md) | `samples/**` | One sample per package, never sample-to-sample references, how to add a demo to each |
 | [`templates.md`](rules/templates.md) | `templates/**` | Template layout, symbols, version coupling, test loop |
 | [`agent-config.md`](rules/agent-config.md) | `CLAUDE.md`, `.claude/**` | How to change any of this safely |
 

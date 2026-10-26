@@ -14,8 +14,11 @@ calls belong to the feature skills, and the version bump itself to `barbatos-pac
 ## Sources of truth
 
 - [`templates/README.md`](../../../templates/README.md) - the user-facing description of every
-  template, and the root [README Templates section](../../../README.md#templates) (install and
-  IDE notes). Both must move with any template change.
+  template - plus the two copies of its commands: the root
+  [README Templates section](../../../README.md#templates) (install and IDE notes) and the
+  scaffolding note in the Aquarius README Quick Start
+  ([`src/Barbatos.Wpf.Aquarius/README.md`](../../../src/Barbatos.Wpf.Aquarius/README.md#quick-start)).
+  All three must move with any template change.
 - Each template's `.template.config/template.json` (and `ide.host.json` for the project
   template) plus the content files beside it. The files win over the READMEs.
 - [barbatos-wpf-app.md](barbatos-wpf-app.md) - read when editing the project template or

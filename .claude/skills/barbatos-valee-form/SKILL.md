@@ -353,6 +353,19 @@ strings must be `string?` defaulting to `null`: those accept `null` but fail `""
 6. Language switch: rebind key-based messages, `RevalidateValidatedAsync()` for eager text.
 7. Dispose forms that die while async checks or cross-lifetime `DependsOn` are live.
 
+## Changing Barbatos.Wpf.AquariusValee itself
+
+Load `barbatos-package-authoring` too. A new rule attribute goes in `Rules/` (namespace
+`Barbatos.Wpf.AquariusValee.Rules`, already mapped to `aqv:`) and follows the shipped ones:
+`public sealed class XxxAttribute : ValidationAttribute`,
+`[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter, AllowMultiple = false)]`,
+a default `ErrorMessage ??= "The {0} field ...";` in the constructor, and `IsValid` returning
+`true` for `null` (and normally for `""`) so `[Required]` alone owns emptiness. A cross-field rule
+implements `IDependsOnProperties`. Add its row to [reference.md](reference.md#valee-rules-attributes),
+tests for null, empty, non-string and failing values, and README/API-REFERENCE entries
+(`barbatos-docs-sync`). A new attached property follows the control rules in
+`.claude/rules/library-code.md`.
+
 ## Related skills
 
 - `barbatos-aquarius-view` - the View/ViewModel the form lives in (`aq:Setup.Enable`, reactivity).

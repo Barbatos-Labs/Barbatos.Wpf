@@ -378,6 +378,14 @@ Route-level keep-alive or `KeepAlive`/`Transition` around `RouterView` (above); 
 (`RouteSearchIndex` is the engine only); HTML5/hash history, scroll behaviour, Vue Router's
 `props` binding, data loaders.
 
+## Changing Barbatos.Wpf.AquariusRouter itself
+
+Load `barbatos-package-authoring`. `Router` never touches `Window` or `Application`, so keep new
+pipeline logic headless; a new XAML control follows the `Loaded`-guard and leak/XAML-test rules in
+`.claude/rules/library-code.md`; tests that call `UseAquariusRouter` save and restore
+`Router.Current`; a change to the guard order changes `RouterNavigationGuardOrderTests` and the
+README pipeline table together.
+
 ## Related skills
 
 `barbatos-aquarius-view` (the routed View/ViewModel, `aq:Setup`, lifecycle hooks, `aq:Component`),

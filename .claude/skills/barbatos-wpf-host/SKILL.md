@@ -1,6 +1,6 @@
 ---
 name: barbatos-wpf-host
-description: "Compose a Barbatos.Wpf.Core app and its opt-in desktop features - WpfProgram/WpfApp.CreateBuilder, WpfApplication, IWpfInitializeService, ConfigureLifecycleEvents, ConfigureTrayIcon, ConfigureSingleInstance, ConfigureInputSystem, ConfigureNotifications, IWpfPeriodicService background jobs, dialogs, splash screen. Use when wiring startup, registering a service, layering configuration or a settings screen, or symptoms like \"the app opens twice\", \"my Ctrl+K shortcut does nothing\", \"the toast never appears\", \"keep it running in the tray\". For AppInfo, Preferences and other Essentials use barbatos-wpf-essentials. Vietnamese prompts too - khởi động ứng dụng, đăng ký service, khay hệ thống, thu nhỏ xuống khay, thông báo toast, phím tắt toàn cục, chạy cùng Windows, màn hình chờ, tác vụ định kỳ."
+description: "Compose a Barbatos.Wpf.Core app and its opt-in desktop features - WpfProgram/WpfApp.CreateBuilder, IWpfInitializeService, lifecycle events, ConfigureSingleInstance, ConfigureTrayIcon, ConfigureInputSystem, ConfigureNotifications, ConfigurePushNotifications, ConfigureKeepAwake, ConfigureRunOnStartup, IWpfPeriodicService jobs, dialogs, splash screen. Use when wiring startup or WpfProgram.cs, registering a service or Barbatos:Xxx options, or symptoms like \"the app opens twice\", \"a second launch shows another window\", \"my Ctrl+K shortcut does nothing\", \"the toast never appears\", \"keep it running in the tray\". For AppInfo, Preferences and other Essentials, barbatos-wpf-essentials. Vietnamese prompts too - khởi động ứng dụng, đăng ký service, khay hệ thống, thu nhỏ xuống khay, thông báo toast, phím tắt toàn cục, chạy cùng Windows, màn hình chờ, tác vụ định kỳ."
 ---
 
 # Barbatos.Wpf.Core hosting and desktop features
@@ -260,6 +260,12 @@ once the dispatcher is shutting down.
 
 Override `GetSplashScreenOptions()` on `App` (non-null turns it on), or `CreateSplashScreen()` for
 your own `Window` (implement `ISplashScreen` for `MinimumDisplayDuration`, else it is zero).
+`SplashScreenOptions` is code only (it is built before the container, so there is no
+`Barbatos:SplashScreen` section): `AppName`, `Tagline`, `LogoSource`, `Background`,
+`ShowProgressIndicator` (default `true`), `MinimumDisplayDuration` (default 1.5 s),
+`SponsorLogos` (`SplashScreenLogo`) and `RelatedLinks` (`SplashScreenLink`). `LogoSource` is a
+`BitmapImage` URI — a pack URI to a `Resource` item or an absolute path, unlike the toast and tray
+paths below — and an image that fails to load is simply hidden, with no error or log.
 
 ```csharp
 // samples/Barbatos.Wpf.Core.Sample/App.xaml.cs, trimmed

@@ -180,7 +180,10 @@ nuget.org the push is skipped and the run still succeeds.
 1. Every test project passes, one project and one TFM at a time (`barbatos-wpf-testing`) - CI
    will not catch a failure.
 2. Bump `<Version>` and `<AssemblyVersion>` in `Directory.Build.props` (`AssemblyVersion` stays
-   numeric; a prerelease suffix goes on `Version` only).
+   numeric; a prerelease suffix goes on `Version` only). One version covers all four packages, so
+   pick the bump by SemVer across all of them: patch for fixes with no public API change (2.5.1),
+   minor for additive API (2.4.0, 2.5.0), major for anything breaking — the only release that may
+   delete `[Obsolete]` members.
 3. Move the copies: the `barbatos-wpf-app` template's `template.json` (`replaces` and
    `defaultValue`), the four `Version="..."` in its `BarbatosWpfApp.csproj`, the default in
    `templates/README.md`. Then `grep -rn "<old version>" --exclude-dir=.git` finds nothing

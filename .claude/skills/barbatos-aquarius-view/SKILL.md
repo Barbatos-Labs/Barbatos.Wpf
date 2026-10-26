@@ -342,6 +342,13 @@ Details and verified sequences in [patterns.md](patterns.md). The rules that bit
 7. Development builds: `ThrowOnUnresolvedViewModels` and `ThrowOnUnresolvedExprIdentifiers` on.
 8. Tests (STA helpers, dispatcher pumping, `GcProbe` leak checks): `barbatos-wpf-testing`.
 
+## Changing Barbatos.Wpf.Aquarius itself
+
+Load `barbatos-package-authoring`. A new control, attached property or directive follows the
+`Loaded`-guard and leak/XAML-test rules in `.claude/rules/library-code.md`; tests that call
+`UseAquarius` save and restore the `Setup.*` statics; a behaviour pinned by a test (the KeepAlive
+table by `KeepAliveTests`) changes together with the README text it backs.
+
 ## Related skills
 
 - `barbatos-aquarius-router` - routed Views, `RouterView`, pairing a View with a ViewModel in the
