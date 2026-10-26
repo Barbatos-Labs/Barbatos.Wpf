@@ -1,5 +1,7 @@
 using System.Windows;
 using Xunit;
+using Xunit.Sdk;
+using Xunit.v3;
 
 // This suite creates real Windows/dispatchers across many dedicated STA threads
 // (StaThread.Run, one per test). xUnit's default behavior runs different test classes in
@@ -10,7 +12,7 @@ using Xunit;
 // attaches a brand-new, never-before-parented visual into an already-live template while
 // many other STA/Window threads are concurrently active. Every test still runs correctly in
 // isolation; this is about concurrent WPF UI-thread load within one process, not test logic.
-[assembly: CollectionBehavior(DisableTestParallelization = true)]
+[assembly: Parallelization(Mode = ParallelMode.None)]
 
 [assembly: ThemeInfo(
     ResourceDictionaryLocation.None, //where theme specific resource dictionaries are located

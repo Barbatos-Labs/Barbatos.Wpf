@@ -422,3 +422,10 @@ dotnet_diagnostic.IDE0290.severity = none # Use primary constructor
 # missing one is a warning there - samples and tests stay exempt via the [*.cs] setting above.
 [src/**.cs]
 dotnet_diagnostic.CS1591.severity = warning
+
+#### Test sources ####
+# xUnit.net v3's analyzer asks every awaited call that takes a CancellationToken to pass
+# TestContext.Current.CancellationToken. The suites predate v3 and bound their waits with their
+# own timeouts; adopting TestContext is a change of its own, not part of the framework upgrade.
+[tests/**.cs]
+dotnet_diagnostic.xUnit1051.severity = none
