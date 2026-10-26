@@ -159,7 +159,7 @@ public surface. A testing-only seam is not an acceptable outcome.
 ### Package versions
 
 Central Package Management: **all** versions live in `Directory.Packages.props`, never in a
-`.csproj`. `Microsoft.Extensions.AI*` is pinned to the floor `ModelContextProtocol.Core 2.2.0`
+`.csproj`. `Microsoft.Extensions.AI*` is pinned to the floor `ModelContextProtocol.Core 2.3.0`
 depends on — bumping one without the other produces an `NU1605` downgrade.
 
 ---
