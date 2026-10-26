@@ -113,8 +113,7 @@ dotnet new barbatos-wpf-app -n MyApp
 A complete, runnable WPF app in a new `MyApp/` folder, referencing `Barbatos.Wpf.Core` and,
 by default, `Barbatos.Wpf.Aquarius`/`Barbatos.i18n` too - all via `PackageReference` (not a
 `ProjectReference` into this repo - a real, portable starter a consumer outside this repo can
-restore once these packages are published), showing them working together, not just
-coexisting:
+restore as-is), showing them working together, not just coexisting:
 - `Barbatos.Wpf.Core`'s `WpfApp`/`WpfAppBuilder` supplies the DI container.
 - `Barbatos.Wpf.Aquarius`'s `Setup.ServiceProvider` is pointed at that same container, so
   `MainWindow`'s `aq:Setup.ViewModel="{x:Type local:MainViewModel}"` resolves `MainViewModel`
@@ -126,15 +125,13 @@ coexisting:
   provider to read from - demonstrated with an English/Vietnamese greeting and a live language
   switch.
 
-`Barbatos.Wpf.Core`/`Aquarius`/`AquariusRouter`/`AquariusValee` aren't published to NuGet.org
-yet as of this writing - restoring a freshly generated project will fail with NU1101 for those
-until they are (see the template's own `.template.config/template.json` for the
-`--PackageVersion` parameter, if the version needs to move once they do publish).
-`Barbatos.i18n.Wpf`/`Barbatos.i18n.DependencyInjection` are already published and resolve
-normally.
+Every package the template references is published on NuGet.org, so a freshly generated
+project restores as-is. It references `Barbatos.Wpf.Core`/`Aquarius`/`AquariusRouter`/
+`AquariusValee` 2.5.0 by default - pass `--PackageVersion` (see the template's own
+`.template.config/template.json`) to target another release.
 
-To try the template before then, pack this repo's `src/` projects and point a `nuget.config`
-next to the generated project at that folder. One trap worth knowing when you do: NuGet
+To try the template against unreleased changes in this repo, pack its `src/` projects and
+point a `nuget.config` next to the generated project at that folder. One trap worth knowing when you do: NuGet
 resolves an already-extracted package out of the global cache (`~/.nuget/packages`) purely by
 id+version and never re-checks your local feed, so a `2.4.0` you packed last week keeps being
 used after you rebuild `2.4.0` today. The symptom is a type the library definitely has going

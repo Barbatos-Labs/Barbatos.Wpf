@@ -16,9 +16,9 @@
     "PackageVersion": {
       "type": "parameter",
       "datatype": "text",
-      "replaces": "2.4.0",
-      "defaultValue": "2.4.0",
-      "description": "Version of Barbatos.Wpf.Core/Aquarius/AquariusRouter/AquariusValee to reference - override with --PackageVersion if it has moved on from the default by the time you use this. Not yet published to nuget.org as of this writing - see templates/README.md."
+      "replaces": "2.5.0",
+      "defaultValue": "2.5.0",
+      "description": "Version of Barbatos.Wpf.Core/Aquarius/AquariusRouter/AquariusValee to reference - override with --PackageVersion if it has moved on from the default by the time you use this."
     },
     "IncludeAquarius": {
       "type": "parameter",
