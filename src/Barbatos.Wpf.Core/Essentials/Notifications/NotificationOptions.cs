@@ -18,7 +18,8 @@ public class NotificationOptions
     public const string SectionName = "Barbatos:Notifications";
 
     /// <summary>
-    /// Whether <see cref="INotificationService.Show"/> actually displays notifications.
+    /// Whether <see cref="INotificationService.Show(NotificationContent)"/> (and the
+    /// title/message overload that forwards to it) actually displays notifications.
     /// Defaults to <see langword="true"/>. Useful to let users disable notifications
     /// entirely from a settings screen without changing every call site.
     /// </summary>

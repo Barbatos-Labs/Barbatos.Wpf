@@ -11,8 +11,9 @@ namespace Barbatos.Wpf.Notifications;
 public interface INotificationService
 {
     /// <summary>
-    /// Gets whether <see cref="Show"/> currently displays notifications. When
-    /// <see langword="false"/>, <see cref="Show"/> is a no-op.
+    /// Gets whether <see cref="Show(string, string, NotificationSeverity)"/> and
+    /// <see cref="Show(NotificationContent)"/> currently display notifications. When
+    /// <see langword="false"/>, both are no-ops.
     /// </summary>
     bool IsEnabled { get; }
 
