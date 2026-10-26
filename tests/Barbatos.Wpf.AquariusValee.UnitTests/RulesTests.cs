@@ -37,6 +37,30 @@ public class RulesTests
     public void AlphaSpacesAcceptsLettersAndWhitespaceOnly(string? value, bool expected) =>
         Assert.Equal(expected, new AlphaSpacesAttribute().IsValid(value));
 
+    [Theory]
+    [InlineData("Hello123", true)]
+    [InlineData("chào123", false)]
+    [InlineData("", true)]
+    public void AlphaNumericAsciiOnlyAcceptsAsciiLettersAndDigitsOnly(string? value, bool expected) =>
+        Assert.Equal(expected, new AlphaNumericAttribute { AsciiOnly = true }.IsValid(value));
+
+    [Theory]
+    [InlineData("hello-world_123", true)]
+    [InlineData("xin-chào", false)]
+    public void AlphaDashAsciiOnlyAcceptsAsciiLettersDigitsDashesAndUnderscoresOnly(string? value, bool expected) =>
+        Assert.Equal(expected, new AlphaDashAttribute { AsciiOnly = true }.IsValid(value));
+
+    [Theory]
+    [InlineData("John Doe\t", true)]
+    [InlineData("Xin chào", false)]
+    [InlineData("John Doe", false)] // a no-break space is Unicode whitespace, but not ASCII whitespace
+    public void AlphaSpacesAsciiOnlyAcceptsAsciiLettersAndAsciiWhitespaceOnly(string? value, bool expected) =>
+        Assert.Equal(expected, new AlphaSpacesAttribute { AsciiOnly = true }.IsValid(value));
+
+    [Fact]
+    public void AlphaSpacesAcceptsUnicodeWhitespaceWhenNotAsciiOnly() =>
+        Assert.True(new AlphaSpacesAttribute().IsValid("John Doe"));
+
     [Fact]
     public void OneOfAcceptsAnyOfTheAllowedValues()
     {
