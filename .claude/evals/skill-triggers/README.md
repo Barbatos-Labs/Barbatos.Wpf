@@ -1,9 +1,9 @@
 # Skill triggering evals
 
-Measures whether the repo's nine `barbatos-*` skills load for the right prompts — and, just as
+Measures whether the repo's `barbatos-*` skills (everything under `.claude/skills/`) load for the right prompts — and, just as
 importantly, stay out of the way for the wrong ones.
 
-All nine cover one domain, so the interesting failure is not "did a skill fire" but **which
+They all cover one domain, so the interesting failure is not "did a skill fire" but **which
 one**. A router question that pulls in only `barbatos-aquarius-view`, or a plain
 CommunityToolkit.Mvvm question that pulls in anything at all, is a description problem worth
 catching before it wastes anyone's context.
@@ -16,10 +16,10 @@ Needs the `claude` CLI authenticated (`claude` → `/login`) and Node 18+. From 
 node .claude/evals/skill-triggers/run-trigger-evals.mjs
 ```
 
-Useful flags: `--model <id>` (default `claude-opus-5`), `--concurrency N` (default 4),
+Useful flags: `--model <id>` (default: whatever model the `claude` CLI itself defaults to), `--concurrency N` (default 4),
 `--only 3,7,19` to re-check a few, `--timeout <seconds>` (default 120).
 
-Each query is run in this repo with all nine skills installed, so it measures the real
+Each query is run in this repo with every skill installed, so it measures the real
 competition between them. The run is cut short as soon as the routing decision is observable —
 the point is which skill Claude reaches for, not the quality of the answer.
 
@@ -77,8 +77,8 @@ to check `auth_error` will silently count six dead queries as six passing negati
 
 ## The query set
 
-`trigger-evals.json` — 24 queries. 16 should trigger, covering all nine skills (one in
-Vietnamese); 8 should not.
+`trigger-evals.json` — 36 queries. 25 should trigger, covering all eleven skills (four in
+Vietnamese); 11 should not.
 
 The negatives are deliberately near-misses that share vocabulary with a skill but need
 something else: CommunityToolkit.Mvvm in a plain WPF app, DataAnnotations in ASP.NET Core,

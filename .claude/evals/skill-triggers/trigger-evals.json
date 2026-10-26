@@ -1,6 +1,6 @@
 {
   "suite": "barbatos-skills-triggering",
-  "note": "All nine skills are installed together, so each query records WHICH skill fired, not just whether one did. expected_skills is the set of ACCEPTABLE loads, not a checklist - a query passes when at least one of them fires and nothing outside the set does. [] means nothing should fire.",
+  "note": "Every skill under .claude/skills is installed together, so each query records WHICH skill fired, not just whether one did. expected_skills is the set of ACCEPTABLE loads, not a checklist - a query passes when at least one of them fires and nothing outside the set does. [] means nothing should fire.",
   "queries": [
     {
       "id": 1,
@@ -145,6 +145,49 @@
       "query": "trong dự án WPF thuần của em, làm sao dùng CommunityToolkit.Mvvm để sinh ObservableProperty và RelayCommand? class có cần partial không",
       "expected_skills": [],
       "note": "Vietnamese near-miss. Adding Vietnamese trigger words must not make every Vietnamese WPF question pull a Barbatos skill - this is the control for that."
+    },
+    {
+      "id": 29,
+      "query": "where should i keep the user's chosen theme and window size so it survives a restart? and the refresh token for our backend - that one shouldnt sit in plain text on disk",
+      "expected_skills": ["barbatos-wpf-essentials"]
+    },
+    {
+      "id": 30,
+      "query": "I want a 'What's new' dialog only on the first launch after an update, and a welcome screen only on the very first install. How do I detect those two cases?",
+      "expected_skills": ["barbatos-wpf-essentials", "barbatos-wpf-host"]
+    },
+    {
+      "id": 31,
+      "query": "em cần kiểm tra máy có mạng không trước khi đồng bộ dữ liệu, và muốn biết thư mục lưu dữ liệu của app nằm ở đâu trên máy người dùng",
+      "expected_skills": ["barbatos-wpf-essentials"],
+      "note": "Vietnamese, fourth skill - the Essentials split must not lose Vietnamese triggering."
+    },
+    {
+      "id": 32,
+      "query": "In a .NET MAUI app, how do I use Preferences and SecureStorage on Android and iOS? Does SecureStorage need any platform setup on iOS?",
+      "expected_skills": [],
+      "note": "Near-miss for barbatos-wpf-essentials: same facade names, but MAUI on mobile, not this repo."
+    },
+    {
+      "id": 33,
+      "query": "how do i scaffold a new view + viewmodel pair with the repo's dotnet new template, and make it land in MyApp.Features.Orders instead of the placeholder namespace?",
+      "expected_skills": ["barbatos-templates", "barbatos-aquarius-view"]
+    },
+    {
+      "id": 34,
+      "query": "I added an IncludeClipboard flag to the barbatos-wpf-app template.json but Visual Studio's new-project dialog doesn't show a checkbox for it, and the generated project still has the clipboard code when it's off",
+      "expected_skills": ["barbatos-templates"]
+    },
+    {
+      "id": 35,
+      "query": "We're about to release the next minor version. Besides Directory.Build.props, what else in the repo pins the package version and has to move with it?",
+      "expected_skills": ["barbatos-package-authoring", "barbatos-templates"]
+    },
+    {
+      "id": 36,
+      "query": "how do I write my own dotnet new project template for a plain console app from scratch - what goes in template.json and how do I pack it as a NuGet template package?",
+      "expected_skills": [],
+      "note": "Near-miss for barbatos-templates: template.json vocabulary, but a generic console template unrelated to this repo's templates."
     }
   ]
 }

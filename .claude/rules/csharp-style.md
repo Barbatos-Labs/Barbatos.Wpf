@@ -1,0 +1,37 @@
+---
+paths:
+  - "src/**/*.cs"
+  - "tests/**/*.cs"
+  - "samples/**/*.cs"
+  - "templates/**/*.cs"
+---
+
+# C# style in this repo
+
+`.editorconfig` is the authority; these are the parts that are easy to get wrong.
+
+- **File header** on every `.cs` file in `src/` and `tests/` (`IDE0073` is an error), as `//`
+  line comments with this exact text:
+
+  ```csharp
+  // This Source Code Form is subject to the terms of the MIT License.
+  // If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+  // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+  // All Rights Reserved.
+  ```
+
+  Copy it from a neighbouring file rather than retyping it. `samples/` is mixed — match the
+  neighbouring files. `templates/` never carries it: the generated files belong to the user's app.
+- File-scoped namespaces. `_camelCase` private fields, `PascalCase` for everything public,
+  `I`-prefixed interfaces, `Async` suffix on async methods.
+- Braces on their own line (Allman). No multiple blank lines, no blank line between two
+  consecutive braces, and a blank line after a closing `}` before the next statement.
+- `Nullable` and `ImplicitUsings` come from `Directory.Build.props` for `src/` and `tests/` —
+  never set them in those project files, and never disable nullability locally (`#nullable`).
+  The sample apps and the project template set both explicitly on purpose: they model a
+  standalone consumer app.
+- Match the surrounding file for local-variable style (`var` is used throughout `src/`),
+  collection expressions (`= []`, `[.. items]`), primary constructors for small internal types,
+  and pattern matching over `as` + null check.
+- Comments explain decisions, trade-offs and what was verified empirically. A comment that
+  restates the code does not belong here.

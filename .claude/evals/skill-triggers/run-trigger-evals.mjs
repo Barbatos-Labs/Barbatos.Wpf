@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Measures which of the repo's barbatos-* skills Claude actually reaches for, given a
-// realistic user query. All nine skills are installed together (see CLAUDE.md), so this
+// realistic user query. Every skill under .claude/skills is installed together, so this
 // records *which* skill fired rather than just whether one did - cross-triggering between
 // sibling skills in one domain is the failure mode worth measuring here.
 //
@@ -8,6 +8,7 @@
 // (the Claude CLI itself ships on it) and may not have a real Python.
 //
 // Usage:  node .claude/evals/skill-triggers/run-trigger-evals.mjs [--model <id>] [--concurrency N] [--only 1,5,7]
+//         (without --model, each session uses the CLI's own default model)
 
 import { spawn, execSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
@@ -24,10 +25,11 @@ const flag = (name, fallback) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
 
-const MODEL = flag("model", "claude-opus-5");
+// No hardcoded default: a pinned model id goes stale, and an unknown id fails every query.
+const MODEL = flag("model", null);
 // Everything else on the command line is a fixed literal; this is the one operator-supplied
 // value that reaches a shell, so keep it to the shape a model id actually has.
-if (!/^[A-Za-z0-9._-]+$/.test(MODEL)) {
+if (MODEL !== null && !/^[A-Za-z0-9._-]+$/.test(MODEL)) {
   console.error(`Refusing to run: --model "${MODEL}" is not a plain model id.`);
   process.exit(2);
 }
@@ -78,7 +80,7 @@ function runQuery(q) {
     const child = spawn(
       "claude",
       [
-        "-p", "--model", MODEL,
+        "-p", ...(MODEL ? ["--model", MODEL] : []),
         "--output-format", "stream-json", "--verbose", "--include-partial-messages",
         "--disallowedTools", "Edit", "Write", "NotebookEdit",
       ],
@@ -215,7 +217,7 @@ function treeState() {
 
 async function main() {
   const treeBefore = treeState();
-  console.log(`Running ${queries.length} queries against ${MODEL} (concurrency ${CONCURRENCY})\n`);
+  console.log(`Running ${queries.length} queries against ${MODEL ?? "the CLI default model"} (concurrency ${CONCURRENCY})\n`);
   const results = [];
   const queue = [...queries];
 
@@ -279,7 +281,7 @@ async function main() {
 
   mkdirSync(resolve(here, "results"), { recursive: true });
   const out = resolve(here, "results", `trigger-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
-  writeFileSync(out, JSON.stringify({ model: MODEL, ran_at: new Date().toISOString(), counts, results }, null, 2));
+  writeFileSync(out, JSON.stringify({ model: MODEL ?? "cli-default", ran_at: new Date().toISOString(), counts, results }, null, 2));
   console.log(`\nresults -> ${out}`);
 }
 
