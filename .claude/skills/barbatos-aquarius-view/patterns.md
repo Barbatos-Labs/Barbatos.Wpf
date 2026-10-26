@@ -1,7 +1,7 @@
 # Aquarius composition patterns
 
 Details for the pieces the SKILL only names. Prose:
-[`src/Barbatos.Wpf.Aquarius/README.md`](../../src/Barbatos.Wpf.Aquarius/README.md).
+[`src/Barbatos.Wpf.Aquarius/README.md`](../../../src/Barbatos.Wpf.Aquarius/README.md).
 
 ---
 

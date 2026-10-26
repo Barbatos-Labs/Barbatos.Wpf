@@ -8,9 +8,9 @@ description: Compose or extend a Barbatos.Wpf.Core application host - WpfApp/Wpf
 `Barbatos.Wpf.Core` is a single package: hosting, every Essentials module, and every optional
 desktop feature ship together. Nothing else to install.
 
-Full docs: [`src/Barbatos.Wpf.Core/README.md`](../../src/Barbatos.Wpf.Core/README.md) ·
-[`API-REFERENCE.md`](../../src/Barbatos.Wpf.Core/API-REFERENCE.md).
-Reference app: [`samples/Barbatos.Wpf.Core.Sample`](../../samples/Barbatos.Wpf.Core.Sample).
+Full docs: [`src/Barbatos.Wpf.Core/README.md`](../../../src/Barbatos.Wpf.Core/README.md) ·
+[`API-REFERENCE.md`](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md).
+Reference app: [`samples/Barbatos.Wpf.Core.Sample`](../../../samples/Barbatos.Wpf.Core.Sample).
 
 ---
 

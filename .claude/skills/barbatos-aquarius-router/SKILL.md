@@ -8,9 +8,9 @@ description: Add or change navigation with Barbatos.Wpf.AquariusRouter - the Rou
 A Vue Router-style navigation system built directly on Aquarius. `Router` itself never touches
 `Window` or `Application`, so the whole pipeline is testable headless.
 
-Full docs: [`src/Barbatos.Wpf.AquariusRouter/README.md`](../../src/Barbatos.Wpf.AquariusRouter/README.md) ·
-[`API-REFERENCE.md`](../../src/Barbatos.Wpf.AquariusRouter/API-REFERENCE.md).
-Reference app: [`samples/Barbatos.Wpf.AquariusRouter.Sample`](../../samples/Barbatos.Wpf.AquariusRouter.Sample)
+Full docs: [`src/Barbatos.Wpf.AquariusRouter/README.md`](../../../src/Barbatos.Wpf.AquariusRouter/README.md) ·
+[`API-REFERENCE.md`](../../../src/Barbatos.Wpf.AquariusRouter/API-REFERENCE.md).
+Reference app: [`samples/Barbatos.Wpf.AquariusRouter.Sample`](../../../samples/Barbatos.Wpf.AquariusRouter.Sample)
 — `Routing/AppRoutes.cs` is the canonical route table and demonstrates every guard placement.
 
 ```xml

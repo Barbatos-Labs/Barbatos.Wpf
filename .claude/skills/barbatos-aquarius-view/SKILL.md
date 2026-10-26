@@ -8,9 +8,9 @@ description: Build or debug a WPF View + ViewModel with Barbatos.Wpf.Aquarius - 
 Composition-style reactivity and XAML directives for plain WPF. **Thin sugar over
 CommunityToolkit.Mvvm and WPF's own binding engine — never a replacement for either.**
 
-Full docs: [`src/Barbatos.Wpf.Aquarius/README.md`](../../src/Barbatos.Wpf.Aquarius/README.md) ·
-[`API-REFERENCE.md`](../../src/Barbatos.Wpf.Aquarius/API-REFERENCE.md).
-Reference app: [`samples/Barbatos.Wpf.Aquarius.Sample`](../../samples/Barbatos.Wpf.Aquarius.Sample)
+Full docs: [`src/Barbatos.Wpf.Aquarius/README.md`](../../../src/Barbatos.Wpf.Aquarius/README.md) ·
+[`API-REFERENCE.md`](../../../src/Barbatos.Wpf.Aquarius/API-REFERENCE.md).
+Reference app: [`samples/Barbatos.Wpf.Aquarius.Sample`](../../../samples/Barbatos.Wpf.Aquarius.Sample)
 (one self-contained View + ViewModel pair per tab).
 
 One XAML namespace covers all four CLR namespaces:

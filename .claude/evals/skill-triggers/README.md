@@ -13,7 +13,7 @@ catching before it wastes anyone's context.
 Needs the `claude` CLI authenticated (`claude` → `/login`) and Node 18+. From the repo root:
 
 ```bash
-node skills/.evals/run-trigger-evals.mjs
+node .claude/evals/skill-triggers/run-trigger-evals.mjs
 ```
 
 Useful flags: `--model <id>` (default `claude-opus-5`), `--concurrency N` (default 4),

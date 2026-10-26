@@ -8,9 +8,9 @@ description: Build or fix a validated form with Barbatos.Wpf.AquariusValee - For
 vee-validate's shape for WPF, with `System.ComponentModel.DataAnnotations` as the schema
 mechanism and `INotifyDataErrorInfo` as the error channel.
 
-Full docs: [`src/Barbatos.Wpf.AquariusValee/README.md`](../../src/Barbatos.Wpf.AquariusValee/README.md) ·
-[`API-REFERENCE.md`](../../src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md).
-Reference app: [`samples/Barbatos.Wpf.AquariusValee.Sample`](../../samples/Barbatos.Wpf.AquariusValee.Sample)
+Full docs: [`src/Barbatos.Wpf.AquariusValee/README.md`](../../../src/Barbatos.Wpf.AquariusValee/README.md) ·
+[`API-REFERENCE.md`](../../../src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md).
+Reference app: [`samples/Barbatos.Wpf.AquariusValee.Sample`](../../../samples/Barbatos.Wpf.AquariusValee.Sample)
 — Login (ad-hoc), Signup (both modes side by side), ProfileEdit (schema), CustomRules, Showcase.
 
 ```xml

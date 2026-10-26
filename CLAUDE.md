@@ -5,7 +5,7 @@ unpackaged desktop WPF. Everything here is a **library**: public API is the prod
 careless signature is a breaking change for someone else's app.
 
 Read this file first. For task-shaped guidance, load the matching skill under
-[`skills/`](skills/) — the index is at the bottom.
+[`.claude/skills/`](.claude/skills/) — the index is at the bottom.
 
 ---
 
@@ -17,7 +17,7 @@ samples/    one runnable sample app per package + Barbatos.Wpf.Samples.Shared
 tests/      one xUnit project per package
 templates/  dotnet new templates (aq-view, aqv-form, barbatos-wpf-app)
 build/      package icons
-skills/     agent skills for this repo (see index below)
+.claude/    agent skills, rules and evals for this repo (see index below)
 ```
 
 | Package | TFMs | Depends on | Owns |
@@ -181,36 +181,17 @@ package's one-paragraph summary changed. See the `barbatos-docs-sync` skill.
 
 ## 5. Skills
 
-Task-specific playbooks live in [`skills/`](skills/). Load the one matching the work.
+Task-specific playbooks live in [`.claude/skills/`](.claude/skills/). Claude Code discovers
+them automatically; load the one matching the work.
 
 | Skill | Use it when |
 | --- | --- |
-| [`barbatos-wpf-host`](skills/barbatos-wpf-host/SKILL.md) | Composing `WpfApp`, DI/config/logging, lifecycle events, tray/startup/single-instance/notifications/periodic/input/dialogs/splash |
-| [`barbatos-aquarius-view`](skills/barbatos-aquarius-view/SKILL.md) | Any View/ViewModel using `aq:` — reactivity, lifecycle hooks, directives, Teleport, Transition, Suspense, Slots, KeepAlive |
-| [`barbatos-aquarius-router`](skills/barbatos-aquarius-router/SKILL.md) | Route tables, guards, `RouterView`/`RouterLink`, nested/named/modal routes, in-app search |
-| [`barbatos-valee-form`](skills/barbatos-valee-form/SKILL.md) | Forms and validation — `Form`/`Field<T>`, DataAnnotations, cross-field rules, `aqv:` markup |
-| [`barbatos-apsu-store`](skills/barbatos-apsu-store/SKILL.md) | State management — `StoreBase`, `Getter<T>`, `[Action]` interceptors, plugins |
-| [`barbatos-mcp-ai`](skills/barbatos-mcp-ai/SKILL.md) | MCP servers, BYOK chat, agents, tool approval, model catalog, OAuth |
-| [`barbatos-package-authoring`](skills/barbatos-package-authoring/SKILL.md) | Adding or changing public API in `src/`, csproj/build/packaging changes |
-| [`barbatos-wpf-testing`](skills/barbatos-wpf-testing/SKILL.md) | Writing or running tests — STA threading, dispatcher pumping, GC leak probes |
-| [`barbatos-docs-sync`](skills/barbatos-docs-sync/SKILL.md) | Updating `README.md` / `API-REFERENCE.md` after an API change |
-
-### Making them slash-invokable (optional, once per clone)
-
-Claude Code discovers skills under `.claude/skills/`. The canonical copies live in `skills/`;
-link them once so `/barbatos-…` works. A directory junction needs no elevation, unlike a
-symlink. From the repo root, in PowerShell:
-
-```powershell
-New-Item -ItemType Junction -Path .claude\skills -Target skills
-```
-
-…or from Git Bash (the doubled slashes stop MSYS from rewriting the flags as paths):
-
-```bash
-cmd //c mklink //J ".claude\skills" "skills"
-```
-
-`.gitignore` already excludes `.claude/skills/`, so the junction stays out of git and the one
-source of truth remains `skills/`. Without the junction the skills are still fully usable —
-the table above gives each path, and [`skills/README.md`](skills/README.md) summarizes them.
+| [`barbatos-wpf-host`](.claude/skills/barbatos-wpf-host/SKILL.md) | Composing `WpfApp`, DI/config/logging, lifecycle events, tray/startup/single-instance/notifications/periodic/input/dialogs/splash |
+| [`barbatos-aquarius-view`](.claude/skills/barbatos-aquarius-view/SKILL.md) | Any View/ViewModel using `aq:` — reactivity, lifecycle hooks, directives, Teleport, Transition, Suspense, Slots, KeepAlive |
+| [`barbatos-aquarius-router`](.claude/skills/barbatos-aquarius-router/SKILL.md) | Route tables, guards, `RouterView`/`RouterLink`, nested/named/modal routes, in-app search |
+| [`barbatos-valee-form`](.claude/skills/barbatos-valee-form/SKILL.md) | Forms and validation — `Form`/`Field<T>`, DataAnnotations, cross-field rules, `aqv:` markup |
+| [`barbatos-apsu-store`](.claude/skills/barbatos-apsu-store/SKILL.md) | State management — `StoreBase`, `Getter<T>`, `[Action]` interceptors, plugins |
+| [`barbatos-mcp-ai`](.claude/skills/barbatos-mcp-ai/SKILL.md) | MCP servers, BYOK chat, agents, tool approval, model catalog, OAuth |
+| [`barbatos-package-authoring`](.claude/skills/barbatos-package-authoring/SKILL.md) | Adding or changing public API in `src/`, csproj/build/packaging changes |
+| [`barbatos-wpf-testing`](.claude/skills/barbatos-wpf-testing/SKILL.md) | Writing or running tests — STA threading, dispatcher pumping, GC leak probes |
+| [`barbatos-docs-sync`](.claude/skills/barbatos-docs-sync/SKILL.md) | Updating `README.md` / `API-REFERENCE.md` after an API change |

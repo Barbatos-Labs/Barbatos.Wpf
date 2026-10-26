@@ -1,7 +1,7 @@
 # Desktop feature reference
 
 Per-feature behavior that is easy to get wrong. Full prose:
-[`src/Barbatos.Wpf.Core/README.md#optional-desktop-features`](../../src/Barbatos.Wpf.Core/README.md).
+[`src/Barbatos.Wpf.Core/README.md#optional-desktop-features`](../../../src/Barbatos.Wpf.Core/README.md).
 
 ---
 

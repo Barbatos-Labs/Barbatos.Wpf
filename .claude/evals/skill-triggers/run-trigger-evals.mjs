@@ -7,7 +7,7 @@
 // Written in Node rather than Python only because this repo's dev machines have Node
 // (the Claude CLI itself ships on it) and may not have a real Python.
 //
-// Usage:  node skills/.evals/run-trigger-evals.mjs [--model <id>] [--concurrency N] [--only 1,5,7]
+// Usage:  node .claude/evals/skill-triggers/run-trigger-evals.mjs [--model <id>] [--concurrency N] [--only 1,5,7]
 
 import { spawn, execSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
@@ -15,7 +15,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, "..", "..");
+const repoRoot = resolve(here, "..", "..", "..");
+const skillsDir = resolve(repoRoot, ".claude", "skills");
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -50,11 +51,11 @@ const suite = JSON.parse(readFileSync(resolve(here, "trigger-evals.json"), "utf8
 // The skills that actually exist on disk, so a partially-streamed tool input can never be
 // mistaken for one. Read from the directory rather than hardcoded, so adding a skill needs
 // no edit here.
-const KNOWN_SKILLS = readdirSync(resolve(here, ".."), { withFileTypes: true })
+const KNOWN_SKILLS = readdirSync(skillsDir, { withFileTypes: true })
   .filter((e) => e.isDirectory() && e.name.startsWith("barbatos-"))
   .map((e) => e.name);
 if (!KNOWN_SKILLS.length) {
-  console.error("No barbatos-* skills found next to this script - nothing to measure.");
+  console.error("No barbatos-* skills found in .claude/skills - nothing to measure.");
   process.exit(2);
 }
 const queries = ONLY ? suite.queries.filter((q) => ONLY.includes(q.id)) : suite.queries;

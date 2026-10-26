@@ -5,9 +5,9 @@ description: Work with Barbatos.Wpf.Mcp - the Model Context Protocol client and 
 
 # Barbatos.Wpf.Mcp — MCP client + BYOK AI
 
-Full docs: [`README.md#ai-chat--mcp-barbatoswpfmcp`](../../src/Barbatos.Wpf.Core/README.md) ·
-[`API-REFERENCE.md#barbatoswpfmcp-namespace`](../../src/Barbatos.Wpf.Core/API-REFERENCE.md).
-Reference: [`samples/Barbatos.Wpf.Core.Sample/WpfProgram.cs`](../../samples/Barbatos.Wpf.Core.Sample/WpfProgram.cs)
+Full docs: [`README.md#ai-chat--mcp-barbatoswpfmcp`](../../../src/Barbatos.Wpf.Core/README.md) ·
+[`API-REFERENCE.md#barbatoswpfmcp-namespace`](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md).
+Reference: [`samples/Barbatos.Wpf.Core.Sample/WpfProgram.cs`](../../../samples/Barbatos.Wpf.Core.Sample/WpfProgram.cs)
 and its "AI chat + MCP" tab.
 
 ---

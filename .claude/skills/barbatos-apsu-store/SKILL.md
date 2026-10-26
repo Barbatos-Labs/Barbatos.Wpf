@@ -8,11 +8,11 @@ description: Manage shared application state with Barbatos.Wpf.Apsu (part of Bar
 A Pinia-shaped store layer on `CommunityToolkit.Mvvm.ObservableObject`, part of
 `Barbatos.Wpf.Core`. Interception is ASP.NET Core-style middleware over Castle DynamicProxy.
 
-Full docs: [`README.md#state-management-barbatoswpfapsu`](../../src/Barbatos.Wpf.Core/README.md) ·
-[`API-REFERENCE.md#barbatoswpfapsu-namespace`](../../src/Barbatos.Wpf.Core/API-REFERENCE.md).
-Reference: [`samples/Barbatos.Wpf.Core.Sample/CounterStore.cs`](../../samples/Barbatos.Wpf.Core.Sample/CounterStore.cs)
+Full docs: [`README.md#state-management-barbatoswpfapsu`](../../../src/Barbatos.Wpf.Core/README.md) ·
+[`API-REFERENCE.md#barbatoswpfapsu-namespace`](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md).
+Reference: [`samples/Barbatos.Wpf.Core.Sample/CounterStore.cs`](../../../samples/Barbatos.Wpf.Core.Sample/CounterStore.cs)
 and the six-interceptor chain in
-[`samples/Barbatos.Wpf.Aquarius.Sample/WpfProgram.cs`](../../samples/Barbatos.Wpf.Aquarius.Sample/WpfProgram.cs).
+[`samples/Barbatos.Wpf.Aquarius.Sample/WpfProgram.cs`](../../../samples/Barbatos.Wpf.Aquarius.Sample/WpfProgram.cs).
 
 ---
 

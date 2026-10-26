@@ -28,22 +28,10 @@ from this repo.
 - **Reviewing a PR that touches `src/`** → `barbatos-package-authoring` for the API rules,
   `barbatos-docs-sync` for the documentation obligation.
 
-## Making them slash-invokable
+## Discovery
 
-Claude Code discovers skills under `.claude/skills/`. These are the canonical copies; link them
-once per clone (a directory junction needs no elevation):
+Claude Code discovers every `SKILL.md` under `.claude/skills/` automatically, so the skills are
+available - and slash-invokable as `/barbatos-…` - as soon as the repo is opened. No junction or
+install step is needed.
 
-```powershell
-New-Item -ItemType Junction -Path .claude\skills -Target skills
-```
-
-From Git Bash instead:
-
-```bash
-cmd //c mklink //J ".claude\skills" "skills"
-```
-
-`.gitignore` excludes `.claude/skills/`, so the junction never enters git. Without it the skills
-still work — read the path directly.
-
-See [`CLAUDE.md`](../CLAUDE.md) for the repository-wide rules every skill assumes.
+See [`CLAUDE.md`](../../CLAUDE.md) for the repository-wide rules every skill assumes.
