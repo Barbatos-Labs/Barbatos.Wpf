@@ -129,6 +129,10 @@ public class Teleport : ContentControl
         set => SetValue(OrderProperty, value);
     }
 
+    /// <summary>
+    /// Creates a teleport. Its content is moved into the target host while the control is
+    /// loaded, and brought back home when it unloads.
+    /// </summary>
     public Teleport()
     {
         Loaded += OnLoaded;

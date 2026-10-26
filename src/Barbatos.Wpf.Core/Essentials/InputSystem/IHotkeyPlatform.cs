@@ -15,8 +15,17 @@ namespace Barbatos.Wpf.Input;
 /// </summary>
 public interface IHotkeyPlatform
 {
+    /// <summary>
+    /// Registers a system-wide hotkey under <paramref name="id"/>; later presses raise
+    /// <see cref="HotkeyPressed"/> with that id.
+    /// </summary>
+    /// <returns>
+    /// <see langword="false"/> if the OS refused the registration - typically because another
+    /// application already owns the same key combination.
+    /// </returns>
     bool Register(int id, Key key, ModifierKeys modifiers);
 
+    /// <summary>Unregisters the hotkey previously registered under <paramref name="id"/>.</summary>
     void Unregister(int id);
 
     /// <summary>

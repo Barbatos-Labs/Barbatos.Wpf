@@ -12,10 +12,18 @@ namespace Barbatos.Wpf.Startup;
 /// </summary>
 public interface IStartupRegistrar
 {
+    /// <summary>Whether a startup entry named <paramref name="entryName"/> currently exists.</summary>
     bool IsRegistered(string entryName);
 
+    /// <summary>
+    /// Creates or overwrites the startup entry named <paramref name="entryName"/>, so the OS runs
+    /// <paramref name="command"/> when the user signs in.
+    /// </summary>
+    /// <param name="entryName">The entry's name - unique per application.</param>
+    /// <param name="command">The full command line to run, including the quoted executable path.</param>
     void Register(string entryName, string command);
 
+    /// <summary>Removes the startup entry named <paramref name="entryName"/>. Does nothing if it does not exist.</summary>
     void Unregister(string entryName);
 }
 

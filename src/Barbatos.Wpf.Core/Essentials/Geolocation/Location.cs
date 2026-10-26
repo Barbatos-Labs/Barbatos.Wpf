@@ -266,7 +266,12 @@ public class Location
         }
     }
 
+    /// <summary>
+    /// Determines whether two locations are equal: both <see langword="null"/>, or the same type
+    /// with the same <see cref="Latitude"/> and <see cref="Longitude"/> (see <see cref="Equals(object?)"/>).
+    /// </summary>
     public static bool operator ==(Location? left, Location? right) => Equals(left, right);
 
+    /// <summary>Determines whether two locations differ - the negation of <c>==</c>.</summary>
     public static bool operator !=(Location? left, Location? right) => !Equals(left, right);
 }

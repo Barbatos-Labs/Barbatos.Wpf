@@ -10,6 +10,16 @@ using Microsoft.Extensions.Logging;
 
 namespace Barbatos.Wpf.Hosting;
 
+/// <summary>
+/// The <c>ConfigureXxx</c> feature entry points on <see cref="WpfAppBuilder"/> - one per Core
+/// feature, each registering that feature's services and binding its <c>Barbatos:Xxx</c>
+/// configuration section.
+/// </summary>
+/// <remarks>
+/// One static class split across a file per feature, so every entry point is reachable from the
+/// single <c>Barbatos.Wpf.Hosting</c> namespace an app already imports for
+/// <see cref="WpfAppBuilder"/>.
+/// </remarks>
 public static partial class AppHostBuilderExtensions
 {
     /// <summary>

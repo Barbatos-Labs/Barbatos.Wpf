@@ -12,9 +12,16 @@ namespace Barbatos.Wpf.Input;
 /// </summary>
 public enum InputActionPhase
 {
+    /// <summary>No gesture is in progress - the state between triggerings. Never raised as an event.</summary>
     Waiting,
+
+    /// <summary>A gesture has begun (see <see cref="InputAction.Started"/>).</summary>
     Started,
+
+    /// <summary>A gesture has completed (see <see cref="InputAction.Performed"/>).</summary>
     Performed,
+
+    /// <summary>A started gesture was abandoned (see <see cref="InputAction.Canceled"/>).</summary>
     Canceled,
 }
 
@@ -41,6 +48,7 @@ public sealed class InputActionContext : EventArgs
     /// </summary>
     public InputBinding Binding { get; }
 
+    /// <summary>The phase <see cref="Action"/> transitioned into.</summary>
     public InputActionPhase Phase { get; }
 
     /// <summary>Elapsed time since the triggering binding's own <see cref="InputActionPhase.Started"/> - <see cref="TimeSpan.Zero"/> for <see cref="InputActionPhase.Started"/> itself.</summary>

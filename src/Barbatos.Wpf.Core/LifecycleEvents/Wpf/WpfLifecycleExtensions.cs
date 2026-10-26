@@ -10,6 +10,11 @@ namespace Barbatos.Wpf.LifecycleEvents;
 /// </summary>
 public static class WpfLifecycleExtensions
 {
+    /// <summary>
+    /// Adds the WPF application and window lifecycle handlers that
+    /// <paramref name="configureDelegate"/> declares (see <see cref="WpfLifecycleBuilderExtensions"/>).
+    /// </summary>
+    /// <returns><paramref name="builder"/>, for chaining.</returns>
     public static ILifecycleBuilder AddWpf(this ILifecycleBuilder builder, Action<IWpfLifecycleBuilder> configureDelegate)
     {
         var wpf = new LifecycleBuilder(builder);

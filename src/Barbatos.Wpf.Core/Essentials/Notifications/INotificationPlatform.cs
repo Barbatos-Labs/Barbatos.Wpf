@@ -15,6 +15,7 @@ namespace Barbatos.Wpf.Notifications;
 /// </summary>
 public interface INotificationPlatform
 {
+    /// <summary>Displays <paramref name="content"/>, styled according to the app-wide <paramref name="options"/>.</summary>
     void Show(NotificationOptions options, NotificationContent content);
 
     /// <summary>

@@ -82,6 +82,10 @@ public class SlotHost : Control
     /// <inheritdoc cref="ResolvedSlotsProperty"/>
     public IReadOnlyDictionary<string, object?> ResolvedSlots => (IReadOnlyDictionary<string, object?>)GetValue(ResolvedSlotsProperty);
 
+    /// <summary>
+    /// Creates an empty host. Every later change to <see cref="Items"/> recomputes
+    /// <see cref="ResolvedSlots"/>.
+    /// </summary>
     public SlotHost() => Items.CollectionChanged += OnItemsChanged;
 
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Resolve();

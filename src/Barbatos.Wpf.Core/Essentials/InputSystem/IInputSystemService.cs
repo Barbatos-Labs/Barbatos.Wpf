@@ -16,14 +16,32 @@ public interface IInputSystemService
     /// <summary>Master switch - when <see langword="false"/>, neither in-app dispatch nor global OS registration is active.</summary>
     bool IsEnabled { get; }
 
+    /// <summary>
+    /// Turns the whole feature on or off. Disabling also unregisters every global hotkey and
+    /// resets every in-progress interaction and chord; enabling re-registers the global hotkeys.
+    /// A call that does not change <see cref="IsEnabled"/> does nothing.
+    /// </summary>
     void SetEnabled(bool enabled);
 
+    /// <summary>Occurs after <see cref="IsEnabled"/> changes.</summary>
     event EventHandler? IsEnabledChanged;
 
+    /// <summary>Every registered map, in registration order - the order in which key events are matched against them.</summary>
     IReadOnlyList<InputActionMap> ActionMaps { get; }
 
+    /// <summary>
+    /// Registers <paramref name="map"/> and (re-)registers every reachable
+    /// <see cref="GlobalKeyBinding"/> with the OS.
+    /// </summary>
+    /// <returns><paramref name="map"/>, for chaining.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> is <see langword="null"/>.</exception>
     InputActionMap AddActionMap(InputActionMap map);
 
+    /// <summary>
+    /// Unregisters <paramref name="map"/>, re-registering the remaining global hotkeys and
+    /// reclaiming the per-binding state its bindings held.
+    /// </summary>
+    /// <returns><see langword="false"/> if <paramref name="map"/> was not registered.</returns>
     bool RemoveActionMap(InputActionMap map);
 
     /// <summary>
@@ -40,6 +58,7 @@ public interface IInputSystemService
     /// <summary>Finds a previously-registered action by name across every map (first match wins) - the usual way to attach a <see cref="InputAction.Performed"/> handler once app code has a dependency (e.g. a router) that wasn't available yet when the maps were declared.</summary>
     InputAction? FindAction(string name);
 
+    /// <summary>Finds a registered map by its <see cref="InputActionMap.Name"/> (first match wins), or <see langword="null"/>.</summary>
     InputActionMap? FindActionMap(string name);
 
     /// <summary>
@@ -50,5 +69,9 @@ public interface IInputSystemService
     /// </summary>
     void ProcessKeyDown(Key key, ModifierKeys modifiers = ModifierKeys.None);
 
+    /// <summary>
+    /// Runs a key-up exactly as if it arrived from the keyboard - the release counterpart of
+    /// <see cref="ProcessKeyDown"/>.
+    /// </summary>
     void ProcessKeyUp(Key key, ModifierKeys modifiers = ModifierKeys.None);
 }

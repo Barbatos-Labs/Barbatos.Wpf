@@ -10,8 +10,13 @@ namespace Barbatos.Wpf.LifecycleEvents;
 /// </summary>
 public interface ILifecycleEventService
 {
+    /// <summary>
+    /// The delegates registered for <paramref name="eventName"/> that are of type
+    /// <typeparamref name="TDelegate"/>, in registration order - empty when there are none.
+    /// </summary>
     IEnumerable<TDelegate> GetEventDelegates<TDelegate>(string eventName)
         where TDelegate : Delegate;
 
+    /// <summary>Whether at least one delegate is registered for <paramref name="eventName"/>.</summary>
     bool ContainsEvent(string eventName);
 }

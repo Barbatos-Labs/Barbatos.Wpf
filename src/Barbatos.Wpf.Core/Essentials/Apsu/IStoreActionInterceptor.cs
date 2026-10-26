@@ -18,6 +18,10 @@ public delegate Task<object?> StoreActionDelegate();
 /// calling it), not just to observe or log the call.</summary>
 public sealed class StoreActionContext
 {
+    /// <summary>Creates the context for one intercepted call.</summary>
+    /// <param name="store">The store whose action is being called.</param>
+    /// <param name="actionName">The name of the action method being called.</param>
+    /// <param name="arguments">The arguments the action was called with, in declaration order.</param>
     public StoreActionContext(StoreBase store, string actionName, IReadOnlyList<object?> arguments)
     {
         Store = store;
@@ -25,8 +29,10 @@ public sealed class StoreActionContext
         Arguments = arguments;
     }
 
+    /// <summary>The store instance whose action is being called.</summary>
     public StoreBase Store { get; }
 
+    /// <summary>The name of the action method being called.</summary>
     public string ActionName { get; }
 
     /// <summary>The arguments <see cref="ActionName"/> was called with, in declaration order -

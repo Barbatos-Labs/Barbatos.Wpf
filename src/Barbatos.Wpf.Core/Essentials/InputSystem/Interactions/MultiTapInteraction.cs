@@ -8,6 +8,10 @@ namespace Barbatos.Wpf.Input;
 /// <summary>Performs only after <see cref="TapCount"/> presses, each held no longer than <see cref="TapTime"/> and no more than <see cref="TapDelay"/> apart - e.g. a double-tap.</summary>
 public sealed class MultiTapInteraction : IInputInteraction
 {
+    /// <summary>Creates a multi-tap interaction.</summary>
+    /// <param name="tapCount">How many taps perform the action - 2 for a double-tap.</param>
+    /// <param name="tapTime">The longest a single tap may be held.</param>
+    /// <param name="tapDelay">The longest gap allowed between consecutive taps.</param>
     public MultiTapInteraction(int tapCount, TimeSpan tapTime, TimeSpan tapDelay)
     {
         TapCount = tapCount;
@@ -15,6 +19,7 @@ public sealed class MultiTapInteraction : IInputInteraction
         TapDelay = tapDelay;
     }
 
+    /// <summary>How many taps perform the action.</summary>
     public int TapCount { get; }
 
     /// <summary>The longest a single tap may be held before it stops counting as a tap.</summary>
@@ -25,6 +30,7 @@ public sealed class MultiTapInteraction : IInputInteraction
 
     int _completedTaps;
 
+    /// <inheritdoc/>
     public void Process(ref InputInteractionContext context)
     {
         if (context.IsPressed && !context.IsTimeout)
@@ -53,5 +59,6 @@ public sealed class MultiTapInteraction : IInputInteraction
         }
     }
 
+    /// <inheritdoc/>
     public void Reset() => _completedTaps = 0;
 }

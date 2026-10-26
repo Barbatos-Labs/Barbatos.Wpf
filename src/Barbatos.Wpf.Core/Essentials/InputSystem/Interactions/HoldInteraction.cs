@@ -8,10 +8,14 @@ namespace Barbatos.Wpf.Input;
 /// <summary>Performs only once the key has been held for at least <see cref="Duration"/> - releasing earlier cancels instead.</summary>
 public sealed class HoldInteraction : IInputInteraction
 {
+    /// <summary>Creates a hold interaction.</summary>
+    /// <param name="duration">How long the key must stay down before the action performs.</param>
     public HoldInteraction(TimeSpan duration) => Duration = duration;
 
+    /// <summary>How long the key must stay down before the action performs.</summary>
     public TimeSpan Duration { get; }
 
+    /// <inheritdoc/>
     public void Process(ref InputInteractionContext context)
     {
         if (context.IsPressed && !context.IsTimeout)
@@ -29,6 +33,7 @@ public sealed class HoldInteraction : IInputInteraction
         }
     }
 
+    /// <inheritdoc/>
     public void Reset()
     {
     }

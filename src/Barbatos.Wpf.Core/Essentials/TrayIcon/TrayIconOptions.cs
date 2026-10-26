@@ -44,6 +44,10 @@ public class TrayIconOptions
 /// </summary>
 public sealed class TrayMenuItem
 {
+    /// <summary>Creates a clickable menu item.</summary>
+    /// <param name="header">The text shown for the item.</param>
+    /// <param name="action">What to run when the item is clicked.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="header"/> or <paramref name="action"/> is <see langword="null"/>.</exception>
     public TrayMenuItem(string header, Action action)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
@@ -57,8 +61,10 @@ public sealed class TrayMenuItem
         IsSeparator = true;
     }
 
+    /// <summary>The text shown for the item - empty for a separator.</summary>
     public string Header { get; }
 
+    /// <summary>What runs when the item is clicked - a no-op for a separator.</summary>
     public Action Action { get; }
 
     /// <summary>

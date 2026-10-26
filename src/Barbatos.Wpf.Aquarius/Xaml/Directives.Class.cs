@@ -8,6 +8,15 @@ using System.Windows;
 
 namespace Barbatos.Wpf.Aquarius.Xaml;
 
+/// <summary>
+/// The Aquarius directive family - attached properties that bring Vue's built-in directives
+/// (<c>v-model</c>, <c>v-show</c>, <c>v-on</c>, <c>v-bind:class</c>/<c>v-bind:style</c>) and
+/// custom directives (<c>Use</c>) to any WPF element.
+/// </summary>
+/// <remarks>
+/// One static class split across several <c>Directives.*.cs</c> files by concern, so a single
+/// <c>aq:Directives.</c> prefix in XAML reaches every directive.
+/// </remarks>
 public static partial class Directives
 {
     /// <summary>

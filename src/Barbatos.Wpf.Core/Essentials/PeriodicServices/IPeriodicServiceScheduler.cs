@@ -78,6 +78,7 @@ public sealed class PeriodicServiceStatus
         Schedule = schedule;
     }
 
+    /// <summary>The unique name the service was registered under.</summary>
     public string Name { get; }
 
     /// <summary>
@@ -101,8 +102,16 @@ public sealed class PeriodicServiceStatus
     /// </summary>
     public bool IsCompleted { get; internal set; }
 
+    /// <summary>
+    /// When the most recent execution finished (successfully or not), or <see langword="null"/>
+    /// if the service has not run yet in this process.
+    /// </summary>
     public DateTimeOffset? LastRunTime { get; internal set; }
 
+    /// <summary>
+    /// How many executions have finished in this process, failed ones included. An execution cut
+    /// short by application shutdown is not counted.
+    /// </summary>
     public int RunCount { get; internal set; }
 }
 
@@ -111,12 +120,16 @@ public sealed class PeriodicServiceStatus
 /// </summary>
 public sealed class PeriodicServiceExecutedEventArgs : EventArgs
 {
+    /// <summary>Creates the event data for one finished execution.</summary>
+    /// <param name="service">The status of the service that ran.</param>
+    /// <param name="error">The exception the execution threw, or <see langword="null"/> if it succeeded.</param>
     public PeriodicServiceExecutedEventArgs(PeriodicServiceStatus service, Exception? error)
     {
         Service = service;
         Error = error;
     }
 
+    /// <summary>The live status of the service that ran, already updated for this execution.</summary>
     public PeriodicServiceStatus Service { get; }
 
     /// <summary>

@@ -7,11 +7,20 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Barbatos.Wpf.LifecycleEvents;
 
+/// <summary>
+/// Invocation helpers over <see cref="ILifecycleEventService"/>.
+/// </summary>
 public static class LifecycleEventServiceExtensions
 {
+    /// <summary>Invokes every parameterless <see cref="Action"/> registered for <paramref name="eventName"/>, in registration order.</summary>
     public static void InvokeEvents(this ILifecycleEventService lifecycleService, string eventName) =>
         lifecycleService.InvokeEvents<Action>(eventName, action => action?.Invoke());
 
+    /// <summary>
+    /// Passes every <typeparamref name="TDelegate"/> registered for <paramref name="eventName"/>
+    /// to <paramref name="action"/>, in registration order - <paramref name="action"/> decides
+    /// what arguments each delegate is invoked with.
+    /// </summary>
     public static void InvokeEvents<TDelegate>(this ILifecycleEventService lifecycleService, string eventName, Action<TDelegate> action)
         where TDelegate : Delegate
     {

@@ -85,9 +85,11 @@ public readonly struct DeviceIdiom : IEquatable<DeviceIdiom>
     public override string ToString() =>
         deviceIdiom ?? string.Empty;
 
+    /// <summary>Determines whether two <see cref="DeviceIdiom"/> values are equal, as defined by <see cref="Equals(DeviceIdiom)"/>.</summary>
     public static bool operator ==(DeviceIdiom left, DeviceIdiom right) =>
         left.Equals(right);
 
+    /// <summary>Determines whether two <see cref="DeviceIdiom"/> values differ, as defined by <see cref="Equals(DeviceIdiom)"/>.</summary>
     public static bool operator !=(DeviceIdiom left, DeviceIdiom right) =>
         !left.Equals(right);
 }

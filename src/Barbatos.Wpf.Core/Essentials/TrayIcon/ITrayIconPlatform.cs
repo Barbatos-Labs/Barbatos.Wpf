@@ -13,16 +13,29 @@ namespace Barbatos.Wpf.Tray;
 /// </summary>
 public interface ITrayIconPlatform
 {
+    /// <summary>
+    /// Adds the icon to the notification area. The icon, tooltip and menu are read from
+    /// <paramref name="options"/> the first time only; a later call after <see cref="Hide"/>
+    /// re-adds the same icon.
+    /// </summary>
     void Show(TrayIconOptions options);
 
+    /// <summary>Removes the icon from the notification area. Does nothing if it is not shown.</summary>
     void Hide();
 
+    /// <summary>Changes the icon's tooltip, truncated to the length the shell supports.</summary>
     void SetToolTip(string toolTip);
 
+    /// <summary>
+    /// Shows a balloon notification anchored to the icon. Skipped silently when the icon is not
+    /// shown, or when the shell reports that the user is not accepting notifications right now.
+    /// </summary>
     void ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon);
 
+    /// <summary>Occurs when the user clicks the icon.</summary>
     event EventHandler? Clicked;
 
+    /// <summary>Occurs when the user double-clicks the icon.</summary>
     event EventHandler? DoubleClicked;
 }
 

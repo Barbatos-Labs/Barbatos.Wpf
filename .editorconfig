@@ -398,7 +398,7 @@ dotnet_diagnostic.SA1121.severity = none
 dotnet_diagnostic.SA1204.severity = none
 dotnet_diagnostic.SA1208.severity = none
 dotnet_diagnostic.CS1591.severity = none # Missing XML comment for publicly visible type or member
-                                         # 15000+ warnings in the solution
+                                         # off for samples/tests; re-enabled for src/ below
 dotnet_diagnostic.CA1510.severity = none # Use ArgumentNullException throw helper
                                          # doesn't work with older versions of .NET
                                          
@@ -416,3 +416,9 @@ dotnet_diagnostic.WPF0070.severity = none # Add default field to converter
 # Suppress some IDE warnings
 dotnet_diagnostic.IDE0130.severity = none # Hide warnings about namespaces not matching folder structure
 dotnet_diagnostic.IDE0290.severity = none # Use primary constructor
+
+#### Library sources ####
+# Every public type and member in the shipped packages carries XML docs (see CLAUDE.md), so a
+# missing one is a warning there - samples and tests stay exempt via the [*.cs] setting above.
+[src/**.cs]
+dotnet_diagnostic.CS1591.severity = warning

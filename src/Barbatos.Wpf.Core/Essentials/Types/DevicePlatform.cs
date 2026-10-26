@@ -70,9 +70,11 @@ public readonly struct DevicePlatform : IEquatable<DevicePlatform>
     public override string ToString() =>
         devicePlatform ?? string.Empty;
 
+    /// <summary>Determines whether two <see cref="DevicePlatform"/> values are equal, as defined by <see cref="Equals(DevicePlatform)"/>.</summary>
     public static bool operator ==(DevicePlatform left, DevicePlatform right) =>
         left.Equals(right);
 
+    /// <summary>Determines whether two <see cref="DevicePlatform"/> values differ, as defined by <see cref="Equals(DevicePlatform)"/>.</summary>
     public static bool operator !=(DevicePlatform left, DevicePlatform right) =>
         !left.Equals(right);
 }
