@@ -23,22 +23,6 @@ public sealed class AlphaNumericAttribute : ValidationAttribute
     public bool AsciiOnly { get; set; }
 
     /// <inheritdoc/>
-    public override bool IsValid(object? value)
-    {
-        var text = value as string;
-
-        if (string.IsNullOrEmpty(text))
-            return true;
-
-        if (AsciiOnly)
-            return AsciiSets.ContainsOnly(text, AsciiSets.LettersOrDigits);
-
-        foreach (var c in text)
-        {
-            if (!char.IsLetterOrDigit(c))
-                return false;
-        }
-
-        return true;
-    }
+    public override bool IsValid(object? value) =>
+        CharacterClassRule.IsValid(value, AsciiOnly, AsciiSets.LettersOrDigits, char.IsLetterOrDigit);
 }

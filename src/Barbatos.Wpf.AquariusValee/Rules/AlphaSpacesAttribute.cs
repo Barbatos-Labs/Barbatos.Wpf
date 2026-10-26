@@ -23,22 +23,6 @@ public sealed class AlphaSpacesAttribute : ValidationAttribute
     public bool AsciiOnly { get; set; }
 
     /// <inheritdoc/>
-    public override bool IsValid(object? value)
-    {
-        var text = value as string;
-
-        if (string.IsNullOrEmpty(text))
-            return true;
-
-        if (AsciiOnly)
-            return AsciiSets.ContainsOnly(text, AsciiSets.LettersOrAsciiWhitespace);
-
-        foreach (var c in text)
-        {
-            if (!char.IsWhiteSpace(c) && !char.IsLetter(c))
-                return false;
-        }
-
-        return true;
-    }
+    public override bool IsValid(object? value) =>
+        CharacterClassRule.IsValid(value, AsciiOnly, AsciiSets.LettersOrAsciiWhitespace, static c => char.IsWhiteSpace(c) || char.IsLetter(c));
 }
