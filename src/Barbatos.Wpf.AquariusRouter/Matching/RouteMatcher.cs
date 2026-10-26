@@ -143,99 +143,10 @@ public sealed class RouteMatcher
     /// </remarks>
     public RouteLocation Resolve(RouteLocationRaw location, RouteLocation? current = null)
     {
-        MatcherNode matcher;
-        IReadOnlyDictionary<string, object?> parameters;
-        string path;
-
-        if (location.Name is not null)
-        {
-            if (!_matchersByName.TryGetValue(location.Name, out matcher!))
-                throw new InvalidOperationException($"No route named \"{location.Name}\" exists.");
-
-            var currentParams = current?.Params ?? EmptyParams;
-            var seeded = new Dictionary<string, object?>();
-
-            // Seed from the current location: this route's own required keys, plus any keys its
-            // PARENT declares as optional - lets navigating by name to a sibling route inherit
-            // e.g. a shared ":lang" segment without the caller having to repeat it.
-            foreach (var key in matcher.Parser.Keys)
-            {
-                if (!key.Optional && currentParams.TryGetValue(key.Name, out var value))
-                    seeded[key.Name] = value;
-            }
-            if (matcher.Parent is not null)
-            {
-                foreach (var key in matcher.Parent.Parser.Keys)
-                {
-                    if (key.Optional && currentParams.TryGetValue(key.Name, out var value))
-                        seeded[key.Name] = value;
-                }
-            }
-
-            // Then let explicitly-passed params overlay the seeded ones.
-            if (location.Params is not null)
-            {
-                foreach (var key in matcher.Parser.Keys)
-                {
-                    if (location.Params.TryGetValue(key.Name, out var value))
-                        seeded[key.Name] = value;
-                }
-            }
-
-            parameters = seeded;
-            path = matcher.Parser.Stringify(seeded);
-
-            // Land on the index child, exactly as resolving this same route BY PATH already does.
-            // Without this, targeting a named parent that has one would match the parent alone and
-            // render an empty outlet - and since resolving by path can never produce the parent
-            // alone, that asymmetry has no use to preserve.
-            matcher = DescendToIndexChild(matcher);
-        }
-        else if (location.Path is not null)
-        {
-            path = location.Path;
-            matcher = FindMatcherForPath(path)
-                ?? throw new InvalidOperationException($"No route matches path \"{path}\".");
-
-            var parsed = matcher.Parser.Parse(path)
-                ?? throw new InvalidOperationException($"No route matches path \"{path}\".");
-
-            // A falsy optional param (parsed as "") is normalized to "absent" rather than kept
-            // as an empty string, matching PathParser.Parse's own documented contract. Driven off
-            // Keys rather than the parsed dictionary so each key's Optional flag comes straight
-            // from the key itself - looking it back up per param (Keys.First(k => k.Name == key))
-            // would make this quadratic in the param count, on the hottest path in the library.
-            var keys = matcher.Parser.Keys;
-            var normalized = new Dictionary<string, object?>(parsed.Count);
-            foreach (var key in keys)
-            {
-                if (!parsed.TryGetValue(key.Name, out var value))
-                    continue;
-                if (key.Optional && value is string { Length: 0 })
-                    continue;
-
-                normalized[key.Name] = value;
-            }
-            parameters = normalized;
-        }
-        else
-        {
-            if (current is null)
-                throw new InvalidOperationException("A relative navigation (no Path or Name set) requires a current location to resolve against.");
-
-            matcher = (current.Name is not null && _matchersByName.TryGetValue(current.Name, out var byName))
-                ? byName
-                : _matchers.FirstOrDefault(m => m.Parser.Regex.IsMatch(current.Path))
-                    ?? throw new InvalidOperationException($"No route matches the current path \"{current.Path}\".");
-
-            var merged = new Dictionary<string, object?>(current.Params);
-            if (location.Params is not null)
-                foreach (var (key, value) in location.Params)
-                    merged[key] = value;
-
-            parameters = merged;
-            path = matcher.Parser.Stringify(merged);
-        }
+        var (matcher, parameters, path) =
+            location.Name is not null ? ResolveByName(location, current)
+            : location.Path is not null ? ResolveByPath(location.Path)
+            : ResolveRelative(location, current);
 
         var matched = BuildMatchedChain(matcher);
 
@@ -248,6 +159,96 @@ public sealed class RouteMatcher
             Matched = matched,
             Meta = MergeMeta(matched),
         };
+    }
+
+    private (MatcherNode Matcher, IReadOnlyDictionary<string, object?> Params, string Path) ResolveByName(RouteLocationRaw location, RouteLocation? current)
+    {
+        if (!_matchersByName.TryGetValue(location.Name!, out var matcher))
+            throw new InvalidOperationException($"No route named \"{location.Name}\" exists.");
+
+        var currentParams = current?.Params ?? EmptyParams;
+        var seeded = new Dictionary<string, object?>();
+
+        // Seed from the current location: this route's own required keys, plus any keys its
+        // PARENT declares as optional - lets navigating by name to a sibling route inherit
+        // e.g. a shared ":lang" segment without the caller having to repeat it.
+        foreach (var key in matcher.Parser.Keys)
+        {
+            if (!key.Optional && currentParams.TryGetValue(key.Name, out var value))
+                seeded[key.Name] = value;
+        }
+        if (matcher.Parent is not null)
+        {
+            foreach (var key in matcher.Parent.Parser.Keys)
+            {
+                if (key.Optional && currentParams.TryGetValue(key.Name, out var value))
+                    seeded[key.Name] = value;
+            }
+        }
+
+        // Then let explicitly-passed params overlay the seeded ones.
+        if (location.Params is not null)
+        {
+            foreach (var key in matcher.Parser.Keys)
+            {
+                if (location.Params.TryGetValue(key.Name, out var value))
+                    seeded[key.Name] = value;
+            }
+        }
+
+        var path = matcher.Parser.Stringify(seeded);
+
+        // Land on the index child, exactly as resolving this same route BY PATH already does.
+        // Without this, targeting a named parent that has one would match the parent alone and
+        // render an empty outlet - and since resolving by path can never produce the parent
+        // alone, that asymmetry has no use to preserve.
+        return (DescendToIndexChild(matcher), seeded, path);
+    }
+
+    private (MatcherNode Matcher, IReadOnlyDictionary<string, object?> Params, string Path) ResolveByPath(string path)
+    {
+        var matcher = FindMatcherForPath(path)
+            ?? throw new InvalidOperationException($"No route matches path \"{path}\".");
+
+        var parsed = matcher.Parser.Parse(path)
+            ?? throw new InvalidOperationException($"No route matches path \"{path}\".");
+
+        // A falsy optional param (parsed as "") is normalized to "absent" rather than kept
+        // as an empty string, matching PathParser.Parse's own documented contract. Driven off
+        // Keys rather than the parsed dictionary so each key's Optional flag comes straight
+        // from the key itself - looking it back up per param (Keys.First(k => k.Name == key))
+        // would make this quadratic in the param count, on the hottest path in the library.
+        var keys = matcher.Parser.Keys;
+        var normalized = new Dictionary<string, object?>(parsed.Count);
+        foreach (var key in keys)
+        {
+            if (!parsed.TryGetValue(key.Name, out var value))
+                continue;
+            if (key.Optional && value is string { Length: 0 })
+                continue;
+
+            normalized[key.Name] = value;
+        }
+
+        return (matcher, normalized, path);
+    }
+
+    private (MatcherNode Matcher, IReadOnlyDictionary<string, object?> Params, string Path) ResolveRelative(RouteLocationRaw location, RouteLocation? current)
+    {
+        if (current is null)
+            throw new InvalidOperationException("A relative navigation (no Path or Name set) requires a current location to resolve against.");
+
+        var matcher = (current.Name is not null && _matchersByName.TryGetValue(current.Name, out var byName))
+            ? byName
+            : _matchers.FirstOrDefault(m => m.Parser.Regex.IsMatch(current.Path))
+                ?? throw new InvalidOperationException($"No route matches the current path \"{current.Path}\".");
+
+        var merged = new Dictionary<string, object?>(current.Params);
+        if (location.Params is not null)
+            foreach (var (key, value) in location.Params)
+                merged[key] = value;
+
+        return (matcher, merged, matcher.Parser.Stringify(merged));
     }
 
     /// <summary>
