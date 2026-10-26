@@ -15,35 +15,34 @@
     <PackageVersion Include="Castle.Core" Version="5.2.1" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="Microsoft.Agents.AI" Version="1.15.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.14" />
     <!-- 10.8.3 is the floor ModelContextProtocol.Core 2.2.0 depends on; keep these in lockstep
          with it so central pinning doesn't produce an NU1605 downgrade. -->
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.8.3" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.3" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
     <!-- Abstractions on its own (not the full container) is what Barbatos.Wpf.Aquarius and
          Barbatos.Wpf.AquariusRouter reference: they only need IServiceCollection/ServiceDescriptor
          to offer AddAquarius()/AddAquariusRouter(), never a container implementation of their own. -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Abstractions" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.FileProviders.Physical" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.103" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.FileProviders.Physical" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.403" />
     <PackageVersion Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
     <PackageVersion Include="OpenAI" Version="2.12.0" />
     <PackageVersion Include="System.ClientModel" Version="1.14.0" />
-    <PackageVersion Include="System.Management" Version="8.0.0" />
-    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageVersion Include="System.Management" Version="10.0.14" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
