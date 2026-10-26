@@ -6,7 +6,8 @@ description: Write or run tests for the Barbatos.Wpf packages - xUnit convention
 # Testing Barbatos.Wpf
 
 One xUnit project per package under `tests/`, each multi-targeting `net8.0-windows` and
-`net10.0-windows`. `Barbatos.Wpf.Core.UnitTests` uses the SDK-suffixed TFMs.
+`net10.0-windows`. `Barbatos.Wpf.Core.UnitTests` uses the SDK-suffixed TFMs
+(`net8.0-windows10.0.17763.0`/`net10.0-windows10.0.17763.0`), and `-f` must name them exactly.
 
 ---
 
@@ -23,7 +24,7 @@ One xUnit project per package under `tests/`, each multi-targeting `net8.0-windo
 Run one project, one TFM:
 
 ```bash
-dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows
+dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows10.0.17763.0
 ```
 
 Narrow further while investigating:
