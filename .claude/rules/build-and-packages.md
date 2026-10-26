@@ -50,9 +50,8 @@ packages when missed:
   `Release` with `-p:SourceLinkEnabled=true` (which also turns on strong-name signing), and pushes
   `.nupkg` + `.snupkg` with `--skip-duplicate` — an unchanged version is silently not
   republished.
-- **Never commit a `.snk` file.** `.gitignore` does not exclude `*.snk` (that entry is commented
-  out), and a local `-p:SourceLinkEnabled=true` build signs with `src/barbatos.snk`, so a key
-  created to reproduce the release build is an untracked file `git add -A` would pick up. Build
-  locally without that flag, or delete the key before staging.
+- **Never commit a `.snk` file.** `.gitignore` excludes `*.snk`, so the `src/barbatos.snk` that
+  CI writes (and that a local `-p:SourceLinkEnabled=true` build signs with) stays untracked — never
+  force-add it or weaken that entry.
 - Never add a new `src/` → `src/` `ProjectReference` without the maintainer's approval; Aquarius
   must stay free of any Core reference.

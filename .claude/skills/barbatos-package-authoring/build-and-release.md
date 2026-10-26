@@ -109,8 +109,8 @@ When code is ported (not just its API shape) from another project, its notice be
 - Local Debug and Release builds are unsigned; the released packages are signed.
 - The key exists only on the CI runner, written from the `STRONG_NAME_KEY` secret. A local
   `-p:SourceLinkEnabled=true` build fails for lack of it - that is expected.
-- `.gitignore` has its `*.snk` line commented out, so a key written into the tree shows up in
-  `git status`. Never commit it.
+- `.gitignore` excludes `*.snk`, so a key written into the tree stays untracked. Never force-add
+  it.
 - Only test projects suppress `CS8002` (referenced assembly has no strong name), and only CI
   signs, so an unsigned new dependency surfaces as a warning in the release build alone.
 

@@ -277,7 +277,7 @@ Detail and the reasons: [build-and-release.md](build-and-release.md). The rules 
   the run still goes green.
 - CI runs no tests. Run every test project per TFM yourself before releasing
   (`barbatos-wpf-testing`).
-- `*.snk` is not git-ignored (the `.gitignore` line is commented out). Never commit a key.
+- `*.snk` is git-ignored; never force-add a key or weaken that entry.
 
 ## Symptom -> cause -> fix
 
