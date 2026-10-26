@@ -5,8 +5,9 @@ description: Write or run tests for the Barbatos.Wpf packages - xUnit convention
 
 # Testing Barbatos.Wpf
 
-One xUnit project per package under `tests/`, each multi-targeting `net8.0-windows` and
-`net10.0-windows`. `Barbatos.Wpf.Core.UnitTests` uses the SDK-suffixed TFMs.
+One xUnit.net v3 project per package under `tests/`, each multi-targeting `net8.0-windows` and
+`net10.0-windows`. `Barbatos.Wpf.Core.UnitTests` uses the SDK-suffixed TFMs
+(`net8.0-windows10.0.17763.0`/`net10.0-windows10.0.17763.0`), and `-f` must name them exactly.
 
 ---
 
@@ -23,7 +24,7 @@ One xUnit project per package under `tests/`, each multi-targeting `net8.0-windo
 Run one project, one TFM:
 
 ```bash
-dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows
+dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows10.0.17763.0
 ```
 
 Narrow further while investigating:
@@ -161,10 +162,15 @@ and `Router`'s whole pipeline all exist partly so tests need no UI.
 ## Adding a test project
 
 Match the existing csproj exactly: `TargetFrameworks` = `net8.0-windows;net10.0-windows`,
-`UseWPF`, `IsTestProject`, `IsPackable=false`, the shared package references from
-`Directory.Packages.props` (no versions), and `<Using Include="..."/>` for the package's
-namespaces plus `Xunit`. Copy `StaThread.cs`/`TestApplication.cs`/`GcProbe.cs` from
-`Barbatos.Wpf.Aquarius.UnitTests` rather than reinventing them.
+`UseWPF`, `IsTestProject`, `IsPackable=false`, `OutputType=Exe` (xUnit.net v3 test projects
+are self-hosting executables), the shared package references from `Directory.Packages.props`
+(`xunit.v3`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`, `coverlet.collector`,
+`AwesomeAssertions` - no versions), and `<Using Include="..."/>` for the package's namespaces
+plus `Xunit`. Copy `StaThread.cs`/`TestApplication.cs`/`GcProbe.cs` from
+`Barbatos.Wpf.Aquarius.UnitTests` rather than reinventing them. A suite that creates many
+STA-thread Windows also copies its `AssemblyInfo.cs`, which turns off cross-class parallelism
+with `[assembly: Parallelization(Mode = ParallelMode.None)]` (the comment there explains the
+test-host crash it prevents).
 
 **Never add `InternalsVisibleTo`.** If a test needs internal behavior, that behavior must become
 real public API first — see `barbatos-package-authoring`.

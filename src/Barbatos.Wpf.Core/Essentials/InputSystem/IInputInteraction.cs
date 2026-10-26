@@ -35,6 +35,9 @@ public interface IInputInteraction
 /// </summary>
 public struct InputInteractionContext
 {
+    /// <summary>Creates the context for one <see cref="IInputInteraction.Process"/> call.</summary>
+    /// <param name="isPressed">Whether the bound key is currently held down.</param>
+    /// <param name="isTimeout">Whether this call follows an elapsed <see cref="SetTimeout"/> rather than a key-state change.</param>
     public InputInteractionContext(bool isPressed, bool isTimeout = false)
     {
         IsPressed = isPressed;
@@ -59,10 +62,13 @@ public struct InputInteractionContext
     /// <summary>The duration passed to <see cref="SetTimeout"/> during this call, if any.</summary>
     public TimeSpan? RequestedTimeout { get; private set; }
 
+    /// <summary>Signals that the gesture has begun - raises <see cref="InputAction.Started"/>.</summary>
     public void Started() => WasStarted = true;
 
+    /// <summary>Signals that the gesture has completed - raises <see cref="InputAction.Performed"/>.</summary>
     public void Performed() => WasPerformed = true;
 
+    /// <summary>Signals that a started gesture was abandoned - raises <see cref="InputAction.Canceled"/>.</summary>
     public void Canceled() => WasCanceled = true;
 
     /// <summary>Requests a follow-up <see cref="IInputInteraction.Process"/> call after <paramref name="timeout"/> elapses, unless superseded by a newer key event first.</summary>

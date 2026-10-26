@@ -8,12 +8,16 @@ namespace Barbatos.Wpf.Input;
 /// <summary>Performs only when the key is pressed and released again within <see cref="MaxDuration"/> - a slower release cancels instead.</summary>
 public sealed class TapInteraction : IInputInteraction
 {
+    /// <summary>Creates a tap interaction.</summary>
+    /// <param name="maxDuration">The longest the key may be held for the release to still count as a tap.</param>
     public TapInteraction(TimeSpan maxDuration) => MaxDuration = maxDuration;
 
+    /// <summary>The longest the key may be held for the release to still count as a tap.</summary>
     public TimeSpan MaxDuration { get; }
 
     bool _timedOut;
 
+    /// <inheritdoc/>
     public void Process(ref InputInteractionContext context)
     {
         if (context.IsPressed && !context.IsTimeout)
@@ -37,5 +41,6 @@ public sealed class TapInteraction : IInputInteraction
         }
     }
 
+    /// <inheritdoc/>
     public void Reset() => _timedOut = false;
 }

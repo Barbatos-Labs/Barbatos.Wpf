@@ -13,6 +13,12 @@ namespace Barbatos.Wpf.Power;
 /// </summary>
 public interface IPowerManager
 {
+    /// <summary>
+    /// Asks the OS to keep the computer awake (and optionally the display on), or releases a
+    /// previous request. Each call replaces the previous state rather than stacking with it.
+    /// </summary>
+    /// <param name="keepAwake">Whether to prevent the system from sleeping; <see langword="false"/> releases the request.</param>
+    /// <param name="keepDisplayOn">Whether to also keep the display on. Ignored when <paramref name="keepAwake"/> is <see langword="false"/>.</param>
     void SetKeepAwake(bool keepAwake, bool keepDisplayOn);
 }
 

@@ -12,8 +12,10 @@ namespace Barbatos.Wpf.Input;
 /// </summary>
 public sealed class DefaultInteraction : IInputInteraction
 {
+    /// <summary>The shared instance - the interaction is stateless, so one is enough.</summary>
     public static readonly DefaultInteraction Instance = new();
 
+    /// <inheritdoc/>
     public void Process(ref InputInteractionContext context)
     {
         if (context.IsPressed)
@@ -27,6 +29,7 @@ public sealed class DefaultInteraction : IInputInteraction
         }
     }
 
+    /// <inheritdoc/>
     public void Reset()
     {
     }

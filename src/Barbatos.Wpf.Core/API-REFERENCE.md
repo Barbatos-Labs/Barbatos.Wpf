@@ -302,14 +302,24 @@ Dispatcher abstractions backed by the WPF `Dispatcher`.
 
 | Interface | Description |
 |-----------|-------------|
-| `IDispatcher` | `Dispatch(Action)`, `DispatchAsync(Func<Task>)`, `IsDispatchRequired`, `CreateTimer()`. |
+| `IDispatcher` | `Dispatch(Action)`, `DispatchDelayed(TimeSpan, Action)` (both return `false` when the work could not be queued), `IsDispatchRequired`, `CreateTimer()`. |
 | `IDispatcherTimer` | `Interval`, `IsRepeating`, `Start()`, `Stop()`, `Tick` event. |
 | `IDispatcherProvider` | Resolves the current `IDispatcher` (registered app-wide as singleton, and per-window as scoped). |
 
-### Extension Methods
+### Extension Methods (`DispatcherExtensions`)
 
-- **`DispatchAsync(this IDispatcher, Action)`**
-- **`DispatchIfRequiredAsync(this IDispatcher, Action)`** — dispatches only when `IsDispatchRequired` is `true`, otherwise runs inline.
+| Method | Returns | Meaning |
+|--------|---------|---------|
+| `DispatchAsync(this IDispatcher, Action)` | `Task` | Queues the action; the task completes when it has run, or faults with what it threw. |
+| `DispatchAsync<T>(this IDispatcher, Func<T>)` | `Task<T>` | Same, completing with the function's result. |
+| `DispatchAsync(this IDispatcher, Func<Task>)` | `Task` | Starts async work on the dispatcher; the returned task is unwrapped, so it tracks the inner task. |
+| `DispatchAsync<T>(this IDispatcher, Func<Task<T>>)` | `Task<T>` | Same, for a result-returning inner task. |
+| `DispatchIfRequiredAsync(this IDispatcher, Action)` | `Task` | Runs inline (returning `Task.CompletedTask`) when `IsDispatchRequired` is `false`, otherwise `DispatchAsync`. |
+| `DispatchIfRequiredAsync(this IDispatcher, Func<Task>)` | `Task` | Starts the work inline when `IsDispatchRequired` is `false`, otherwise `DispatchAsync`. |
+
+Every `DispatchAsync` overload faults its task with `InvalidOperationException` when
+`IDispatcher.Dispatch` returns `false`, and throws `ArgumentNullException` for a `null`
+dispatcher or delegate.
 
 ### Extension Methods (on `WpfAppBuilder`)
 

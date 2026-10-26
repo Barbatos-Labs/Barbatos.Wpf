@@ -58,8 +58,11 @@ Test projects multi-target `net8.0-windows` **and** `net10.0-windows`.
 Run one TFM at a time, and narrow to a class when investigating:
 
 ```bash
-dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows
+dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net10.0-windows10.0.17763.0
 ```
+
+(Core's test project uses the SDK-suffixed TFMs, so `-f` must name them exactly - a bare
+`net10.0-windows` fails with `NETSDK1005`. The other three test projects use the bare form.)
 
 ```bash
 dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -f net8.0-windows --filter "FullyQualifiedName~KeepAliveTests"
@@ -159,7 +162,7 @@ public surface. A testing-only seam is not an acceptable outcome.
 ### Package versions
 
 Central Package Management: **all** versions live in `Directory.Packages.props`, never in a
-`.csproj`. `Microsoft.Extensions.AI*` is pinned to the floor `ModelContextProtocol.Core 2.2.0`
+`.csproj`. `Microsoft.Extensions.AI*` is pinned to the floor `ModelContextProtocol.Core 2.3.0`
 depends on — bumping one without the other produces an `NU1605` downgrade.
 
 ---

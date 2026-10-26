@@ -12,6 +12,8 @@ public class LifecycleEventService : ILifecycleEventService, ILifecycleBuilder
 {
     readonly Dictionary<string, List<Delegate>> _mapper = new(StringComparer.Ordinal);
 
+    /// <summary>Creates the service and applies every <paramref name="registrations"/> entry to it, in order.</summary>
+    /// <param name="registrations">The registrations added by <see cref="WpfAppHostBuilderExtensions.ConfigureLifecycleEvents"/>.</param>
     public LifecycleEventService(IEnumerable<LifecycleEventRegistration> registrations)
     {
         if (registrations != null)
@@ -23,6 +25,7 @@ public class LifecycleEventService : ILifecycleEventService, ILifecycleBuilder
         }
     }
 
+    /// <inheritdoc/>
     public void AddEvent<TDelegate>(string eventName, TDelegate action)
         where TDelegate : Delegate
     {
@@ -32,6 +35,7 @@ public class LifecycleEventService : ILifecycleEventService, ILifecycleBuilder
         delegates.Add(action);
     }
 
+    /// <inheritdoc/>
     public IEnumerable<TDelegate> GetEventDelegates<TDelegate>(string eventName)
         where TDelegate : Delegate
     {
@@ -41,6 +45,7 @@ public class LifecycleEventService : ILifecycleEventService, ILifecycleBuilder
         return Enumerable.Empty<TDelegate>();
     }
 
+    /// <inheritdoc/>
     public bool ContainsEvent(string eventName) =>
         _mapper.TryGetValue(eventName, out var delegates) && delegates?.Count > 0;
 

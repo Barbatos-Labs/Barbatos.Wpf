@@ -5,6 +5,8 @@
     <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- xUnit.net v3 test projects are self-hosting executables. -->
+    <OutputType>Exe</OutputType>
     <!-- WPF is never trimmed, so CompareAttribute's/MinLengthAttribute's own
          RequiresUnreferencedCode warnings (about reflecting into a property that trimming could
          remove) do not apply to this test project either. -->
@@ -16,7 +18,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.v3.mtp-off" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 

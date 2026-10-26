@@ -52,8 +52,10 @@ public abstract class SingleKeyBinding : InputBinding
         Interaction = interaction;
     }
 
+    /// <summary>The key that triggers this binding. Never <see cref="Key.None"/>.</summary>
     public Key Key { get; }
 
+    /// <summary>The exact modifier combination that must be held with <see cref="Key"/> - see this type's remarks on exact matching.</summary>
     public ModifierKeys Modifiers { get; }
 
     /// <summary>
@@ -72,6 +74,11 @@ public abstract class SingleKeyBinding : InputBinding
 /// <summary>An in-app shortcut - fires only while its <see cref="InputActionMap.Scope"/> has keyboard focus (or the whole application does, when <see cref="InputActionMap.Scope"/> is <see langword="null"/>).</summary>
 public sealed class KeyBinding : SingleKeyBinding
 {
+    /// <summary>Creates an in-app binding.</summary>
+    /// <param name="key">The key that triggers the binding.</param>
+    /// <param name="modifiers">The exact modifier combination that must be held with <paramref name="key"/>.</param>
+    /// <param name="interaction">The gesture to apply, or <see langword="null"/> for <see cref="DefaultInteraction"/>'s behavior.</param>
+    /// <exception cref="ArgumentException"><paramref name="key"/> is <see cref="Key.None"/>.</exception>
     public KeyBinding(Key key, ModifierKeys modifiers = ModifierKeys.None, IInputInteraction? interaction = null)
         : base(key, modifiers, interaction)
     {
@@ -93,6 +100,10 @@ public sealed class KeyBinding : SingleKeyBinding
 /// </remarks>
 public sealed class GlobalKeyBinding : SingleKeyBinding
 {
+    /// <summary>Creates an OS-level global hotkey binding.</summary>
+    /// <param name="key">The key that triggers the hotkey.</param>
+    /// <param name="modifiers">The exact modifier combination that must be held with <paramref name="key"/>.</param>
+    /// <exception cref="ArgumentException"><paramref name="key"/> is <see cref="Key.None"/>.</exception>
     public GlobalKeyBinding(Key key, ModifierKeys modifiers = ModifierKeys.None)
         : base(key, modifiers, interaction: null)
     {
@@ -122,6 +133,10 @@ public sealed class ChordBinding : InputBinding
     /// <summary>The default <see cref="StepTimeout"/> - 1.5 seconds, comfortably slower than a deliberate two-key sequence but fast enough that an unrelated later keypress won't be mistaken for a stale step.</summary>
     public static readonly TimeSpan DefaultStepTimeout = TimeSpan.FromSeconds(1.5);
 
+    /// <summary>Creates a chord from <paramref name="steps"/>, with <see cref="DefaultStepTimeout"/> between steps.</summary>
+    /// <param name="steps">The combinations to press in order - at least two.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="steps"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Fewer than two steps, or a step whose key is <see cref="Key.None"/>.</exception>
     public ChordBinding(params (Key Key, ModifierKeys Modifiers)[] steps)
     {
         ArgumentNullException.ThrowIfNull(steps);

@@ -5,6 +5,7 @@
 
 using System.ComponentModel;
 using System.Windows;
+using Barbatos.Wpf.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -129,7 +130,7 @@ internal sealed class DialogService : IDialogService
         if (!_openDialogs.TryGetValue(key, out var existing))
             return false;
 
-        ActivateWindow(existing);
+        WindowActivation.RestoreAndActivate(existing);
         return true;
     }
 
@@ -208,7 +209,7 @@ internal sealed class DialogService : IDialogService
             _activeWindow = null;
 
             // Closing an owned window is supposed to hand activation back to its owner, but
-            // (like ActivateWindow()'s own Topmost-toggle already works around) Windows'
+            // (like WindowActivation's own Topmost-toggle already works around) Windows'
             // foreground-lock rules can let some other process - e.g. a debugger-attached IDE -
             // steal it instead. If some other tracked window had already picked up activation
             // natively, it would have fired its own Activated and updated _activeWindow away
@@ -224,19 +225,14 @@ internal sealed class DialogService : IDialogService
             // this still fixes the original gap (nothing was attempted at all before) and the
             // common case.
             //
-            // Deliberately not reusing ActivateWindow() here: its Show() fallback is only safe
+            // Deliberately not RestoreAndActivate() here: its Show() fallback is only safe
             // for reopening a possibly-hidden *tracked* dialog. This Closed can fire reentrantly
             // while the owner is cascading its own close down to this window (WPF itself closes
             // owned windows once their owner closes) - i.e. with the owner's own WmDestroy still
             // on the call stack - and WPF forbids Show()/Close() on a window while it is itself
             // mid-close. Activate()/Topmost/Focus() carry no such restriction.
             if (window.Owner is { IsLoaded: true } owner)
-            {
-                owner.Topmost = true;
-                owner.Activate();
-                owner.Topmost = false;
-                owner.Focus();
-            }
+                WindowActivation.BringToForeground(owner);
         }
 
         UntrackDialog(window);
@@ -247,23 +243,6 @@ internal sealed class DialogService : IDialogService
         var entry = _openDialogs.FirstOrDefault(kv => ReferenceEquals(kv.Value, window));
         if (entry.Key is not null)
             _openDialogs.Remove(entry.Key);
-    }
-
-    static void ActivateWindow(Window window)
-    {
-        if (window.WindowState == WindowState.Minimized)
-            window.WindowState = WindowState.Normal;
-
-        if (!window.IsVisible)
-            window.Show();
-
-        // Activate() alone can be silently ignored by Windows' foreground-lock rules when
-        // another app currently owns the foreground; briefly toggling Topmost is the
-        // standard, reliable way around that without SetForegroundWindow P/Invoke.
-        window.Topmost = true;
-        window.Activate();
-        window.Topmost = false;
-        window.Focus();
     }
 
     public bool IsOpen(string key) => _openDialogs.ContainsKey(key);

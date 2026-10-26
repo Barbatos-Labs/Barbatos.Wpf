@@ -46,19 +46,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Barbatos.Wpf.Core" Version="2.4.0" />
+    <PackageReference Include="Barbatos.Wpf.Core" Version="2.5.0" />
 <!--#if (AquariusEffective) -->
-    <PackageReference Include="Barbatos.Wpf.Aquarius" Version="2.4.0" />
+    <PackageReference Include="Barbatos.Wpf.Aquarius" Version="2.5.0" />
 <!--#endif -->
 <!--#if (IncludeAquariusRouter) -->
-    <PackageReference Include="Barbatos.Wpf.AquariusRouter" Version="2.4.0" />
+    <PackageReference Include="Barbatos.Wpf.AquariusRouter" Version="2.5.0" />
 <!--#endif -->
 <!--#if (IncludeValee) -->
-    <PackageReference Include="Barbatos.Wpf.AquariusValee" Version="2.4.0" />
+    <PackageReference Include="Barbatos.Wpf.AquariusValee" Version="2.5.0" />
 <!--#endif -->
 <!--#if (IncludeI18n) -->
-    <PackageReference Include="Barbatos.i18n.Wpf" Version="1.1.4" />
-    <PackageReference Include="Barbatos.i18n.DependencyInjection" Version="1.1.4" />
+    <PackageReference Include="Barbatos.i18n.Wpf" Version="1.2.0" />
+    <PackageReference Include="Barbatos.i18n.DependencyInjection" Version="1.2.0" />
 <!--#endif -->
   </ItemGroup>
 

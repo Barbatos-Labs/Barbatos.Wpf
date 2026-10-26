@@ -61,6 +61,20 @@ public class RouteMatcherTests
     }
 
     [Fact]
+    public void RelativeNavigationOverlaysThePassedParamsOntoTheCurrentOnes()
+    {
+        var matcher = new RouteMatcher([new RouteRecord { Path = "/users/:id/posts/:postId", Name = "post", View = StubView }]);
+        var current = matcher.Resolve(new RouteLocationRaw { Path = "/users/1/posts/7" });
+
+        var location = matcher.Resolve(new RouteLocationRaw { Params = new Dictionary<string, object?> { ["postId"] = "8" } }, current);
+
+        Assert.Equal("/users/1/posts/8", location.Path);
+        Assert.Equal("post", location.Name);
+        Assert.Equal("1", location.Params["id"]);
+        Assert.Equal("8", location.Params["postId"]);
+    }
+
+    [Fact]
     public void NestedChildPathJoinsOntoTheParentsPath()
     {
         var matcher = new RouteMatcher([

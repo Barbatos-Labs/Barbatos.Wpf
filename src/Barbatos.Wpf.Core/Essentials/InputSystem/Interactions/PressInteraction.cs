@@ -21,10 +21,14 @@ public enum PressInteractionTrigger
 /// <summary>An explicit alternative to <see cref="DefaultInteraction"/>, for when a binding needs to perform on release (or both edges) instead of just on press.</summary>
 public sealed class PressInteraction : IInputInteraction
 {
+    /// <summary>Creates a press interaction.</summary>
+    /// <param name="trigger">Which edge (or edges) of the press performs the action.</param>
     public PressInteraction(PressInteractionTrigger trigger = PressInteractionTrigger.Press) => Trigger = trigger;
 
+    /// <summary>Which edge (or edges) of the press performs the action.</summary>
     public PressInteractionTrigger Trigger { get; }
 
+    /// <inheritdoc/>
     public void Process(ref InputInteractionContext context)
     {
         if (context.IsPressed)
@@ -43,6 +47,7 @@ public sealed class PressInteraction : IInputInteraction
         }
     }
 
+    /// <inheritdoc/>
     public void Reset()
     {
     }

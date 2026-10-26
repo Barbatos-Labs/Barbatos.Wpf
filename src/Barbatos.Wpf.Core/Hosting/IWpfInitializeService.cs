@@ -15,6 +15,8 @@ namespace Barbatos.Wpf.Hosting;
 /// </remarks>
 public interface IWpfInitializeService
 {
+    /// <summary>Initializes the service.</summary>
+    /// <param name="services">The application's root service provider.</param>
     void Initialize(IServiceProvider services);
 }
 
@@ -28,5 +30,7 @@ public interface IWpfInitializeService
 /// </remarks>
 public interface IWpfInitializeScopedService
 {
+    /// <summary>Initializes the service for one window.</summary>
+    /// <param name="services">The window's scoped service provider.</param>
     void Initialize(IServiceProvider services);
 }

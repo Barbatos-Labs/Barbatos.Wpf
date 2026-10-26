@@ -51,6 +51,10 @@ namespace Barbatos.Wpf.AquariusRouter.Routing;
 /// </remarks>
 public sealed class Router
 {
+    // How many chained guard redirects one navigation may follow before it is treated as an
+    // infinite loop - the same limit Vue Router's own redirect-loop detection uses.
+    private const int MaxGuardRedirects = 30;
+
     private static readonly IReadOnlyDictionary<string, string?> EmptyQuery = new Dictionary<string, string?>();
 
     private readonly RouteMatcher _matcher;
@@ -246,7 +250,7 @@ public sealed class Router
 
         if (outcome.Result == GuardPipelineOutcome.Kind.Redirect)
         {
-            if (redirectDepth >= 30)
+            if (redirectDepth >= MaxGuardRedirects)
                 throw new InvalidOperationException($"Infinite redirect loop detected in a navigation guard while navigating to \"{to.FullPath}\".");
             return await NavigateWithRedirect(outcome.RedirectTo!, redirectedFrom ?? to, redirectDepth + 1).ConfigureAwait(true);
         }

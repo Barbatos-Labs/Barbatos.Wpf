@@ -63,176 +63,155 @@ internal static class ExprLexer
                 continue;
             }
 
-            var start = i;
-
-            if (char.IsAsciiDigit(c))
+            tokens.Add(c switch
             {
-                i++;
-                while (i < source.Length && char.IsAsciiDigit(source[i]))
-                    i++;
-
-                if (i < source.Length && source[i] == '.' && i + 1 < source.Length && char.IsAsciiDigit(source[i + 1]))
-                {
-                    i++;
-                    while (i < source.Length && char.IsAsciiDigit(source[i]))
-                        i++;
-                }
-
-                var text = source[start..i];
-                tokens.Add(new Token(TokenType.Number, text, start, double.Parse(text, CultureInfo.InvariantCulture)));
-                continue;
-            }
-
-            if (c == '"')
-            {
-                i++;
-                var builder = new StringBuilder();
-
-                while (true)
-                {
-                    if (i >= source.Length)
-                        throw new InvalidOperationException($"Expr: unterminated string literal starting at position {start} in \"{source}\".");
-
-                    var ch = source[i];
-
-                    if (ch == '"')
-                    {
-                        i++;
-                        break;
-                    }
-
-                    if (ch == '\\')
-                    {
-                        if (i + 1 >= source.Length || source[i + 1] is not ('"' or '\\'))
-                            throw new InvalidOperationException($"Expr: unsupported escape sequence at position {i} in \"{source}\" - only \\\" and \\\\ are supported.");
-
-                        builder.Append(source[i + 1]);
-                        i += 2;
-                        continue;
-                    }
-
-                    builder.Append(ch);
-                    i++;
-                }
-
-                tokens.Add(new Token(TokenType.String, source[start..i], start, builder.ToString()));
-                continue;
-            }
-
-            if (char.IsAsciiLetter(c) || c == '_')
-            {
-                i++;
-                while (i < source.Length && (char.IsAsciiLetterOrDigit(source[i]) || source[i] is '_' or '.'))
-                    i++;
-
-                var text = source[start..i];
-                var type = text switch
-                {
-                    "true" => TokenType.True,
-                    "false" => TokenType.False,
-                    "null" => TokenType.Null,
-                    _ => TokenType.Identifier,
-                };
-                tokens.Add(new Token(type, text, start));
-                continue;
-            }
-
-            // "#ElementName.Path" - an element-reference identifier (resolved via
-            // Binding.ElementName instead of DataContext). The token text keeps the
-            // leading '#' - Expr.cs checks for it when building each Binding, and it also
-            // naturally keeps "#Foo" and a plain "Foo" from colliding as the same
-            // ExprEvaluator.BindIdentifiers slot, since they're genuinely different sources.
-            if (c == '#')
-            {
-                i++;
-                if (i >= source.Length || !(char.IsAsciiLetter(source[i]) || source[i] == '_'))
-                    throw new InvalidOperationException($"Expr: expected an element name after '#' at position {start} in \"{source}\".");
-
-                while (i < source.Length && (char.IsAsciiLetterOrDigit(source[i]) || source[i] is '_' or '.'))
-                    i++;
-
-                tokens.Add(new Token(TokenType.Identifier, source[start..i], start));
-                continue;
-            }
-
-            switch (c)
-            {
-                case '&' when Peek(source, i + 1) == '&':
-                    tokens.Add(new Token(TokenType.And, "&&", start));
-                    i += 2;
-                    continue;
-                case '|' when Peek(source, i + 1) == '|':
-                    tokens.Add(new Token(TokenType.Or, "||", start));
-                    i += 2;
-                    continue;
-                case '=' when Peek(source, i + 1) == '=':
-                    tokens.Add(new Token(TokenType.Equal, "==", start));
-                    i += 2;
-                    continue;
-                case '!' when Peek(source, i + 1) == '=':
-                    tokens.Add(new Token(TokenType.NotEqual, "!=", start));
-                    i += 2;
-                    continue;
-                case '>' when Peek(source, i + 1) == '=':
-                    tokens.Add(new Token(TokenType.GreaterOrEqual, ">=", start));
-                    i += 2;
-                    continue;
-                case '<' when Peek(source, i + 1) == '=':
-                    tokens.Add(new Token(TokenType.LessOrEqual, "<=", start));
-                    i += 2;
-                    continue;
-                case '>':
-                    tokens.Add(new Token(TokenType.Greater, ">", start));
-                    i++;
-                    continue;
-                case '<':
-                    tokens.Add(new Token(TokenType.Less, "<", start));
-                    i++;
-                    continue;
-                case '!':
-                    tokens.Add(new Token(TokenType.Not, "!", start));
-                    i++;
-                    continue;
-                case '+':
-                    tokens.Add(new Token(TokenType.Plus, "+", start));
-                    i++;
-                    continue;
-                case '-':
-                    tokens.Add(new Token(TokenType.Minus, "-", start));
-                    i++;
-                    continue;
-                case '*':
-                    tokens.Add(new Token(TokenType.Star, "*", start));
-                    i++;
-                    continue;
-                case '/':
-                    tokens.Add(new Token(TokenType.Slash, "/", start));
-                    i++;
-                    continue;
-                case '(':
-                    tokens.Add(new Token(TokenType.LParen, "(", start));
-                    i++;
-                    continue;
-                case ')':
-                    tokens.Add(new Token(TokenType.RParen, ")", start));
-                    i++;
-                    continue;
-                case '?':
-                    tokens.Add(new Token(TokenType.Question, "?", start));
-                    i++;
-                    continue;
-                case ':':
-                    tokens.Add(new Token(TokenType.Colon, ":", start));
-                    i++;
-                    continue;
-                default:
-                    throw new InvalidOperationException($"Expr: unexpected character '{c}' at position {start} in \"{source}\".");
-            }
+                _ when char.IsAsciiDigit(c) => ReadNumber(source, ref i),
+                '"' => ReadString(source, ref i),
+                _ when IsIdentifierStart(c) => ReadWord(source, ref i),
+                '#' => ReadElementReference(source, ref i),
+                _ => ReadOperator(source, ref i),
+            });
         }
 
         tokens.Add(new Token(TokenType.EndOfInput, "", i));
         return tokens;
     }
+
+    private static Token ReadNumber(string source, ref int i)
+    {
+        var start = i;
+        SkipDigits(source, ref i);
+
+        if (i < source.Length && source[i] == '.' && i + 1 < source.Length && char.IsAsciiDigit(source[i + 1]))
+        {
+            i++;
+            SkipDigits(source, ref i);
+        }
+
+        var text = source[start..i];
+        return new Token(TokenType.Number, text, start, double.Parse(text, CultureInfo.InvariantCulture));
+    }
+
+    private static Token ReadString(string source, ref int i)
+    {
+        var start = i;
+        i++;
+        var builder = new StringBuilder();
+
+        while (true)
+        {
+            if (i >= source.Length)
+                throw new InvalidOperationException($"Expr: unterminated string literal starting at position {start} in \"{source}\".");
+
+            var ch = source[i];
+
+            if (ch == '"')
+            {
+                i++;
+                break;
+            }
+
+            if (ch == '\\')
+            {
+                if (i + 1 >= source.Length || source[i + 1] is not ('"' or '\\'))
+                    throw new InvalidOperationException($"Expr: unsupported escape sequence at position {i} in \"{source}\" - only \\\" and \\\\ are supported.");
+
+                builder.Append(source[i + 1]);
+                i += 2;
+                continue;
+            }
+
+            builder.Append(ch);
+            i++;
+        }
+
+        return new Token(TokenType.String, source[start..i], start, builder.ToString());
+    }
+
+    /// <summary>An identifier, or one of the <c>true</c>/<c>false</c>/<c>null</c> keywords.</summary>
+    private static Token ReadWord(string source, ref int i)
+    {
+        var start = i;
+        SkipIdentifierParts(source, ref i);
+
+        var text = source[start..i];
+        var type = text switch
+        {
+            "true" => TokenType.True,
+            "false" => TokenType.False,
+            "null" => TokenType.Null,
+            _ => TokenType.Identifier,
+        };
+        return new Token(type, text, start);
+    }
+
+    /// <summary>
+    /// "#ElementName.Path" - an element-reference identifier (resolved via
+    /// Binding.ElementName instead of DataContext). The token text keeps the
+    /// leading '#' - Expr.cs checks for it when building each Binding, and it also
+    /// naturally keeps "#Foo" and a plain "Foo" from colliding as the same
+    /// ExprEvaluator.BindIdentifiers slot, since they're genuinely different sources.
+    /// </summary>
+    private static Token ReadElementReference(string source, ref int i)
+    {
+        var start = i;
+        i++;
+        if (i >= source.Length || !IsIdentifierStart(source[i]))
+            throw new InvalidOperationException($"Expr: expected an element name after '#' at position {start} in \"{source}\".");
+
+        SkipIdentifierParts(source, ref i);
+
+        return new Token(TokenType.Identifier, source[start..i], start);
+    }
+
+    /// <summary>
+    /// The two-character operators are listed before the one-character ones they start with, so
+    /// <c>!=</c> never lexes as <c>!</c> followed by a stray <c>=</c>.
+    /// </summary>
+    private static Token ReadOperator(string source, ref int i)
+    {
+        var start = i;
+        var (type, text) = (source[i], Peek(source, i + 1)) switch
+        {
+            ('&', '&') => (TokenType.And, "&&"),
+            ('|', '|') => (TokenType.Or, "||"),
+            ('=', '=') => (TokenType.Equal, "=="),
+            ('!', '=') => (TokenType.NotEqual, "!="),
+            ('>', '=') => (TokenType.GreaterOrEqual, ">="),
+            ('<', '=') => (TokenType.LessOrEqual, "<="),
+            ('>', _) => (TokenType.Greater, ">"),
+            ('<', _) => (TokenType.Less, "<"),
+            ('!', _) => (TokenType.Not, "!"),
+            ('+', _) => (TokenType.Plus, "+"),
+            ('-', _) => (TokenType.Minus, "-"),
+            ('*', _) => (TokenType.Star, "*"),
+            ('/', _) => (TokenType.Slash, "/"),
+            ('(', _) => (TokenType.LParen, "("),
+            (')', _) => (TokenType.RParen, ")"),
+            ('?', _) => (TokenType.Question, "?"),
+            (':', _) => (TokenType.Colon, ":"),
+            _ => throw new InvalidOperationException($"Expr: unexpected character '{source[i]}' at position {start} in \"{source}\"."),
+        };
+
+        i += text.Length;
+        return new Token(type, text, start);
+    }
+
+    private static void SkipDigits(string source, ref int i)
+    {
+        while (i < source.Length && char.IsAsciiDigit(source[i]))
+            i++;
+    }
+
+    private static void SkipIdentifierParts(string source, ref int i)
+    {
+        while (i < source.Length && IsIdentifierPart(source[i]))
+            i++;
+    }
+
+    private static bool IsIdentifierStart(char c) => char.IsAsciiLetter(c) || c == '_';
+
+    private static bool IsIdentifierPart(char c) => char.IsAsciiLetterOrDigit(c) || c is '_' or '.';
 
     private static char? Peek(string source, int index) => index < source.Length ? source[index] : null;
 }

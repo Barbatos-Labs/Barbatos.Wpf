@@ -23,22 +23,6 @@ public sealed class AlphaDashAttribute : ValidationAttribute
     public bool AsciiOnly { get; set; }
 
     /// <inheritdoc/>
-    public override bool IsValid(object? value)
-    {
-        var text = value as string;
-
-        if (string.IsNullOrEmpty(text))
-            return true;
-
-        if (AsciiOnly)
-            return AsciiSets.ContainsOnly(text, AsciiSets.LettersDigitsDashUnderscore);
-
-        foreach (var c in text)
-        {
-            if (c is not ('_' or '-') && !char.IsLetterOrDigit(c))
-                return false;
-        }
-
-        return true;
-    }
+    public override bool IsValid(object? value) =>
+        CharacterClassRule.IsValid(value, AsciiOnly, AsciiSets.LettersDigitsDashUnderscore, static c => c is '_' or '-' || char.IsLetterOrDigit(c));
 }

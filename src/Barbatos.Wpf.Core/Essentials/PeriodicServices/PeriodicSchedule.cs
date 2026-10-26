@@ -174,9 +174,7 @@ public sealed class PeriodicSchedule
 
         DateTimeOffset? candidate = Frequency switch
         {
-            // Same "clamp to now" contract as NextFixed below - an overdue StartTime catches up
-            // immediately rather than resolving to an instant that's already in the past.
-            PeriodicFrequency.Once => lastRun is null ? (StartTime is { } start && start > now ? start : now) : null,
+            PeriodicFrequency.Once => lastRun is null ? FirstRun(now) : null,
             PeriodicFrequency.Hourly => NextFixed(TimeSpan.FromHours(1), now, lastRun),
             PeriodicFrequency.Custom => NextFixed(Interval!.Value, now, lastRun),
             PeriodicFrequency.Daily => NextDaily(now, lastRun),
@@ -207,13 +205,17 @@ public sealed class PeriodicSchedule
         Description = Description,
     };
 
+    // The very first run of a Once/Hourly/Custom schedule is clamped to now - an overdue StartTime
+    // catches up immediately rather than resolving to an instant that's already in the past.
+    DateTimeOffset FirstRun(DateTimeOffset now) => StartTime is { } start && start > now ? start : now;
+
     // Hourly/Custom are fixed-duration repeats, not wall-clock-anchored, so plain DateTimeOffset
     // arithmetic is both simpler and more correct than the local-time composition Daily/Weekly/
     // Monthly need below - a DateTimeOffset already denotes an absolute instant.
     DateTimeOffset NextFixed(TimeSpan period, DateTimeOffset now, DateTimeOffset? lastRun)
     {
         if (lastRun is null)
-            return StartTime is { } start && start > now ? start : now;
+            return FirstRun(now);
 
         var next = lastRun.Value + period;
         if (next >= now)
@@ -234,11 +236,8 @@ public sealed class PeriodicSchedule
         var startOrNow = StartTime?.LocalDateTime ?? nowLocal;
         var timeOfDay = TimeOfDay ?? startOrNow.TimeOfDay;
 
-        // Never scan forward from lastRun's own (possibly very stale) date - jump to the
-        // neighborhood of "now" first, then a couple of days is always enough.
-        var baseDate = lastRun is null
-            ? (startOrNow.Date > nowLocal.Date ? startOrNow.Date : nowLocal.Date)
-            : MaxDate(lastRun.Value.LocalDateTime.Date.AddDays(1), nowLocal.Date);
+        // A couple of days from the scan start is always enough.
+        var baseDate = ScanStartDate(nowLocal, startOrNow, lastRun);
 
         for (var i = 0; i < 3; i++)
         {
@@ -257,9 +256,7 @@ public sealed class PeriodicSchedule
         var timeOfDay = TimeOfDay ?? startOrNow.TimeOfDay;
         var days = DaysOfWeek == WeekDays.None ? ToWeekDays(startOrNow.DayOfWeek) : DaysOfWeek;
 
-        var baseDate = lastRun is null
-            ? (startOrNow.Date > nowLocal.Date ? startOrNow.Date : nowLocal.Date)
-            : MaxDate(lastRun.Value.LocalDateTime.Date.AddDays(1), nowLocal.Date);
+        var baseDate = ScanStartDate(nowLocal, startOrNow, lastRun);
 
         // A full week plus one margin day always contains a matching day-of-week whose composed
         // instant is >= now (days is never empty - WeekDays.None is substituted above).
@@ -312,6 +309,13 @@ public sealed class PeriodicSchedule
     // keeps a "same wall-clock time" schedule correct across DST transitions instead of drifting
     // by an hour the way raw DateTimeOffset + TimeSpan arithmetic would.
     static DateTimeOffset Compose(DateTime localDate, TimeSpan timeOfDay) => new(localDate.Date + timeOfDay);
+
+    // The first local date a Daily/Weekly scan considers. Never scans forward from lastRun's own
+    // (possibly very stale) date - jumps to the neighborhood of "now" first, so a short, fixed
+    // number of days is always enough to find the next occurrence.
+    static DateTime ScanStartDate(DateTime nowLocal, DateTime startOrNow, DateTimeOffset? lastRun) => lastRun is null
+        ? MaxDate(startOrNow.Date, nowLocal.Date)
+        : MaxDate(lastRun.Value.LocalDateTime.Date.AddDays(1), nowLocal.Date);
 
     static DateTime MaxDate(DateTime a, DateTime b) => a > b ? a : b;
 

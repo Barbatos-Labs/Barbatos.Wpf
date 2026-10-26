@@ -19,15 +19,27 @@ public sealed class InputAction
 {
     readonly List<InputBinding> _bindings = new();
 
+    /// <summary>Creates an action with no bindings yet.</summary>
+    /// <param name="name">The name <see cref="IInputSystemService.FindAction"/> looks the action up by.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="name"/> is <see langword="null"/>.</exception>
     public InputAction(string name) => Name = name ?? throw new ArgumentNullException(nameof(name));
 
+    /// <summary>The action's name, as passed to the constructor.</summary>
     public string Name { get; }
 
+    /// <summary>The action's bindings, in the order they were added.</summary>
     public IReadOnlyList<InputBinding> Bindings => _bindings;
 
     /// <summary>The phase from this action's most recent Started/Performed/Canceled transition, across any of its bindings.</summary>
     public InputActionPhase Phase { get; private set; } = InputActionPhase.Waiting;
 
+    /// <summary>
+    /// Adds <paramref name="binding"/> to this action. Same live-vs-refresh distinction as
+    /// <see cref="RemoveBinding"/>: a <see cref="GlobalKeyBinding"/> added after the action's map
+    /// was registered needs <see cref="IInputSystemService.RefreshBindings"/>.
+    /// </summary>
+    /// <returns>This action, for chaining.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="binding"/> is <see langword="null"/>.</exception>
     public InputAction AddBinding(InputBinding binding)
     {
         _bindings.Add(binding ?? throw new ArgumentNullException(nameof(binding)));
@@ -68,10 +80,13 @@ public sealed class InputAction
     public InputAction AddChordBinding(TimeSpan stepTimeout, params (Key Key, ModifierKeys Modifiers)[] steps) =>
         AddBinding(new ChordBinding(steps) { StepTimeout = stepTimeout });
 
+    /// <summary>Occurs when any of this action's bindings starts its gesture (for a plain key press, together with <see cref="Performed"/>).</summary>
     public event EventHandler<InputActionContext>? Started;
 
+    /// <summary>Occurs when any of this action's bindings completes its gesture - the event most handlers want.</summary>
     public event EventHandler<InputActionContext>? Performed;
 
+    /// <summary>Occurs when a started gesture is abandoned (for example, a hold released too early).</summary>
     public event EventHandler<InputActionContext>? Canceled;
 
     internal void RaiseStarted(InputBinding binding, TimeSpan duration)

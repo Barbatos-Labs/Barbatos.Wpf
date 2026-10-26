@@ -52,6 +52,7 @@ public partial class FallbackNotificationWindow : Window
     void OnCloseClicked(object sender, RoutedEventArgs e) =>
         Close();
 
+    /// <inheritdoc/>
     protected override void OnClosed(EventArgs e)
     {
         _dismissTimer.Stop();

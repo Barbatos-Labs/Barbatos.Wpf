@@ -121,9 +121,11 @@ public readonly struct DisplayInfo : IEquatable<DisplayInfo>
     /// </summary>
     public float RefreshRate { get; }
 
+    /// <summary>Determines whether two <see cref="DisplayInfo"/> values are equal, as defined by <see cref="Equals(DisplayInfo)"/>.</summary>
     public static bool operator ==(DisplayInfo left, DisplayInfo right) =>
         left.Equals(right);
 
+    /// <summary>Determines whether two <see cref="DisplayInfo"/> values differ, as defined by <see cref="Equals(DisplayInfo)"/>.</summary>
     public static bool operator !=(DisplayInfo left, DisplayInfo right) =>
         !left.Equals(right);
 

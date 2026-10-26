@@ -7,8 +7,13 @@ using System.Runtime.CompilerServices;
 
 namespace Barbatos.Wpf.LifecycleEvents;
 
+/// <summary>
+/// Chainable helpers over <see cref="ILifecycleBuilder.AddEvent{TDelegate}(string, TDelegate)"/>.
+/// </summary>
 public static class LifecycleBuilderExtensions
 {
+    /// <summary>Adds a parameterless <paramref name="action"/> for <paramref name="eventName"/>.</summary>
+    /// <returns><paramref name="builder"/>, for chaining.</returns>
     public static ILifecycleBuilder AddEvent(this ILifecycleBuilder builder, string eventName, Action action)
     {
         builder.AddEvent<Action>(eventName, action);
@@ -16,6 +21,8 @@ public static class LifecycleBuilderExtensions
         return builder;
     }
 
+    /// <summary>Adds <paramref name="action"/> for <paramref name="eventName"/>.</summary>
+    /// <returns><paramref name="builder"/>, for chaining.</returns>
     public static ILifecycleBuilder AddEvent<TDelegate>(this ILifecycleBuilder builder, string eventName, TDelegate action)
         where TDelegate : Delegate
     {

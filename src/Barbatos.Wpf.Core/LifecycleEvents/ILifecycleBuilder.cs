@@ -10,6 +10,10 @@ namespace Barbatos.Wpf.LifecycleEvents;
 /// </summary>
 public interface ILifecycleBuilder
 {
+    /// <summary>Adds <paramref name="action"/> to the delegates invoked for <paramref name="eventName"/>.</summary>
+    /// <typeparam name="TDelegate">The delegate type the event is invoked with.</typeparam>
+    /// <param name="eventName">The event's name - for the built-in WPF events, the name of its <see cref="WpfLifecycle"/> delegate type.</param>
+    /// <param name="action">The delegate to invoke.</param>
     void AddEvent<TDelegate>(string eventName, TDelegate action)
         where TDelegate : Delegate;
 }

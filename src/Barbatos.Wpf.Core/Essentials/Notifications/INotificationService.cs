@@ -11,8 +11,9 @@ namespace Barbatos.Wpf.Notifications;
 public interface INotificationService
 {
     /// <summary>
-    /// Gets whether <see cref="Show"/> currently displays notifications. When
-    /// <see langword="false"/>, <see cref="Show"/> is a no-op.
+    /// Gets whether <see cref="Show(string, string, NotificationSeverity)"/> and
+    /// <see cref="Show(NotificationContent)"/> currently display notifications. When
+    /// <see langword="false"/>, both are no-ops.
     /// </summary>
     bool IsEnabled { get; }
 
@@ -65,13 +66,24 @@ public interface INotificationService
 }
 
 /// <summary>
-/// The severity of a notification, mapped to the OS icon shown alongside it.
+/// The severity of a notification. Only <see cref="Error"/> changes how a toast is shown; the
+/// others are carried through for the app's own use.
 /// </summary>
 public enum NotificationSeverity
 {
+    /// <summary>No particular severity.</summary>
     None,
+
+    /// <summary>Informational - the default.</summary>
     Info,
+
+    /// <summary>A warning.</summary>
     Warning,
+
+    /// <summary>
+    /// An error. The toast uses the <c>Alarm</c> scenario: it stays on screen until dismissed and
+    /// bypasses Focus Assist.
+    /// </summary>
     Error,
 }
 
@@ -109,6 +121,10 @@ public enum NotificationAvailability
 /// </summary>
 public sealed class NotificationActivatedEventArgs : EventArgs
 {
+    /// <summary>Creates the event data for an activated notification.</summary>
+    /// <param name="title">The activated notification's title.</param>
+    /// <param name="message">The activated notification's message.</param>
+    /// <param name="arguments">The notification's <see cref="NotificationContent.Arguments"/>, if it had any.</param>
     public NotificationActivatedEventArgs(string title, string message, string? arguments = null)
     {
         Title = title;
@@ -116,8 +132,10 @@ public sealed class NotificationActivatedEventArgs : EventArgs
         Arguments = arguments;
     }
 
+    /// <summary>The title of the notification that was activated.</summary>
     public string Title { get; }
 
+    /// <summary>The message of the notification that was activated.</summary>
     public string Message { get; }
 
     /// <summary>
