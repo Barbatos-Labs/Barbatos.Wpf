@@ -39,5 +39,7 @@ How the pieces load is described in [`.claude/README.md`](../README.md). When ch
   queries to `.claude/evals/skill-triggers/trigger-evals.json`. Adding or re-scoping a rule:
   update the Rules table in `.claude/README.md`.
 - **Check before committing:** `node .claude/evals/lint.mjs` (static checks), then — after any
-  description change — `node .claude/evals/skill-triggers/run-trigger-evals.mjs` (see its README;
-  commit or stash first, it runs real sessions in the working tree).
+  change to a description, `CLAUDE.md` or a rule —
+  `node .claude/evals/skill-triggers/run-trigger-evals.mjs` (see its README; commit or stash
+  first, it runs real sessions in the working tree). `CLAUDE.md` wording alone has moved a query
+  from 4/4 to 1/5.

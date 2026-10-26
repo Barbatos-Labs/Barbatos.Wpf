@@ -101,8 +101,17 @@ before it was caught:
   plain CommunityToolkit.Mvvm question in Vietnamese) still correctly triggers nothing, which is
   what makes the addition safe rather than just louder.
 
+- **`CLAUDE.md` wording moves triggering too, not just descriptions.** When the skills moved into
+  `.claude/`, a `CLAUDE.md` paragraph that told agents to read rule files directly dropped query
+  12 (a new Core feature) from 4/4 to 1/5 with no description change at all: the agent grepped
+  and answered from what `CLAUDE.md` already said. Saying "load the matching skill before you
+  start" restored it to 5/5 and the full suite to 36/36 with every negative still passing. Re-run
+  the suite after editing `CLAUDE.md` or a rule, not only after editing a description.
+- **Name the file users mention.** Dropping `WpfProgram` from the host description (to save
+  characters) turned query 1 ("...wired something wrong in WpfProgram.cs") from a pass into 0/3.
+
 ## When to re-run
 
-After editing any skill's `description`, and after adding a skill — a new sibling changes the
-competition for every existing one. Add queries alongside a new skill, both positive and a
+After editing any skill's `description`, `CLAUDE.md` or a rule, and after adding a skill — a new
+sibling changes the competition for every existing one. Add queries alongside a new skill, both positive and a
 near-miss negative aimed at whichever existing skill it most resembles.

@@ -73,7 +73,7 @@ node .claude/evals/skill-triggers/run-trigger-evals.mjs    # which skill fires f
 ```
 
 Run the lint before every commit that touches this folder or `CLAUDE.md`, and the trigger evals
-after changing any skill description or adding a skill (read
+after changing a skill description, `CLAUDE.md` or a rule, or adding a skill (read
 [`evals/skill-triggers/README.md`](evals/skill-triggers/README.md) first — they run real sessions
 in your working tree). The conventions for editing all of this are in
 [`rules/agent-config.md`](rules/agent-config.md).

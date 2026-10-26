@@ -5,13 +5,12 @@ unpackaged desktop WPF. Everything here is a **library**: public API is the prod
 careless signature is a breaking change for someone else's app.
 
 **How guidance reaches you.** This file is always loaded and holds only what every task needs.
-Conventions for a kind of file live in [`.claude/rules/`](.claude/rules/) and are attached
-automatically when you open a matching file with the Read tool (an Edit always needs that Read
-first). A file seen only through Bash (`cat` of several files, `grep`, a shell loop) or created
-fresh with Write may not attach its rule — before changing such a file, Read it or read the rule
-directly. Task playbooks live in [`.claude/skills/`](.claude/skills/) and load when the task
-matches — the index is at the bottom. [`.claude/README.md`](.claude/README.md) explains the
-layout.
+Task playbooks live in [`.claude/skills/`](.claude/skills/): when a task touches a package's API,
+its tests or docs, or a repo workflow, load the matching skill before you start (index at the
+bottom). Conventions for a kind of file live in [`.claude/rules/`](.claude/rules/) and are attached
+when you open a matching file with the Read tool — a file seen only through Bash (`cat`, `grep`, a
+shell loop) or created with Write may not attach its rule. [`.claude/README.md`](.claude/README.md)
+explains the layout.
 
 ---
 
