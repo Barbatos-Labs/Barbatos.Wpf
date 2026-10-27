@@ -1550,14 +1550,17 @@ call. Make one call at a time (await it before starting the next), and keep the 
 `next` on the caller's context (no `ConfigureAwait(false)`): the action body runs on whichever
 thread calls `next`.
 
-Both shapes used to hang or misbehave: the pipeline reached the action through Castle
-DynamicProxy's `IInvocation.Proceed()`, which only works while Castle's own `Intercept()` call is
-still on the stack. Called from a later continuation it re-entered the whole chain instead of
-running the action - an `await` before `next` then suspended again on every re-entry, a hang
-with no exception (confirmed by killing a stuck test host), and a retry ran the outer
-interceptors again, nested. The pipeline now proceeds through `IInvocation.CaptureProceedInfo()`,
-captured when the call arrives - the API Castle provides for continuing an invocation after an
-`await` - and `StoreActionInterceptorTests` pins both shapes.
+Both shapes used to hang or misbehave, because Castle DynamicProxy's `IInvocation` - its
+interceptor index and its `ReturnValue` - is only safe to proceed while the proxied call is still
+running on its own thread. Proceeded from a later continuation with `IInvocation.Proceed()`, it
+re-entered the whole chain instead of running the action: an `await` before `next` suspended
+again on every re-entry, a hang with no exception (confirmed by killing a stuck test host), and a
+retry ran the outer interceptors again, nested. `IInvocation.CaptureProceedInfo()` fixes that only
+where continuations wait for the call to return, as on a UI thread; a thread-pool continuation can
+run while the call is still returning, and a stress test then saw calls run the chain twice or
+never complete. So the pipeline proceeds Castle's invocation only from inside the call, and any
+later `next` - or one from another thread - reaches the action through a second call on the proxy
+that skips the chain. `StoreActionInterceptorTests` pins each shape, the thread-pool race included.
 
 > [!IMPORTANT]
 > **Genuinely asynchronous interceptor work needs a `Task`-returning action.** A synchronous
@@ -1628,9 +1631,9 @@ onward, as if it had never been registered. A call already in flight when `Eject
 using the interceptor; every call that starts afterward skips it. Most interceptors don't need
 this - it's opt-in per interceptor, not automatic.
 
-Ejecting is one-way. There's no "re-attach", and registering the interceptor again doesn't bring
-it back either: each store reads its chain once, when it is first resolved, so a registration
-added after that never joins it - getting the behavior back takes a new container. For behavior a
+Ejecting is one-way. There's no "re-attach", and registering the interceptor again is no way back
+either: `Build()` makes the service collection read-only, and each store reads its chain once,
+when it is first resolved - getting the behavior back takes a new container. For behavior a
 user can switch on and off (a settings toggle), give the interceptor its own flag instead:
 
 ```csharp

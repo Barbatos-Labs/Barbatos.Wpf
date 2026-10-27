@@ -53,7 +53,7 @@
                    Text="Watch the activity log below - every action above runs through 3 global interceptors (logging, a slow-call timing warning, an audit trail - all 3 wrap every action on both stores) plus up to 2 local ones stacked on top, depending on the action:" />
         <TextBlock Margin="0,4,0,0"
                    TextWrapping="Wrap"
-                   Text="• Click 'Checkout' immediately (before selecting a user or refreshing orders): OrderStore.OrderCount is still 0, so NonEmptyCartGuardInterceptor blocks it - neither CheckoutCooldownInterceptor (inside it) nor the action runs, so UserStore.RefreshProfileAsync (which Checkout would have called) never fires and no network call happens. The 3 global interceptors outside it still log their own 'finished' lines: from their side next() simply returned." />
+                   Text="• Click 'Checkout' while OrderStore.OrderCount is 0 (on a first run before selecting a user, or after 'Reset all' - a user restored from the last session has their orders loaded at startup): NonEmptyCartGuardInterceptor blocks it - neither CheckoutCooldownInterceptor (inside it) nor the action runs, so UserStore.RefreshProfileAsync (which Checkout would have called) never fires and no network call happens. The 3 global interceptors outside it still run in full - the audit trail has already recorded the call, and the logging interceptor still logs 'finished': from their side next() simply returned." />
         <TextBlock Margin="0,2,0,0"
                    TextWrapping="Wrap"
                    Text="• Click 'Checkout' twice quickly once there are orders: the 2nd click is blocked by CheckoutCooldownInterceptor instead (3s cooldown - state-based, not argument-based)." />

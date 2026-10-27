@@ -295,6 +295,58 @@ public class StoreActionInterceptorTests
     }
 
     [Fact]
+    public async Task NextCalledFromAThreadPoolContinuationWhileTheCallIsStillReturningRunsTheActionOnce()
+    {
+        // On a thread with no synchronization context, Task.Yield queues the continuation that
+        // calls next() to the thread pool at once, so it can start while the intercepted call is
+        // still returning through Castle on the calling thread. Proceeding Castle's invocation
+        // from there (IInvocation.CaptureProceedInfo) raced that return: on Linux every one of 10
+        // runs of this test against that code failed within 4,500 calls, some by running the
+        // chain twice and some by a call that never completed. Only the old code depends on
+        // timing - nothing in the pass condition does - and every wait is bounded, so a
+        // regression fails instead of hanging the run. The loop runs on a dedicated thread
+        // because from a pool thread Task.Yield queues to that thread's local queue, where
+        // another thread has to steal it, which makes the race rarer.
+        var middleware = new YieldBeforeNextMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        await Task.Factory.StartNew(
+            () =>
+            {
+                for (var call = 1; call <= 20_000; call++)
+                {
+                    var completed = store.IncrementWithoutAwaitingAsync().Wait(TimeSpan.FromSeconds(10));
+
+                    Assert.True(completed, $"call {call} never completed");
+                    Assert.Equal(call, middleware.Entries);
+                    Assert.Equal(call, store.Count);
+                }
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
+
+    [Fact]
+    public async Task SynchronousActionGetsItsArgumentsAndOutParameterWhenNextRunsOnAnotherThread()
+    {
+        // next() on a thread other than the blocked caller reaches the action through a second
+        // call on the proxy, so arguments go in and the out value comes back through the
+        // invocation's argument array. Called from the thread pool: on a UI thread the same
+        // blocking would be the documented sync-over-async deadlock.
+        var middleware = new NextOnAnotherThreadMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        var (found, doubled) = await Task.Run(() => (store.TryDouble(21, out var value), value))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(found);
+        Assert.Equal(42, doubled);
+        Assert.NotEqual(middleware.CallerThreadId, middleware.NextThreadId);
+        Assert.Equal(1, middleware.Entries);
+    }
+
+    [Fact]
     public void MultipleGlobalInterceptorsNestLikeMiddlewareInRegistrationOrder()
     {
         var log = new List<string>();
@@ -721,6 +773,20 @@ public class StoreActionInterceptorTests
 
             return attempt;
         }
+
+        [Action]
+        public virtual Task IncrementWithoutAwaitingAsync()
+        {
+            Count++;
+            return Task.CompletedTask;
+        }
+
+        [Action]
+        public virtual bool TryDouble(int value, out int doubled)
+        {
+            doubled = value * 2;
+            return true;
+        }
     }
 
     public class OtherStore : StoreBase
@@ -934,6 +1000,52 @@ public class StoreActionInterceptorTests
                 {
                 }
             }
+        }
+    }
+
+    /// <summary>Yields before calling <c>next()</c>: off a synchronization context, the
+    /// continuation goes straight to the thread pool. <see cref="Entries"/> counts how often the
+    /// chain reached this interceptor.</summary>
+    sealed class YieldBeforeNextMiddleware : IStoreActionInterceptor
+    {
+        int _entries;
+
+        public int Entries => Volatile.Read(ref _entries);
+
+        public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Interlocked.Increment(ref _entries);
+            await Task.Yield();
+            return await next();
+        }
+    }
+
+    /// <summary>Calls <c>next()</c> on a dedicated thread (<see cref="TaskCreationOptions.LongRunning"/>)
+    /// and records both thread ids, so a test can tell the action was reached from a thread other
+    /// than its caller's.</summary>
+    sealed class NextOnAnotherThreadMiddleware : IStoreActionInterceptor
+    {
+        int _entries;
+
+        public int Entries => Volatile.Read(ref _entries);
+
+        public int CallerThreadId { get; private set; }
+
+        public int NextThreadId { get; private set; }
+
+        public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Interlocked.Increment(ref _entries);
+            CallerThreadId = Environment.CurrentManagedThreadId;
+            return Task.Factory.StartNew(
+                () =>
+                {
+                    NextThreadId = Environment.CurrentManagedThreadId;
+                    return next();
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default).Unwrap();
         }
     }
 

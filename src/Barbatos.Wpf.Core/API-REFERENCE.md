@@ -1308,10 +1308,10 @@ public interface IStoreActionInterceptor
   intercepted action. Call `next` to continue the chain (its result becomes the action's return
   value), or don't call it at all to short-circuit the action entirely. Wrap it in `try`/`catch`
   to observe or translate an error; wrap it in timing code to measure it; call it again after a
-  failed attempt to retry. `next` may be called after an `await` and more than once, one call at
-  a time; each call re-runs every interceptor after this one in the chain (globals, then
-  locals) and then the action body, while interceptors outside this one see a single call. The action body runs on the
-  thread that calls `next`.
+  failed attempt to retry. `next` may be called after an `await`, from any thread and more than
+  once, one call at a time; each call re-runs every interceptor after this one in the chain
+  (globals, then locals) and then the action body, while interceptors outside this one see a
+  single call. The action body runs on the thread that calls `next`.
 
 #### Remarks
 
@@ -1324,10 +1324,13 @@ local one, closest to the actual action call.
 `InterceptAsync` is genuinely awaitable for a `Task`/`Task<TResult>`-returning action: real
 asynchronous work before `next` (an async precondition) and after it (flushing a log) both
 work, and so does calling `next` again to retry an attempt that failed after the action's own
-first `await`. The innermost `next` proceeds through Castle DynamicProxy's
-`IInvocation.CaptureProceedInfo()`, captured when the call arrives, so it reaches the action
-from any continuation; an earlier pipeline used `IInvocation.Proceed()` directly, which
-re-entered the chain from a continuation and hung an interceptor that awaited before `next`.
+first `await`. The innermost `next` proceeds Castle DynamicProxy's `IInvocation` only while
+the intercepted call is still running on its own thread; any later call, or one from another
+thread, reaches the action through a second call on the proxy that skips the chain. Proceeding
+the invocation from a continuation instead re-entered the whole chain (`IInvocation.Proceed()`:
+an `await` before `next` hung) or raced the call's own return on the thread pool
+(`IInvocation.CaptureProceedInfo()`: a call occasionally ran the chain twice or never
+completed).
 
 > [!IMPORTANT]
 > For a *synchronous* action, the chain still runs through this same `async` shape, but the
@@ -1487,8 +1490,9 @@ public sealed class InterceptorHandle
   itself), as if it had never been registered. A call already in flight when `Eject()` runs
   keeps using the interceptor, since its own pipeline was already built by the time `Eject()`
   ran; every call that starts afterward skips it. One-way: there is no "re-attach", and
-  registering the interceptor again does not help, because each store reads its chain once, at
-  its first resolution — the behavior comes back only with a new container. For an on/off
+  registering the interceptor again does not help — `Build()` makes the service collection
+  read-only, and each store reads its chain once, at its first resolution — so the behavior
+  comes back only with a new container. For an on/off
   setting, give the interceptor its own enabled flag (return `next()` while off) instead.
 
 ---

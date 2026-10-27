@@ -309,7 +309,10 @@ The store under test is a `public` non-`sealed` nested class with `public virtua
 methods (`InterceptedStore`). To test an interceptor that awaits before `next` or retries, gate
 the async step with a `TaskCompletionSource` the test completes only after the call returned
 (`AwaitBeforeNextMiddleware`, `InterceptedStore.FlakyGate`) and bound the wait with
-`WaitAsync(TimeSpan)`, so a regression fails instead of hanging the test host. Run with
+`WaitAsync(TimeSpan)`, so a regression fails instead of hanging the test host. A gate cannot
+reach a race with the call's own return (a thread-pool continuation calling `next` while the
+proxy is still returning); that one is driven by many bounded calls from a dedicated thread
+(`NextCalledFromAThreadPoolContinuationWhileTheCallIsStillReturningRunsTheActionOnce`). Run with
 `barbatos-wpf-testing`'s per-TFM discipline:
 
 ```bash

@@ -20,12 +20,13 @@ namespace Barbatos.Wpf.Apsu;
 /// own pipeline was already built by the time <see cref="Eject"/> ran; every call that starts
 /// afterward skips it.
 /// <para>
-/// Ejecting is one-way. There is no "re-attach", and registering the interceptor again does
-/// not bring it back either: each store reads its chain once, when it is first resolved, so a
-/// registration added after that never joins it - getting the behavior back means building a
-/// new container. For behavior that should come and go at runtime (a settings toggle), give the
-/// interceptor its own enabled flag and have <see cref="IStoreActionInterceptor.InterceptAsync"/>
-/// return <c>next()</c> while it is off; keep <see cref="Eject"/> for a permanent removal.
+/// Ejecting is one-way. There is no "re-attach", and registering the interceptor again is no
+/// way back either: <see cref="Hosting.WpfAppBuilder.Build"/> makes the service collection
+/// read-only, and each store reads its chain once, when it is first resolved - getting the
+/// behavior back means building a new container. For behavior that should come and go at
+/// runtime (a settings toggle), give the interceptor its own enabled flag and have
+/// <see cref="IStoreActionInterceptor.InterceptAsync"/> return <c>next()</c> while it is off;
+/// keep <see cref="Eject"/> for a permanent removal.
 /// </para>
 /// </remarks>
 public sealed class InterceptorHandle

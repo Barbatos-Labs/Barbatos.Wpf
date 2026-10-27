@@ -34,7 +34,7 @@ ASP.NET Core-style middleware over a Castle DynamicProxy class proxy. Not here: 
 - Tests that pin behaviour: `tests/Barbatos.Wpf.Core.UnitTests/StoreBaseTests.cs` (StateChanged,
   Patch, Reset, Getter), `StoreFeatureTests.cs` (singleton, laziness, registry, plugins),
   `StoreActionInterceptorTests.cs` (chain order, short-circuit, errors, async, awaiting before
-  `next`, retry, eject, sealed).
+  `next`, retry, `next` on another thread, eject, sealed).
 - [patterns.md](patterns.md) - read when you need a complete worked example: cross-store store,
   argument/state/cooldown guards, error reporting, persistence plugin, exposing a getter to XAML,
   an ejectable toggle, or a test harness for an interceptor.
@@ -198,10 +198,14 @@ generated type's name (`OrderStoreProxy`-style); `GetType().BaseType!.Name` is t
 
 ### Awaiting before `next`, and retrying
 
-`ActionInterceptor` captures Castle's `IInvocation.CaptureProceedInfo()` when the call arrives
-and the innermost `next` proceeds through it, so `next` reaches the action from any
-continuation - not only while Castle's `Intercept()` call is on the stack
-(`NextCalledFromAContinuationAfterTheInterceptedCallReturnedReachesTheAction`).
+`ActionInterceptor` proceeds Castle's `IInvocation` only while the intercepted call is still
+running on its own thread. Any later `next` - after an `await`, a retry, a call from another
+thread - calls the action through the proxy again, flagged so that second pass skips the chain;
+it never touches the original invocation, which Castle may still be unwinding. So `next` reaches
+the action from any continuation and any thread
+(`NextCalledFromAContinuationAfterTheInterceptedCallReturnedReachesTheAction`,
+`NextCalledFromAThreadPoolContinuationWhileTheCallIsStillReturningRunsTheActionOnce`,
+`SynchronousActionGetsItsArgumentsAndOutParameterWhenNextRunsOnAnotherThread`).
 
 - An async precondition (a server check) may be awaited **before** `next` for a `Task` action
   (`MiddlewareCanGenuinelyAwaitAsynchronousWorkBeforeCallingNext`); real work after `next` works
@@ -216,10 +220,12 @@ continuation - not only while Castle's `Intercept()` call is on the stack
   Await one attempt before starting the next - never call `next` concurrently.
 - No `ConfigureAwait(false)` before `next`: the action body runs on whichever thread calls
   `next`, and would then mutate UI-bound store state from the thread pool.
-- Packages built before the `CaptureProceedInfo` change used `IInvocation.Proceed()` directly,
-  which re-entered the whole chain from a continuation: an `await` before `next` hung forever
-  with no exception (the test host had to be killed) and a retry re-ran the outer interceptors,
-  nested. A hang there on an old package version is that bug.
+- Packages built before this fix called `IInvocation.Proceed()` from the innermost `next`
+  wherever it ran, which re-entered the whole chain from a continuation: an `await` before
+  `next` hung forever with no exception (the test host had to be killed) and a retry re-ran the
+  outer interceptors, nested. A hang there on an old package version is that bug.
+  (`IInvocation.CaptureProceedInfo()` alone is not the fix: a thread-pool continuation can run
+  while the call is still returning, and then calls run the chain twice or never complete.)
 
 ### Return types and blocking
 
@@ -316,7 +322,7 @@ singleton must unsubscribe from store events when it goes away - the store outli
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Interceptor never runs for an action | Method not `virtual`, missing `[Action]`, store not registered via `AddStore`, local registered for another `TStore`, or handle ejected | Fix the shape/registration; check `IsEjected` |
-| Intercepted action never completes, no exception | An interceptor returned a task that never completes (it awaits something that never finishes); on a package built before the `CaptureProceedInfo` fix, an `await` before `next` | Find the interceptor's unfinished await; update the package |
+| Intercepted action never completes, no exception | An interceptor returned a task that never completes (it awaits something that never finishes); on a package built before `next` could run after an `await`, an `await` before `next` | Find the interceptor's unfinished await; update the package |
 | UI freezes when a sync action runs | An interceptor genuinely suspends inside a sync action's chain | Make the action return `Task`, or keep interceptors synchronous |
 | `InvalidOperationException` "must not be sealed" right after adding a global interceptor | A `sealed` store now needs a proxy | Remove `sealed` |
 | `InvalidOperationException` "must have exactly one public constructor ... (found N)" | Proxy path needs one constructor | Collapse to one |

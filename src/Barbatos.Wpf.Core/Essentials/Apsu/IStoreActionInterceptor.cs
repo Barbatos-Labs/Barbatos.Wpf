@@ -72,24 +72,28 @@ public sealed class StoreActionContext
 /// with a <see cref="Task"/>-returning action to avoid this entirely.
 /// </para>
 /// <para>
-/// <c>next</c> reaches the action from any continuation, so an interceptor may
+/// <c>next</c> reaches the action from any continuation and any thread, so an interceptor may
 /// <see langword="await"/> an asynchronous precondition before calling it, and may call it again
 /// to retry after an attempt failed - including one that failed after the action's own first
 /// real <see langword="await"/>. Each call re-runs the rest of the chain: every interceptor
 /// after this one in the chain (globals before locals, each group in registration order), then
-/// the action body. Interceptors outside this one still see a single call. Call <c>next</c> one attempt at a time (await one call before starting the
-/// next), and keep the awaits before it on the caller's context (no
-/// <c>ConfigureAwait(false)</c>): the action body runs on whichever thread calls <c>next</c>.
+/// the action body. Interceptors outside this one still see a single call. Call <c>next</c> one
+/// attempt at a time (await one call before starting the next), and keep the awaits before it
+/// on the caller's context (no <c>ConfigureAwait(false)</c>): the action body runs on whichever
+/// thread calls <c>next</c>.
 /// </para>
 /// <para>
-/// Neither shape used to work. The pipeline reached the action through Castle DynamicProxy's
-/// <c>IInvocation.Proceed()</c>, which only works while Castle's own <c>Intercept()</c> call is
-/// still on the stack; reached later, it re-entered the whole chain instead of running the
-/// action. An <see langword="await"/> before <c>next</c> then suspended again on every
-/// re-entry - a hang with no exception (confirmed by killing a stuck test host) - and a retry
-/// ran the interceptors outside the retrying one again, nested. The pipeline now captures
-/// <c>IInvocation.CaptureProceedInfo()</c> when the call arrives and proceeds through that, which
-/// Castle provides for exactly this: continuing an invocation after an <see langword="await"/>.
+/// Both used to fail. Castle DynamicProxy's <c>IInvocation</c> - its interceptor index and its
+/// <c>ReturnValue</c> - is only safe to proceed while the proxied call is still in progress on
+/// its own thread. Proceeding it from a later continuation re-entered the whole chain instead of
+/// running the action: an <see langword="await"/> before <c>next</c> hung with no exception
+/// (confirmed by killing a stuck test host) and a retry re-ran the outer interceptors, nested.
+/// <c>IInvocation.CaptureProceedInfo()</c> fixes that only where continuations wait for the call
+/// to return, as on a UI thread; a thread-pool continuation can run while it is still returning,
+/// and a stress test then saw calls run the chain twice or never complete. So the pipeline
+/// proceeds Castle's invocation only from inside that call, on its thread, and every other
+/// <c>next</c> - after an <see langword="await"/>, a retry, another thread - reaches the action
+/// through a second call on the proxy that skips the chain.
 /// </para>
 /// </remarks>
 public interface IStoreActionInterceptor
