@@ -169,6 +169,11 @@ public class MainViewModel : INotifyPropertyChanged
         };
         _ = RefreshAiStatusAsync();
 
+        // The Activated and RouteRequested handlers below append to the UI-bound LifecycleEvents
+        // collection directly, with no Dispatcher call of their own: Windows reports a toast
+        // click on a background thread, but INotificationService marshals it to the UI thread
+        // before raising Activated, and the push client raises RouteRequested from that
+        // already-marshalled event (or from the fallback window's own click, on the UI thread).
         _notifications.Activated += (sender, args) =>
             LogLifecycleEvent(args.Arguments is null
                 ? $"Notification activated ({args.Title})"

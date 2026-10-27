@@ -3,6 +3,8 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Runtime.ExceptionServices;
+using System.Windows.Threading;
 using Barbatos.Wpf.Notifications;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -205,6 +207,33 @@ public class NotificationFeatureTests
         Assert.Equal("page=details", received?.Arguments);
     }
 
+    // Windows raises toast activations on a background thread (the Toolkit's
+    // ToastNotificationManagerCompat.OnActivated), and a typical handler appends to a UI-bound
+    // ObservableCollection, which throws off the dispatcher thread. The service must hand the
+    // event to the application dispatcher - the one Build() bound to this test's thread.
+    [Fact]
+    public void ActivatedRaisedOnAWorkerThreadReachesHandlersOnTheApplicationDispatcherThread()
+    {
+        var (service, platform) = BuildService();
+
+        var frame = new DispatcherFrame();
+        int? handlerThreadId = null;
+        NotificationActivatedEventArgs? received = null;
+        service.Activated += (sender, args) =>
+        {
+            handlerThreadId = Environment.CurrentManagedThreadId;
+            received = args;
+            frame.Continue = false;
+        };
+
+        RaiseOnWorkerThread(() => platform.RaiseActivated("Title", "Message", "page=details"));
+        PushFrame(frame, TimeSpan.FromSeconds(10));
+
+        Assert.Equal(Environment.CurrentManagedThreadId, handlerThreadId);
+        Assert.Equal("Title", received?.Title);
+        Assert.Equal("page=details", received?.Arguments);
+    }
+
     [Fact]
     public void AvailabilityReflectsThePlatform()
     {
@@ -225,6 +254,60 @@ public class NotificationFeatureTests
         service.OpenSystemSettings();
 
         Assert.Equal(1, platform.OpenSystemSettingsCallCount);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="raise"/> on a dedicated thread (not the pool, which can hand the work
+    /// back to this thread) and rethrows its failure here, where xUnit can report it.
+    /// </summary>
+    static void RaiseOnWorkerThread(Action raise)
+    {
+        ExceptionDispatchInfo? failure = null;
+
+        var worker = new Thread(() =>
+        {
+            try
+            {
+                raise();
+            }
+            catch (Exception ex)
+            {
+                failure = ExceptionDispatchInfo.Capture(ex);
+            }
+        });
+        worker.Start();
+
+        Assert.True(worker.Join(TimeSpan.FromSeconds(10)), "The worker thread did not finish.");
+        failure?.Throw();
+    }
+
+    /// <summary>
+    /// Pumps this thread's dispatcher until <paramref name="frame"/> is ended, or fails the test
+    /// once <paramref name="timeout"/> passes - a frame only the code under test can end would
+    /// otherwise hang the whole run when that code regresses.
+    /// </summary>
+    static void PushFrame(DispatcherFrame frame, TimeSpan timeout)
+    {
+        var timedOut = false;
+        var timer = new DispatcherTimer { Interval = timeout };
+        timer.Tick += (sender, args) =>
+        {
+            timer.Stop();
+            timedOut = true;
+            frame.Continue = false;
+        };
+        timer.Start();
+
+        try
+        {
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timer.Stop();
+        }
+
+        Assert.False(timedOut, $"Nothing ended the dispatcher frame within {timeout}.");
     }
 
     static (INotificationService Service, FakeNotificationPlatform Platform) BuildService(Action<NotificationOptions>? configure = null)

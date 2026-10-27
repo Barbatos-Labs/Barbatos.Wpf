@@ -22,6 +22,13 @@ public interface IPushNotificationService
     event EventHandler<PushNotificationReceivedEventArgs>? NotificationReceived;
 
     /// <summary>Occurs when the user activates a notification whose action is <see cref="PushNotificationActionType.Route"/>.</summary>
+    /// <remarks>
+    /// Raised on the UI thread, so a handler can navigate directly: a toast click arrives through
+    /// <see cref="Notifications.INotificationService.Activated"/>, which marshals Windows'
+    /// background-thread activation callback to the application dispatcher, and a click on the
+    /// built-in fallback window happens on the UI thread already. A replacement
+    /// <see cref="IPushNotificationFallbackPresenter"/> decides the thread for its own clicks.
+    /// </remarks>
     event EventHandler<PushNotificationRouteRequestedEventArgs>? RouteRequested;
 
     /// <summary>

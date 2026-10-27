@@ -1,6 +1,6 @@
 # Barbatos.Wpf.Core
 
-![Barbatos.Wpf.Core logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/core-logo.svg?raw=true)
+![Barbatos.Wpf.Core logo](https://raw.githubusercontent.com/Barbatos-Labs/Barbatos.Wpf/main/build/core-logo.svg)
 
 ### *A modern application host and ready-made platform services for WPF*
 
@@ -40,10 +40,12 @@ registered in the same container.**
   * [Closing other dialogs, without losing in-progress work](#closing-other-dialogs-without-losing-in-progress-work)
   * [Preventing a double-click from opening a dialog twice](#preventing-a-double-click-from-opening-a-dialog-twice)
 * **[SplashScreen](#splashscreen)**
+  * [Loading important data before the main window ever appears](#loading-important-data-before-the-main-window-ever-appears)
   * [Full customization](#full-customization)
   * [Showing it conditionally](#showing-it-conditionally)
   * [Avoiding flicker: minimum display duration](#avoiding-flicker-minimum-display-duration)
 * **[Periodic services](#periodic-services)**
+  * [Registering services after startup](#registering-services-after-startup)
 * **[State management (Barbatos.Wpf.Apsu)](#state-management-barbatoswpfapsu)**
   * [Stores](#stores)
   * [Getters](#getters)
@@ -59,6 +61,9 @@ registered in the same container.**
   * [Repository layout](#repository-layout)
 * **[API Reference](#api-reference)**
 * **[Community](#community)**
+  * [Maintainers](#maintainers)
+  * [Support](#support)
+  * [License](#license)
 
 ---
 
@@ -176,13 +181,31 @@ public static class WpfProgram
 `ILogger<T>`/`ILoggerFactory` pair if you never touch it, so consumers never receive
 `null`).
 
+**Add a logging provider.** Every optional desktop feature reports its failures only as log
+entries — a global hotkey another app already owns, a periodic run that threw, a push
+connection that could not start — and with no provider registered (the no-op pair, or
+`builder.Logging` touched but given no provider) those entries go nowhere. Core deliberately
+ships no provider of its own, so add one; during development the debug provider from the
+`Microsoft.Extensions.Logging.Debug` package, which writes to the debugger's Output window, is
+enough (the Core sample's `WpfProgram.cs` does exactly this):
+
+```csharp
+builder.Logging.AddDebug();
+```
+
+A shipped app usually also wants a provider that persists, such as a file or the Windows event
+log.
+
 ### Lifecycle events
 
 Application events (`OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`,
 `OnDispatcherUnhandledException`, `OnExit`) and window events (`OnWindowCreated`,
 `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`,
-`OnWindowClosing`, `OnWindowClosed`) are surfaced through `ILifecycleEventService`, and every
-window gets its own service scope (with `IWpfInitializeScopedService` support).
+`OnWindowClosing`, `OnWindowClosed`) are surfaced through `ILifecycleEventService`. Window
+events fire for every `Window` in the app — the splash screen, dialogs and push-notification
+fallback popups included — so check which window it is before acting: the sample's
+minimize-to-tray handler returns early unless `window is MainWindow`, since cancelling
+`Closing` on any other window would leave it hidden but alive.
 
 ```csharp
 builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
@@ -191,8 +214,14 @@ builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
 ```
 
 `IWpfInitializeService` runs once during `Build()`; `IWpfInitializeScopedService` runs once
-per window scope — both are the WPF counterparts of `IMauiInitializeService`/
-`IMauiInitializeScopedService`.
+per window, the first time it raises `Loaded` — both are the WPF counterparts of
+`IMauiInitializeService`/`IMauiInitializeScopedService`. The per-window DI scope behind the
+latter is private to `WpfApplication`: it exists to run those initializers (and resolve that
+window's scoped `IDispatcher`) and is disposed when the window closes. App code cannot resolve
+from it — `Services` is always the root provider, and `Build()` creates the container without
+scope validation, so a service registered with `AddScoped` resolves there as one app-wide
+instance, not one per window. Register per-window state as transient instead, or create your
+own scope.
 
 ### Dispatching
 
@@ -206,13 +235,15 @@ registered app-wide (singleton) and per-window (scoped), plus the `DispatchAsync
 `HostingEnvironment`) resolves `EnvironmentName` the same way
 `Microsoft.Extensions.Hosting.HostBuilder` does: `WpfAppBuilder` adds an environment
 variables configuration source with the `DOTNET_` prefix as the very first (lowest-priority)
-entry in `builder.Configuration`, then reads `HostDefaults.EnvironmentKey` from it once,
-before any of your own configuration sources run. That means:
+entry in `builder.Configuration`, then reads `HostDefaults.EnvironmentKey` from the whole
+configuration once, lazily — the first time you access `builder.Environment` (or, if you never
+do, when `IHostEnvironment` is first resolved from the built container). That means:
 
 * Setting the `DOTNET_ENVIRONMENT` environment variable (e.g. `DOTNET_ENVIRONMENT=Staging`)
   before launching the app sets `builder.Environment.EnvironmentName`, with no code required.
-* Any configuration source you add that also sets the `environment` key overrides it —
-  including sources added *before* you first read `builder.Environment`:
+* Any configuration source that also sets the `environment` key overrides it, as long as it
+  is added *before* you first read `builder.Environment` — a source added after that first
+  read is never seen:
 
   ```csharp
   var builder = WpfApp.CreateBuilder();
@@ -223,9 +254,9 @@ before any of your own configuration sources run. That means:
 
   // builder.Environment.EnvironmentName == "Staging" from here on.
   ```
-* Unlike the WPF counterpart's previous behavior, `EnvironmentName` is a normal settable
-  property — `builder.Environment.EnvironmentName = "Staging";` works directly, and the value
-  is fixed once `Build()` has read it (it does not keep re-reading the environment variable).
+* `EnvironmentName` is a normal settable property — `builder.Environment.EnvironmentName =
+  "Staging";` works directly, at any time. Apart from that assignment the value stays what the
+  first read produced: it does not keep re-reading the environment variable or configuration.
 * `WpfHostEnvironment` also exposes `HostEnvironmentEnvExtensions` from
   `Microsoft.Extensions.Hosting` for free — `builder.Environment.IsDevelopment()`,
   `.IsProduction()`, `.IsEnvironment("Staging")`, etc.
@@ -626,17 +657,22 @@ registered when its `Configure...` method is called, binds its own configuration
 | Feature | Builder method | Options section | Runtime service | Enabled by default? |
 | --- | --- | --- | --- | --- |
 | Single instance (block duplicate launches) | `ConfigureSingleInstance(...)` | `Barbatos:SingleInstance` | `ISingleInstanceService` | **Yes** |
-| Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` | No |
+| Run on startup (registry `Run` key) | `ConfigureRunOnStartup(...)` | `Barbatos:RunOnStartup` | `IRunOnStartupService` | No |
 | System tray icon (`Shell_NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` | No |
-| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` | No |
-| Push notifications (adaptive toast, images/buttons/navigation) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` | Yes |
-| Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
-| Realtime push notification listener (SignalR) | `ConfigurePushNotifications()` | `Barbatos:PushNotifications` | `IPushNotificationService` | Yes |
+| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake(...)` | `Barbatos:KeepAwake` | `IKeepAwakeService` | No |
+| Desktop notifications (adaptive Windows toast, images/buttons/navigation) | `ConfigureNotifications(...)` | `Barbatos:Notifications` | `INotificationService` | Yes |
+| Periodic background services | `ConfigurePeriodicServices<T>(...)` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
+| Realtime push notification listener (SignalR) | `ConfigurePushNotifications(...)` | `Barbatos:PushNotifications` | `IPushNotificationService` | Yes |
 | Keyboard shortcuts (in-app + `RegisterHotKey` global hotkeys) | `ConfigureInputSystem(...)` | `Barbatos:InputSystem` | `IInputSystemService` | Yes |
+| Dialogs (owner assignment, no duplicate opens, graceful close) — see [Dialogs](#dialogs) | `ConfigureDialogs(...)` | `Barbatos:Dialogs` | `IDialogService` | n/a (no on/off switch) |
 
 "Enabled by default" means what happens the moment you call the `Configure...` method with no
 further setup — every feature is still opt-in at the *builder* level (call the method, or the
 service isn't registered at all).
+
+These features report what goes wrong — a refused global hotkey, a failed periodic run, a push
+connection error — only through `ILogger`, so register a logging provider (see
+[Compose the host](#2-compose-the-host)) or those failures stay invisible.
 
 ```csharp
 builder.ConfigureSingleInstance();
@@ -691,7 +727,14 @@ Notes:
 - The tray icon supports a context menu, tooltip, click/double-click events, and balloon
   notifications (`ShowBalloonTip`); the sample uses it together with the `OnWindowClosing`
   lifecycle event to implement minimize-to-tray, showing a balloon each time the window is
-  hidden so a hidden window doesn't look identical to a closed app.
+  hidden so a hidden window doesn't look identical to a closed app. That handler acts only when
+  `window is MainWindow`: lifecycle window events fire for every window, and cancelling a
+  dialog's or a fallback popup's close would hide it instead (with `IDialogService` still
+  tracking the hidden dialog as open). It matches the window's type rather than
+  `Application.MainWindow` because WPF makes the first window created — the splash screen —
+  `Application.MainWindow` until it closes (checked in dotnet/wpf's `Window.cs`), so a
+  reference check would hide the splash instead of closing it whenever the tray icon is
+  already visible at startup.
 - `RunOnStartup` state is persisted by the OS registry; the other toggles can be
   persisted by writing their configuration sections back to a user settings file that is
   loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
@@ -710,6 +753,14 @@ Notes:
     notification body itself (as opposed to a button); read it back from
     `NotificationActivatedEventArgs.Arguments` in the `Activated` handler to route the user
     to the relevant place in the app.
+  - `Activated` is raised on the UI thread. Windows reports toast clicks on a background thread,
+    and the service marshals each one to the application dispatcher first, so a handler can
+    navigate or append to a bound collection directly — the sample's handler does the latter.
+  - `NotificationActivatedEventArgs.Title`/`Message` are the clicked toast's own text, looked up
+    by an id the default toast platform adds to each toast's activation arguments. Windows hands
+    back only those arguments, never the text, so a toast left in the notification center by an
+    *earlier run* of the app (or one more than 100 toasts old) reports empty strings. Route on
+    `Arguments`, which survives restarts; treat `Title`/`Message` as display text.
   - Per-project branding: `NotificationOptions.IconPath` sets a persistent circular app
     logo overlay shown on every notification (defaults to the executable's icon); per-call
     visuals (image, buttons, navigation) are set per `NotificationContent`/`Show` call, so
@@ -757,7 +808,9 @@ Notes:
     so you always know when something arrived even if you never touch the UI event.
   - A notification's `Action` (`Url`/`Setting`/`Route`/`None`) is dispatched automatically for
     `Url`/`Setting` (opened via `Launcher`); `Route` raises `RouteRequested` instead, since only
-    your app knows its own screens/navigation.
+    your app knows its own screens/navigation. `RouteRequested` is raised on the UI thread for
+    both a toast click (it comes through `INotificationService.Activated`) and a click on the
+    built-in fallback window, so the handler can navigate directly.
   - The default transport's own `HandshakeMethodName`/`NotificationMethodName`/
     `AcknowledgeMethodName` (defaulting to `"RegisterDevice"`/`"ReceiveNotification"`/
     `"AcknowledgeNotification"`) are configurable via `ConfigurePushNotifications`'s
@@ -967,8 +1020,9 @@ This is a straightforward reordering, not a new API - the only two things that m
 already true of any DI-registered ViewModel: it must be a **singleton** (a scoped/transient
 registration would hand `MainWindow`'s constructor a second, still-unloaded instance instead of
 the one already awaited above), and the slow work has to be something you can genuinely `await`
-(if your "slow work" is synchronous, an `IWpfInitializeService` - covered by the splash the same
-way, since it also runs before `CreateWpfApp()` - is the better fit; see "Hosting" above).
+(if your "slow work" is synchronous, an `IWpfInitializeService` is the better fit - it runs
+inside `CreateWpfApp()`, during `Build()`, after the splash screen is already showing, so the
+splash covers it too, though without animating; see [Lifecycle events](#lifecycle-events)).
 
 Weigh this against just showing the window immediately and letting that one section show its
 own loading state instead (a spinner, a skeleton) - blocking the *entire* app's startup on one

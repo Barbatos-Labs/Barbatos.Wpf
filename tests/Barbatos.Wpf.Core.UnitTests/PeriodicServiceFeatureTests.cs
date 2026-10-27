@@ -52,6 +52,10 @@ public class PeriodicServiceFeatureTests
             throw new InvalidOperationException("boom");
     }
 
+    // Generous next to the 50 ms intervals and immediate Once runs below: it only has to end a
+    // frame the scheduler failed to end, not time anything.
+    static readonly TimeSpan ScheduledRunTimeout = TimeSpan.FromSeconds(10);
+
     [Fact]
     public void FeatureIsNotRegisteredByDefault()
     {
@@ -241,7 +245,7 @@ public class PeriodicServiceFeatureTests
         Exception? error = new InvalidOperationException("sentinel");
         scheduler.ServiceExecuted += (sender, args) => (executed, error) = (args.Service, args.Error);
 
-        Dispatcher.PushFrame(frame);
+        PushFrame(frame, ScheduledRunTimeout);
 
         Assert.True(service.ExecuteCount >= 1);
 
@@ -275,7 +279,7 @@ public class PeriodicServiceFeatureTests
 
         var scheduler = wpfApp.Services.GetRequiredService<IPeriodicServiceScheduler>();
 
-        Dispatcher.PushFrame(frame);
+        PushFrame(frame, ScheduledRunTimeout);
 
         var status = Assert.Single(scheduler.Services);
         Assert.Equal(1, status.RunCount);
@@ -318,7 +322,7 @@ public class PeriodicServiceFeatureTests
             frame.Continue = false;
         };
 
-        Dispatcher.PushFrame(frame);
+        PushFrame(frame, ScheduledRunTimeout);
 
         Assert.IsType<InvalidOperationException>(error);
         Assert.Equal("boom", error.Message);
@@ -337,7 +341,7 @@ public class PeriodicServiceFeatureTests
         builder.ConfigurePeriodicServices();
         var wpfApp = builder.Build();
 
-        Dispatcher.PushFrame(frame);
+        PushFrame(frame, ScheduledRunTimeout);
 
         Assert.True(service.ExecuteCount >= 1);
         Assert.False(service.LastCancellationToken.IsCancellationRequested);
@@ -345,6 +349,36 @@ public class PeriodicServiceFeatureTests
         wpfApp.Dispose();
 
         Assert.True(service.LastCancellationToken.IsCancellationRequested);
+    }
+
+    /// <summary>
+    /// Pumps this thread's dispatcher until <paramref name="frame"/> is ended, or fails the test
+    /// once <paramref name="timeout"/> passes. Only the scheduler's own run ends these frames, so
+    /// without the timer a scheduler that never runs the service would hang the whole test run
+    /// instead of failing one test.
+    /// </summary>
+    static void PushFrame(DispatcherFrame frame, TimeSpan timeout)
+    {
+        var timedOut = false;
+        var timer = new DispatcherTimer { Interval = timeout };
+        timer.Tick += (sender, args) =>
+        {
+            timer.Stop();
+            timedOut = true;
+            frame.Continue = false;
+        };
+        timer.Start();
+
+        try
+        {
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timer.Stop();
+        }
+
+        Assert.False(timedOut, $"The periodic service did not run within {timeout}.");
     }
 
     static IPeriodicServiceScheduler BuildScheduler(IWpfPeriodicService service)

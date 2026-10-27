@@ -77,7 +77,7 @@ builder.ConfigureTrayIcon(options =>
   turn balloons off per app; nothing reports that. Title/text truncate at 63/255 chars.
 - The sample wires double-click to reopen the window in `App.OnStartup`
   (`trayIcon.DoubleClicked += (sender, args) => ShowMainWindow();`).
-- Minimize-to-tray: [SKILL.md](SKILL.md#lifecycle-events). Filter to the main window.
+- Minimize-to-tray: [SKILL.md](SKILL.md#lifecycle-events). Filter to the main window's type.
 
 ## Toast notifications
 
@@ -110,12 +110,17 @@ notifications.Show(new NotificationContent
 - `NotificationSeverity.Error` uses the `Alarm` scenario: stays until dismissed, bypasses Focus
   Assist. `NotificationOptions.Timeout` above 7 seconds selects the long duration; Windows may
   ignore it.
-- `NotificationButton(text, arguments)` raises `Activated` with those arguments;
-  `NotificationButton(text, launchUri)` opens the URI without raising anything. Keep to five
-  buttons (the toast limit).
-- `Activated` (`NotificationActivatedEventArgs`): route on `Arguments`. `Title`/`Message` are
-  those of the **most recently shown** toast, not necessarily the clicked one. Raised from the
-  Toolkit's activation callback without marshalling - assume a background thread.
+- `NotificationButton(text, arguments)` raises `Activated` with those arguments - and a button
+  given none reports the body's `NotificationContent.Arguments` (the Toolkit copies the toast's
+  arguments onto every button lacking that key), so give each button its own when the handler
+  must tell them apart. `NotificationButton(text, launchUri)` opens the URI without raising
+  anything. Keep to five buttons (the toast limit).
+- `Activated` (`NotificationActivatedEventArgs`): route on `Arguments`, the only part that
+  survives an app restart. `Title`/`Message` are the clicked toast's own text, looked up by an id
+  the platform adds to each toast's activation arguments - empty for a toast an earlier run
+  showed, or one more than 100 toasts old (Windows hands back only the arguments). Raised on the
+  UI thread: the service marshals the Toolkit's background activation callback to the application
+  dispatcher, so handlers may touch bound collections directly.
 
 ## Push notifications client
 
@@ -154,7 +159,8 @@ builder.ConfigurePushNotifications(
 - The SignalR transport re-sends its handshake after every automatic reconnect (new connection
   id = anonymous client otherwise). Do not remove it.
 - Actions: `Url`/`Setting` open through `ILauncher`; `Route` raises `RouteRequested` (only the app
-  knows its screens); `None` does nothing. A toast click reaches `RouteRequested` off the UI thread.
+  knows its screens); `None` does nothing. `RouteRequested` arrives on the UI thread for a toast
+  click and a fallback-window click alike.
 - Custom payload: implement `IPushNotification` (`Title`, `Body`, `ImageUrl`, `Action`,
   optional `ReceiptId`) and call `ConfigurePushNotifications<TNotification>()`. JSON is read with
   web defaults (case-insensitive names, numbers in strings).
@@ -328,7 +334,7 @@ _dialogService.Show(dialog, owner: someWindow, key: "customer-42", closeOthers: 
 | Tray menu or icon change does nothing | Icon, menu and tooltip are read once, on the first show | `SetToolTip` for text; own `ITrayIconPlatform` for a dynamic menu |
 | Tray icon never appears | `TrayIconOptions.Enabled` defaults to `false` | `Barbatos:TrayIcon:Enabled`, or `SetVisible(true)` |
 | Balloon never shows | Icon hidden (no-op), or the user is away / in quiet time / full-screen | Nothing to query; do not rely on it for critical messages |
-| Activated handler shows the wrong title | `Title`/`Message` are the last shown toast's | Route on `Arguments` |
+| `Activated` reports an empty `Title`/`Message` | The toast was shown by an earlier run (or more than 100 toasts ago); Windows returns only its arguments | Route on `Arguments`; treat `Title`/`Message` as display text |
 | Periodic job runs as soon as the app starts | No `StartTime` on `Once`/`Hourly`/`Custom`, or neither `TimeOfDay` nor `StartTime` on a calendar schedule | Set `StartTime`/`TimeOfDay` |
 | `Once` job runs on every launch | Run history is per process | Persist "already done" yourself (`barbatos-wpf-essentials` Preferences) |
 | UI freezes every N minutes | `ExecuteAsync` runs on the UI thread | `await Task.Run(..., cancellationToken)` |

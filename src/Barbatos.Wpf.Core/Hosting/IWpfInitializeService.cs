@@ -21,11 +21,13 @@ public interface IWpfInitializeService
 }
 
 /// <summary>
-/// Represents a service that is initialized during the window construction.
+/// Represents a service that is initialized once for every window.
 /// </summary>
 /// <remarks>
-/// This service is initialized during the creation of a window. It is
-/// executed once per window using the window-scoped service provider.
+/// This service is initialized the first time a window raises <c>Loaded</c>, not when it is
+/// constructed. It is executed once per window using that window's scoped service provider -
+/// a scope <see cref="WpfApplication"/> creates for exactly this purpose, disposes when the
+/// window closes, and exposes nowhere else.
 /// This is the WPF counterpart of .NET MAUI's <c>IMauiInitializeScopedService</c>.
 /// </remarks>
 public interface IWpfInitializeScopedService

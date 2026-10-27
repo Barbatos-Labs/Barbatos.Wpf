@@ -3,6 +3,8 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Runtime.ExceptionServices;
+using System.Windows.Threading;
 using Barbatos.Wpf.Notifications;
 using Barbatos.Wpf.PushNotifications;
 using Microsoft.Extensions.DependencyInjection;
@@ -334,6 +336,42 @@ public class PushNotificationFeatureTests
         Assert.Empty(launcher.TryOpened);
     }
 
+    // A route handler navigates, which must happen on the UI thread - and a real toast click
+    // arrives on Windows' background activation thread. RouteRequested is reached through
+    // INotificationService.Activated, so it inherits that service's marshalling.
+    [Fact]
+    public void ARouteToastClickedOnAWorkerThreadRaisesRouteRequestedOnTheApplicationDispatcherThread()
+    {
+        var (service, _, notifications, _, launcher) = BuildService();
+
+        var notification = new PushNotification
+        {
+            AppId = "A",
+            Title = "Title",
+            Body = "Body",
+            Action = new PushNotificationAction { ActionType = PushNotificationActionType.Route, ActionTarget = "settings" },
+        };
+        service.SimulateNotificationAsync(notification).GetAwaiter().GetResult();
+        var shown = Assert.Single(notifications.Shown).Content;
+
+        var frame = new DispatcherFrame();
+        int? handlerThreadId = null;
+        PushNotificationRouteRequestedEventArgs? routeArgs = null;
+        service.RouteRequested += (_, args) =>
+        {
+            handlerThreadId = Environment.CurrentManagedThreadId;
+            routeArgs = args;
+            frame.Continue = false;
+        };
+
+        RaiseOnWorkerThread(() => notifications.RaiseActivated(shown.Title, shown.Message, shown.Arguments));
+        PushFrame(frame, TimeSpan.FromSeconds(10));
+
+        Assert.Equal(Environment.CurrentManagedThreadId, handlerThreadId);
+        Assert.Equal("settings", routeArgs?.Route);
+        Assert.Empty(launcher.TryOpened);
+    }
+
     [Fact]
     public void ActivatingANoneActionDispatchesNothing()
     {
@@ -384,6 +422,60 @@ public class PushNotificationFeatureTests
 
         var exception = Record.Exception(() => wpfApp.Dispose());
         Assert.Null(exception);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="raise"/> on a dedicated thread (not the pool, which can hand the work
+    /// back to this thread) and rethrows its failure here, where xUnit can report it.
+    /// </summary>
+    static void RaiseOnWorkerThread(Action raise)
+    {
+        ExceptionDispatchInfo? failure = null;
+
+        var worker = new Thread(() =>
+        {
+            try
+            {
+                raise();
+            }
+            catch (Exception ex)
+            {
+                failure = ExceptionDispatchInfo.Capture(ex);
+            }
+        });
+        worker.Start();
+
+        Assert.True(worker.Join(TimeSpan.FromSeconds(10)), "The worker thread did not finish.");
+        failure?.Throw();
+    }
+
+    /// <summary>
+    /// Pumps this thread's dispatcher until <paramref name="frame"/> is ended, or fails the test
+    /// once <paramref name="timeout"/> passes - a frame only the code under test can end would
+    /// otherwise hang the whole run when that code regresses.
+    /// </summary>
+    static void PushFrame(DispatcherFrame frame, TimeSpan timeout)
+    {
+        var timedOut = false;
+        var timer = new DispatcherTimer { Interval = timeout };
+        timer.Tick += (sender, args) =>
+        {
+            timer.Stop();
+            timedOut = true;
+            frame.Continue = false;
+        };
+        timer.Start();
+
+        try
+        {
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timer.Stop();
+        }
+
+        Assert.False(timedOut, $"Nothing ended the dispatcher frame within {timeout}.");
     }
 
     static (IPushNotificationService Service, FakePushNotificationTransport Transport, FakeNotificationPlatform Notifications, FakePushNotificationFallbackPresenter Fallback, FakeLauncher Launcher) BuildService(Action<PushNotificationOptions>? configure = null)

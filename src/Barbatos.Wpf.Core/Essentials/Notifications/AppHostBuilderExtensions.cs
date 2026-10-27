@@ -12,10 +12,12 @@ namespace Barbatos.Wpf.Hosting;
 public static partial class AppHostBuilderExtensions
 {
     /// <summary>
-    /// Adds the optional push notifications feature. The feature can be configured from
-    /// code via <paramref name="configure"/> and/or from the <c>Barbatos:Notifications</c>
-    /// configuration section (configuration values override code values), and toggled at
-    /// runtime through <see cref="INotificationService"/>.
+    /// Adds the optional desktop (Windows toast) notifications feature - not to be confused
+    /// with <c>ConfigurePushNotifications</c>, the realtime push client that displays through
+    /// this one. The feature can be configured from code via <paramref name="configure"/>
+    /// and/or from the <c>Barbatos:Notifications</c> configuration section (configuration
+    /// values override code values), and toggled at runtime through
+    /// <see cref="INotificationService"/>.
     /// </summary>
     public static WpfAppBuilder ConfigureNotifications(this WpfAppBuilder builder, Action<NotificationOptions>? configure = null)
     {

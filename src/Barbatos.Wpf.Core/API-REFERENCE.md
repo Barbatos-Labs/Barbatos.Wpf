@@ -7,7 +7,7 @@ after the official .NET API documentation.
 
 | Namespace | Description |
 |-----------|-------------|
-| **[`Barbatos.Wpf.Hosting`](#barbatoswpfhosting-namespace)** | The application host: `WpfApp`/`WpfAppBuilder`, initialization services, Essentials wiring, and the optional desktop features (single instance, run on startup, tray icon, keep awake, notifications, periodic services). |
+| **[`Barbatos.Wpf.Hosting`](#barbatoswpfhosting-namespace)** | The application host: `WpfApp`/`WpfAppBuilder`, initialization services, Essentials wiring, periodic services, the splash screen, and every optional feature's `ConfigureXxx` entry point. |
 | **[`Barbatos.Wpf.LifecycleEvents`](#barbatoswpflifecycleevents-namespace)** | The lifecycle event system and its WPF-specific (`WpfLifecycle`) application/window delegates. |
 | **[`Barbatos.Wpf.Dispatching`](#barbatoswpfdispatching-namespace)** | Dispatcher abstractions (`IDispatcher`, `IDispatcherTimer`, `IDispatcherProvider`) backed by the WPF `Dispatcher`. |
 | **[`Barbatos.Wpf.ApplicationModel`](#barbatoswpfapplicationmodel-namespace)** | App info, publisher info, version tracking, app actions, the launcher, permissions, and the shared Essentials exception types. |
@@ -20,7 +20,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.Power`](#barbatoswpfpower-namespace)** | The keep-awake optional feature. |
 | **[`Barbatos.Wpf.Startup`](#barbatoswpfstartup-namespace)** | The run-on-startup optional feature. |
 | **[`Barbatos.Wpf.Input`](#barbatoswpfinput-namespace)** | The keyboard-shortcut optional feature: in-app `KeyBinding` and OS-level `GlobalKeyBinding` unified under one `InputAction` model, plus Hold/Tap/MultiTap/Press interactions. |
-| **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The push notifications optional feature. |
+| **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The desktop (Windows toast) notifications optional feature. |
 | **[`Barbatos.Wpf.PushNotifications`](#barbatoswpfpushnotifications-namespace)** | The realtime push-notification client optional feature (SignalR). |
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
 | **[`Barbatos.Wpf.Dialogs`](#barbatoswpfdialogs-namespace)** | The dialog service: owner assignment, duplicate-open prevention, and graceful bulk-close for child windows. |
@@ -42,7 +42,9 @@ every optional desktop feature.
 | [`WpfAppBuilder`](#wpfappbuilder-class) | Builds a `WpfApp`; implements `IHostApplicationBuilder`. |
 | [`WpfHostEnvironment`](#wpfhostenvironment-class) | The WPF `IHostEnvironment` implementation. |
 | `WpfApplication` | A `System.Windows.Application` subclass that owns the built `WpfApp` and forwards lifecycle events. See [splash screen support](#wpfapplication-splash-screen-support) below. |
+| `AppHostBuilderExtensions` | Static (partial) class holding every feature's `ConfigureXxx(this WpfAppBuilder, ...)` entry point — listed under Extension Methods below. |
 | `EssentialsExtensions` | `UseEssentials()` / `ConfigureEssentials(...)` — registers every Essentials service and app-action activation detection. |
+| `WpfAppExtensions` | `InitializeAppServices(this WpfApp)` runs every `IWpfInitializeService` against the root provider (`Build()` calls it); `InitializeScopedServices(this IServiceProvider)` runs every `IWpfInitializeScopedService` against a window's scoped provider (`WpfApplication` calls it). |
 | `PeriodicServiceOptions` | Options for `ConfigurePeriodicServices` (`Enabled`, `Schedules`). |
 | [`PeriodicSchedule`](#periodicschedule-class) | When and how often a periodic service runs: `Frequency`, `StartTime`, `EndTime`, `TimeOfDay`, `DaysOfWeek`, `DayOfMonth`, `Interval`, `Description`. |
 | `PeriodicServiceStatus` | Live status of a registered periodic service (`Name`, `Schedule`, `NextRunTime`, `IsCompleted`, `LastRunTime`, `RunCount`). |
@@ -57,7 +59,7 @@ every optional desktop feature.
 | Interface | Description |
 |-----------|-------------|
 | `IWpfInitializeService` | Runs once during `WpfAppBuilder.Build()`. |
-| `IWpfInitializeScopedService` | Runs once per window scope. |
+| `IWpfInitializeScopedService` | Runs once per window, on its first `Loaded`, against that window's private scope. |
 | `IWpfPlatformApplication` | Exposes the running `WpfApp` from `System.Windows.Application`. |
 | `IEssentialsBuilder` | Configures app actions and version tracking from `ConfigureEssentials`. |
 | [`IWpfPeriodicService`](#iwpfperiodicservice-interface) | A service executed on a recurring schedule. |
@@ -66,20 +68,32 @@ every optional desktop feature.
 
 ### Extension Methods
 
-- **`ConfigureDialogs(this WpfAppBuilder, Action<DialogOptions>? = null)`** — registers `IDialogService` (`Barbatos.Wpf.Dialogs`).
-- **`ConfigureSingleInstance(this WpfAppBuilder, Action<SingleInstanceOptions>? = null)`** — registers `ISingleInstanceService` (`Barbatos.Wpf.SingleInstance`); enabled by default the moment this is called.
-- **`ConfigureRunOnStartup(this WpfAppBuilder, Action<RunOnStartupOptions>? = null)`** — registers `IRunOnStartupService` (`Barbatos.Wpf.Startup`).
-- **`ConfigureTrayIcon(this WpfAppBuilder, Action<TrayIconOptions>? = null)`** — registers `ITrayIconService` (`Barbatos.Wpf.Tray`).
-- **`ConfigureKeepAwake(this WpfAppBuilder, Action<KeepAwakeOptions>? = null)`** — registers `IKeepAwakeService` (`Barbatos.Wpf.Power`).
-- **`ConfigureNotifications(this WpfAppBuilder, Action<NotificationOptions>? = null)`** — registers `INotificationService` (`Barbatos.Wpf.Notifications`).
-- **`ConfigurePushNotifications(this WpfAppBuilder, Action<PushNotificationOptions>? = null)`** / **`ConfigurePushNotifications<TNotification>(this WpfAppBuilder, Action<PushNotificationOptions>? = null)`** — registers `IPushNotificationService` (`Barbatos.Wpf.PushNotifications`); the generic overload uses `TNotification` as the payload shape instead of the default `PushNotification`.
-- **`ConfigurePeriodicServices(this WpfAppBuilder)`** / **`ConfigurePeriodicServices<TService>(this WpfAppBuilder)`** — registers `IPeriodicServiceScheduler` and (for the generic overload) `TService` as an `IWpfPeriodicService`.
-- **`UseEssentials(this WpfAppBuilder)`** — registers `IAppInfo`, `IPublisherInfo`, `IDeviceIdentity`, `IDeviceInfo`, `IFileSystem`, `IPreferences`, `ISecureStorage`, `IVersionTracking`, `IConnectivity`, `IDeviceDisplay`, `IEmail`, `IContacts`, `IGeolocation`, `IAppActions`, `ILauncher`; called by default when the builder is created with defaults.
-- **`ConfigureEssentials(this WpfAppBuilder, Action<IEssentialsBuilder>? = null)`** — configures app actions (`AddAppAction`, `OnAppAction`) and `UseVersionTracking()`.
+All on `AppHostBuilderExtensions` unless noted; each returns the builder, for chaining.
+
+- **`ConfigureDialogs(this WpfAppBuilder, Action<DialogOptions>? configure = null)`** — registers `IDialogService` (`Barbatos.Wpf.Dialogs`).
+- **`ConfigureSingleInstance(this WpfAppBuilder, Action<SingleInstanceOptions>? configure = null)`** — registers `ISingleInstanceService` (`Barbatos.Wpf.SingleInstance`); enabled by default the moment this is called.
+- **`ConfigureRunOnStartup(this WpfAppBuilder, Action<RunOnStartupOptions>? configure = null)`** — registers `IRunOnStartupService` (`Barbatos.Wpf.Startup`).
+- **`ConfigureTrayIcon(this WpfAppBuilder, Action<TrayIconOptions>? configure = null)`** — registers `ITrayIconService` (`Barbatos.Wpf.Tray`).
+- **`ConfigureKeepAwake(this WpfAppBuilder, Action<KeepAwakeOptions>? configure = null)`** — registers `IKeepAwakeService` (`Barbatos.Wpf.Power`).
+- **`ConfigureNotifications(this WpfAppBuilder, Action<NotificationOptions>? configure = null)`** — registers `INotificationService` (`Barbatos.Wpf.Notifications`), the desktop (toast) notifications feature.
+- **`ConfigurePushNotifications(this WpfAppBuilder, Action<PushNotificationOptions>? configure = null, Action<SignalRPushNotificationOptions>? configureSignalR = null)`** / **`ConfigurePushNotifications<TNotification>(...)`** (same parameters; `TNotification : class, IPushNotification`) — registers `IPushNotificationService` (`Barbatos.Wpf.PushNotifications`) and calls `ConfigureNotifications()` itself; the generic overload uses `TNotification` as the payload shape instead of the default `PushNotification`. `configureSignalR` only affects the default SignalR transport.
+- **`ConfigurePeriodicServices(this WpfAppBuilder, Action<PeriodicServiceOptions>? configure = null)`** / **`ConfigurePeriodicServices<TService>(this WpfAppBuilder, Action<PeriodicServiceOptions>? configure = null)`** (`TService : class, IWpfPeriodicService`) — registers `IPeriodicServiceScheduler` and (for the generic overload) `TService` as a singleton `IWpfPeriodicService`.
+- **`ConfigureInputSystem(this WpfAppBuilder, Action<InputSystemOptions>? configure = null)`** — registers `IInputSystemService` (`Barbatos.Wpf.Input`).
+- **`ConfigureMcp(this WpfAppBuilder, Action<McpOptions>? configure = null, Action<AiProviderOptions>? configureProvider = null, Action<AiAgentOptions>? configureAgent = null)`** — registers the MCP client and AI services; see [`Barbatos.Wpf.Mcp`](#barbatoswpfmcp-namespace).
+- **`ConfigureDispatching(this WpfAppBuilder)`** — registers the dispatching services; part of the builder defaults. See [`Barbatos.Wpf.Dispatching`](#barbatoswpfdispatching-namespace).
+- **`ConfigureLifecycleEvents(this WpfAppBuilder, Action<ILifecycleBuilder>? configureDelegate)`** — declared on `WpfAppHostBuilderExtensions` in the `Barbatos.Wpf.LifecycleEvents` namespace, not here; see [`Barbatos.Wpf.LifecycleEvents`](#barbatoswpflifecycleevents-namespace).
+- **`UseEssentials(this WpfAppBuilder)`** (on `EssentialsExtensions`) — registers `IAppInfo`, `IPublisherInfo`, `IDeviceIdentity`, `IDeviceInfo`, `IFileSystem`, `IPreferences`, `ISecureStorage`, `IVersionTracking`, `IConnectivity`, `IDeviceDisplay`, `IEmail`, `IContacts`, `IGeolocation`, `IAppActions`, `ILauncher`; called by default when the builder is created with defaults.
+- **`ConfigureEssentials(this WpfAppBuilder, Action<IEssentialsBuilder>? = null)`** (on `EssentialsExtensions`) — configures app actions (`AddAppAction`, `OnAppAction`) and `UseVersionTracking()`.
 
 Each `Configure...` feature method binds its options section (file values override code
 values) from the `Barbatos:{Feature}` configuration section — see
-[Optional desktop features](README.md#optional-desktop-features) in the README.
+[Optional desktop features](README.md#optional-desktop-features) in the README. Every
+platform seam (`ITrayIconPlatform`, `INotificationPlatform`, `IHotkeyPlatform`,
+`IStartupRegistrar`, `IPowerManager`, `IPushNotificationTransport`,
+`IPushNotificationFallbackPresenter`) is registered with `TryAddSingleton`, so an
+implementation registered *before* the `Configure...` call replaces the OS-backed default.
+These features report their failures only through `ILogger`; register a logging provider to
+see them.
 
 ---
 
@@ -137,10 +151,13 @@ public class WpfHostEnvironment : IHostEnvironment
 
 #### Properties
 
-- **`EnvironmentName`** (`string`, settable): defaults to `Environments.Production`; set once
-  by `WpfAppBuilder` from `HostDefaults.EnvironmentKey` (fed by the `DOTNET_` prefixed
-  environment variables configuration source), can be overridden from any configuration
-  source or directly in code. See [Configuring the hosting environment](README.md#configuring-the-hosting-environment).
+- **`EnvironmentName`** (`string`, settable): defaults to `Environments.Production`. `WpfAppBuilder`
+  creates the environment lazily and reads `HostDefaults.EnvironmentKey` from its configuration
+  once, at that moment — the first access of `WpfAppBuilder.Environment`, or (if the builder never
+  touches it) the first resolution of `IHostEnvironment` from the container. The `DOTNET_`-prefixed
+  environment variables source feeds that key at the lowest priority; a configuration source that
+  sets it overrides the variable only when added before that first read. Assignable directly in
+  code at any time. See [Configuring the hosting environment](README.md#configuring-the-hosting-environment).
 - **`ApplicationName`** (`string`, read-only, throws `NotSupportedException` on set): `AppInfo.Current.Name`.
 - **`ContentRootPath`** (`string`, read-only, throws `NotSupportedException` on set): `AppContext.BaseDirectory`.
 - **`ContentRootFileProvider`** (`IFileProvider`, read-only, throws `NotSupportedException` on set): a `PhysicalFileProvider` rooted at `ContentRootPath`.
@@ -273,30 +290,52 @@ The lifecycle event system: application and window events surfaced as typed dele
 
 | Type | Description |
 |------|-------------|
-| `ILifecycleEventService` | Resolves and invokes registered delegates by event name. |
-| `ILifecycleBuilder` | Registers delegates during `ConfigureLifecycleEvents`. |
-| `WpfLifecycle` | Static class of delegate types: `OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`, `OnDispatcherUnhandledException`, `OnExit`, `OnWindowCreated`, `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`, `OnWindowClosing`, `OnWindowClosed`. |
+| `ILifecycleEventService` | The registered delegates, by event name: **`GetEventDelegates<TDelegate>(string eventName)`** (`IEnumerable<TDelegate>`, in registration order, empty when none) and **`ContainsEvent(string eventName)`** (`bool`). Registered as a singleton by `ConfigureLifecycleEvents`. |
+| `ILifecycleBuilder` | Registers delegates during `ConfigureLifecycleEvents`: **`AddEvent<TDelegate>(string eventName, TDelegate action)`** (`where TDelegate : Delegate`). |
+| `LifecycleEventService` | The default implementation of both interfaces; its constructor takes the `IEnumerable<LifecycleEventRegistration>` that `ConfigureLifecycleEvents` registered and applies them in order. |
+| `LifecycleEventRegistration` | One `ConfigureLifecycleEvents` call's delegate (`new LifecycleEventRegistration(Action<ILifecycleBuilder>)`), registered as a singleton per call. |
+| `WpfLifecycle` | Static class of delegate types: `OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`, `OnDispatcherUnhandledException`, `OnExit`, `OnWindowCreated`, `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`, `OnWindowClosing`, `OnWindowClosed`. A built-in event's name is its delegate type's name. |
 | `IWpfLifecycleBuilder` | The fluent builder passed to `AddWpf(wpf => wpf.OnStartup(...)...)`. |
 
 ### Extension Methods
 
-- **`ConfigureLifecycleEvents(this WpfAppBuilder, Action<ILifecycleBuilder>?)`**
-- **`AddWpf(this ILifecycleBuilder, Action<IWpfLifecycleBuilder>)`**
-- **`AddEvent(this ILifecycleBuilder, string eventName, Delegate handler)`** — registers a custom, non-`WpfLifecycle` event.
-- **`ContainsEvent(this ILifecycleEventService, string eventName)`**
-- **`GetEventDelegates<TDelegate>(this ILifecycleEventService, string eventName)`**
-- **`InvokeEvents(this ILifecycleEventService, string eventName, ...)`**
+- **`WpfAppHostBuilderExtensions.ConfigureLifecycleEvents(this WpfAppBuilder, Action<ILifecycleBuilder>? configureDelegate)`** —
+  registers `ILifecycleEventService` once and adds `configureDelegate`'s delegates; every call's
+  delegates are kept, in call order. `null` only ensures the service is registered (the builder
+  defaults do this).
+- **`WpfLifecycleExtensions.AddWpf(this ILifecycleBuilder, Action<IWpfLifecycleBuilder> configureDelegate)`** (`ILifecycleBuilder`)
+- **`WpfLifecycleBuilderExtensions.OnStartup(this IWpfLifecycleBuilder, WpfLifecycle.OnStartup)`** … one
+  method per `WpfLifecycle` delegate (`OnExit`, `OnActivated`, … `OnWindowClosed`), each returning the
+  `IWpfLifecycleBuilder` for chaining.
+- **`LifecycleBuilderExtensions.AddEvent(this ILifecycleBuilder, string eventName, Action action)`** /
+  **`AddEvent<TDelegate>(this ILifecycleBuilder, string eventName, TDelegate action)`** (`where TDelegate : Delegate`) —
+  chainable forms of `ILifecycleBuilder.AddEvent`, e.g. for an app-defined, non-`WpfLifecycle` event.
+- **`LifecycleEventServiceExtensions.InvokeEvents(this ILifecycleEventService, string eventName)`** — invokes every
+  parameterless `Action` registered under `eventName`, in registration order.
+- **`LifecycleEventServiceExtensions.InvokeEvents<TDelegate>(this ILifecycleEventService, string eventName, Action<TDelegate> action)`** —
+  passes every `TDelegate` registered under `eventName` to `action`, which decides the arguments.
 
 #### Remarks
 
-Every window gets its own DI service scope; `IWpfInitializeScopedService` implementations
-run once per scope.
+Window events fire for every `Window` in the application, dialogs included; `OnWindowCreated`
+fires on a window's first `Loaded`, not in its constructor. At that first `Loaded`,
+`WpfApplication` also creates a private DI scope for the window, used only to run the
+`IWpfInitializeScopedService` implementations (and resolve the window's scoped `IDispatcher`)
+and disposed when the window closes; no public API resolves from it.
 
 ---
 
 ## `Barbatos.Wpf.Dispatching` Namespace
 
 Dispatcher abstractions backed by the WPF `Dispatcher`.
+
+### Classes
+
+| Class | Description |
+|-------|-------------|
+| `Dispatcher` | The `IDispatcher` over a WPF `System.Windows.Threading.Dispatcher` (no public constructor). **`static GetForCurrentThread()`** (`IDispatcher?`) forwards to `DispatcherProvider.Current`. `Dispatch`/`DispatchDelayed` return `false` once the WPF dispatcher has started shutting down. |
+| `DispatcherTimer` | The `IDispatcherTimer` over a WPF `System.Windows.Threading.DispatcherTimer`, which its public constructor takes. `IsRepeating` defaults to `true`; `false` stops the timer after its first `Tick`. |
+| `DispatcherProvider` | The default `IDispatcherProvider`. **`static Current`** (`IDispatcherProvider`, created on first use), **`static SetCurrent(IDispatcherProvider?)`** (`bool` — `true` only when it replaced an already-set provider), and **`GetForCurrentThread()`**, which creates and caches (per thread) a `Dispatcher` for `System.Windows.Threading.Dispatcher.CurrentDispatcher` — so calling it on a worker thread binds a new dispatcher to that thread, one nothing pumps unless that thread runs a dispatcher loop. |
 
 ### Interfaces
 
@@ -323,7 +362,7 @@ dispatcher or delegate.
 
 ### Extension Methods (on `WpfAppBuilder`)
 
-- **`ConfigureDispatching(this WpfAppBuilder)`** — registers `IDispatcherProvider`/`IDispatcher` app-wide and per-window; part of the builder defaults.
+- **`ConfigureDispatching(this WpfAppBuilder)`** (on `Barbatos.Wpf.Hosting.AppHostBuilderExtensions`) — registers `IDispatcherProvider` (a singleton: `DispatcherProvider.Current`), an application dispatcher bound during `Build()` to the thread that builds the host (the UI thread in a `WpfApplication`), and a scoped `IDispatcher` resolved per window; part of the builder defaults. Core's own features — periodic services, input-system timeouts, keep awake, single-instance activation, toast activation — run their UI-thread work on that application dispatcher.
 
 ---
 
@@ -563,8 +602,9 @@ Stores encrypted key/value pairs in a local file under
 
 ### `ITrayIconService`
 
-- **`IsVisible`** (`bool`), **`SetVisible(bool)`**
-- **`SetToolTip(string)`**
+- **`IsVisible`** (`bool`), **`SetVisible(bool)`**, **`IsVisibleChanged`** (event)
+- **`SetToolTip(string)`** — the only live update; icon and menu are read from the options once,
+  on the first show.
 - **`ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon = None)`** — shows a
   balloon notification above the tray icon (e.g. to tell the user the app is still running
   after the main window was hidden); a no-op while `IsVisible` is `false`.
@@ -577,8 +617,10 @@ Stores encrypted key/value pairs in a local file under
 
 ### `TrayIconOptions`
 
-- **`Enabled`** (`bool`), **`ToolTip`** (`string?`)
-- **`MenuItems`** (`IList<TrayMenuItem>`) — each a `(string Header, Action OnClick)` pair added via `new TrayMenuItem("Open", () => { ... })`.
+- **`Enabled`** (`bool`, default `false`) — whether the icon is shown when the host is built.
+- **`ToolTip`** (`string?`) — defaults to the entry assembly's name (not `AppInfo.Name`).
+- **`IconPath`** (`string?`) — path of an `.ico` file for the tray icon; defaults to the icon associated with the application executable.
+- **`MenuItems`** (`IList<TrayMenuItem>`) — code only; each item is built with `new TrayMenuItem("Open", () => { ... })`.
 
 ### `TrayMenuItem`
 
@@ -592,6 +634,19 @@ Backed directly by the Win32 `Shell_NotifyIcon` API through a hidden `HwndSource
 window, instead of `System.Windows.Forms.NotifyIcon` — no `UseWindowsForms` / WinForms
 reference required.
 
+### `ITrayIconPlatform`
+
+The OS seam behind `ITrayIconService`; register your own before `ConfigureTrayIcon` to replace
+the `Shell_NotifyIcon` default (e.g. a fake in tests).
+
+- **`Show(TrayIconOptions)`** — adds the icon; icon, tooltip and menu are read from the options
+  the first time only, and a later call after `Hide()` re-adds the same icon.
+- **`Hide()`** — removes the icon; does nothing if it is not shown.
+- **`SetToolTip(string)`**, **`ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon)`** —
+  the balloon is skipped silently when the icon is hidden or the shell reports the user is not
+  accepting notifications right now.
+- **`Clicked`**, **`DoubleClicked`** (`EventHandler?`).
+
 ---
 
 ## `Barbatos.Wpf.Power` Namespace
@@ -600,10 +655,24 @@ reference required.
 
 Prevents idle sleep via `SetThreadExecutionState`; released automatically when the host is disposed.
 
+- **`IsEnabled`** (`bool`), **`SetEnabled(bool)`**, **`IsEnabledChanged`** (event, raised only on
+  an actual change). The state is not persisted — persist it through configuration if needed.
+
 ### `KeepAwakeOptions`
 
-- **`Enabled`** (`bool`)
-- **`KeepDisplayOn`** (`bool`) — also prevents the display from turning off, not just system sleep.
+- **`Enabled`** (`bool`, default `false`) — keep the computer awake as soon as the host is built.
+- **`KeepDisplayOn`** (`bool`, default `false`) — also prevents the display from turning off, not
+  just system sleep. Read once; there is no runtime toggle for it.
+
+### `IPowerManager`
+
+The OS seam behind `IKeepAwakeService`; register your own before `ConfigureKeepAwake` to replace
+the default.
+
+- **`SetKeepAwake(bool keepAwake, bool keepDisplayOn)`** — requests (or, with `keepAwake: false`,
+  releases) the keep-awake state; each call replaces the previous state rather than stacking.
+  `keepDisplayOn` is ignored when `keepAwake` is `false`. The default applies it on the
+  application dispatcher's thread, since `SetThreadExecutionState` state is per thread.
 
 ---
 
@@ -611,11 +680,32 @@ Prevents idle sleep via `SetThreadExecutionState`; released automatically when t
 
 ### `IRunOnStartupService`
 
-Registers/unregisters the app in the current user's `Run` registry key.
+Registers/unregisters the app in the current user's `Run` registry key
+(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
+
+- **`IsEnabled`** (`bool`) — read from the registry on every access, so it reflects the OS state
+  (the OS persists it across restarts).
+- **`SetEnabled(bool)`** — writes or removes the entry; a no-op when `IsEnabled` already matches,
+  so it does not rewrite an existing entry that points at an old executable path.
+- **`IsEnabledChanged`** (event) — raised when `SetEnabled` changes the state.
 
 ### `RunOnStartupOptions`
 
-- **`Enabled`** (`bool`)
+- **`Enabled`** (`bool`, default `false`) — register at startup when the host is built. `false`
+  leaves an existing registration untouched, so the user's runtime choice survives.
+- **`EntryName`** (`string?`) — the `Run` value's name; defaults to the entry assembly's name (not `AppInfo.Name`).
+- **`ExecutablePath`** (`string?`) — defaults to `Environment.ProcessPath`; written quoted.
+- **`Arguments`** (`string?`) — appended after the quoted executable path.
+
+### `IStartupRegistrar`
+
+The OS seam behind `IRunOnStartupService`; register your own before `ConfigureRunOnStartup` to
+replace the registry default (e.g. a fake in tests).
+
+- **`IsRegistered(string entryName)`** (`bool`)
+- **`Register(string entryName, string command)`** — creates or overwrites the entry; `command`
+  is the full command line, quoted executable path included.
+- **`Unregister(string entryName)`** — does nothing if the entry does not exist.
 
 ---
 
@@ -719,16 +809,30 @@ was ported vs. deliberately dropped.
 - `PressInteraction(PressInteractionTrigger = Press)` — `Press`/`Release`/`PressAndRelease`,
   an explicit alternative to `DefaultInteraction`'s implicit on-press behavior.
 
+### `IHotkeyPlatform`
+
+The OS seam behind `GlobalKeyBinding`; register your own before `ConfigureInputSystem` to replace
+the `RegisterHotKey` default (e.g. a fake in tests).
+
+- **`Register(int id, Key key, ModifierKeys modifiers)`** (`bool`) — `false` when the OS refused
+  the registration, typically because another application owns the combination (the service
+  logs a warning).
+- **`Unregister(int id)`**
+- **`HotkeyPressed`** (`EventHandler<int>?`) — the argument is the id passed to `Register`.
+
 ---
 
 ## `Barbatos.Wpf.Notifications` Namespace
+
+Desktop (Windows toast) notifications — `ConfigureNotifications`. Not the realtime push client,
+which is `Barbatos.Wpf.PushNotifications` and displays through this feature.
 
 ### `INotificationService`
 
 - **`IsEnabled`** (`bool`), **`SetEnabled(bool)`** — `Show(...)` is a no-op while disabled.
 - **`Show(string title, string message, NotificationSeverity severity = NotificationSeverity.Info)`** — plain text notification.
 - **`Show(NotificationContent content)`** — rich notification: image, buttons, and a navigation payload.
-- **`Activated`** (`event EventHandler<NotificationActivatedEventArgs>`) — raised when the user clicks the notification body or a button (unless that button used `LaunchUri`, which opens directly without raising this event).
+- **`Activated`** (`event EventHandler<NotificationActivatedEventArgs>`) — raised when the user clicks the notification body or a button (unless that button used `LaunchUri`, which opens directly without raising this event). Raised on the UI thread: Windows reports the click on a background thread, and the service marshals it to the application dispatcher first. An activation that arrives once that dispatcher has shut down is dropped; only an app built with `useDefaults: false` and no `ConfigureDispatching()` gets it inline on the platform's thread.
 - **`IsEnabledChanged`** event
 - **`Availability`** (`NotificationAvailability`) — whether the OS currently allows this app to display notifications, read live from Windows on every access (not cached). `Show(...)` does not check this itself: Windows silently drops a toast it isn't allowed to show instead of raising an error, so this is the only way to detect it and offer an in-app fallback.
 - **`OpenSystemSettings()`** — opens the Windows Settings page for notifications (`ms-settings:notifications`), so the user can act on what `Availability` reported.
@@ -762,24 +866,43 @@ Mirrors `Windows.UI.Notifications.NotificationSetting`; returned by `INotificati
 ### `NotificationButton`
 
 - **`NotificationButton(string text, string? arguments = null)`** — clicking raises
-  `INotificationService.Activated` with `arguments`.
+  `INotificationService.Activated` with `arguments` (with no `arguments`, the toast's own
+  `NotificationContent.Arguments`, if it has any).
 - **`NotificationButton(string text, Uri launchUri)`** — clicking opens `launchUri` directly
   (e.g. a website or custom protocol) without raising `Activated` or waking the app.
 - **`Text`**, **`Arguments`**, **`LaunchUri`** (read-only properties mirroring the constructor used).
 
 ### `NotificationActivatedEventArgs`
 
-- **`Title`**, **`Message`** — of the most recently shown notification.
+- **`NotificationActivatedEventArgs(string title, string message, string? arguments = null)`**
+- **`Title`**, **`Message`** (`string`) — the clicked notification's own text. The default
+  platform recovers it through an id it adds to each toast's activation arguments, because
+  Windows hands back only the arguments: a toast shown by an earlier run of the app, or more than
+  100 toasts ago, reports empty strings.
 - **`Arguments`** (`string?`) — the payload from `NotificationContent.Arguments` (body click)
-  or `NotificationButton.Arguments` (button click), or `null` if none was set.
+  or `NotificationButton.Arguments` (button click), or `null` if none was set. The only part
+  that survives an app restart — route on it. A button created without arguments of its own
+  reports the toast's `NotificationContent.Arguments` instead of `null`: the Toolkit copies a
+  toast's arguments onto every button that does not set the same key itself.
 
 ### `NotificationOptions`
 
-- **`Enabled`** (`bool`)
+- **`Enabled`** (`bool`, default `true`)
 - **`IconPath`** (`string?`) — a persistent circular app logo overlay shown on every
   notification; defaults to the executable's icon.
 - **`Timeout`** (`TimeSpan`) — a hint (`Long` toast duration above ~7 seconds, `Short`
   otherwise); Windows may still manage actual visibility itself.
+
+### `INotificationPlatform`
+
+The OS seam behind `INotificationService`; register your own before `ConfigureNotifications`
+(or `ConfigurePushNotifications`) to replace the toast default (e.g. a fake in tests).
+
+- **`Show(NotificationOptions options, NotificationContent content)`**
+- **`Activated`** (`EventHandler<NotificationActivatedEventArgs>?`) — may be raised on any thread;
+  the service marshals it before raising its own `Activated`.
+- **`GetAvailability()`** (`NotificationAvailability`), **`OpenSystemSettings()`** — back the
+  service's `Availability` and `OpenSystemSettings()`.
 
 ---
 
@@ -799,7 +922,9 @@ see `IPushNotificationTransport` below for how to plug in a different delivery m
 - **`NotificationReceived`** (`event EventHandler<PushNotificationReceivedEventArgs>`) — raised
   for every notification, whichever display path was used.
 - **`RouteRequested`** (`event EventHandler<PushNotificationRouteRequestedEventArgs>`) — raised
-  when the user activates a notification whose action is `PushNotificationActionType.Route`.
+  when the user activates a notification whose action is `PushNotificationActionType.Route`, on
+  the UI thread: a toast click arrives through `INotificationService.Activated` (already
+  marshalled), and the built-in fallback window is clicked on the UI thread.
 - **`ConnectAsync(CancellationToken = default)`** → `Task` — starts the registered
   `IPushNotificationTransport`. The default transport throws `InvalidOperationException` if
   `SignalRPushNotificationOptions.ServerUrl`/`AppId` aren't set; a different transport may have
