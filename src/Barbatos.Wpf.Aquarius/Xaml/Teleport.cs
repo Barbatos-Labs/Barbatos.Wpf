@@ -179,7 +179,11 @@ public class Teleport : ContentControl
 
     private void OnHostRegistered(string name)
     {
-        if (name == To)
+        // The event is process-wide and raised on the registering panel's thread. A host on
+        // another thread can never adopt this control's content, and reading To from there
+        // throws - which, raised inside that panel's Loaded handler, took down the other
+        // thread's dispatcher.
+        if (CheckAccess() && name == To)
             UpdateTeleport();
     }
 
@@ -190,7 +194,7 @@ public class Teleport : ContentControl
         // inside a torn-down visual tree. To is left untouched: if a host under this same
         // name registers again later, content re-floats there automatically, same as any
         // host that was simply slow to load in the first place.
-        if (name == To && _teleportedContent is not null)
+        if (CheckAccess() && name == To && _teleportedContent is not null)
             RestoreLocal();
     }
 

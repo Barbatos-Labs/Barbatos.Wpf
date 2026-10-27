@@ -17,11 +17,21 @@ namespace Barbatos.Wpf.Aquarius.Xaml;
 /// <code>
 /// &lt;Grid aq:TeleportHost.RegisterHost="Overlay" Panel.ZIndex="100" /&gt;
 /// </code>
-/// Registration happens while the panel is loaded, keyed by name in a process-wide
-/// registry - like a DOM <c>id</c>, names are expected to be unique; if two hosts
-/// register the same name, the most recently loaded one wins. <see cref="HostRegistered"/>
-/// lets a <see cref="Teleport"/> that mounts before its target host does find it once it
-/// becomes available, instead of silently never teleporting.
+/// Registration happens while the panel is loaded, keyed by name in a registry per UI thread -
+/// like a DOM <c>id</c>, names are expected to be unique; if two hosts register the same name,
+/// the most recently loaded one wins. <see cref="HostRegistered"/> lets a <see cref="Teleport"/>
+/// that mounts before its target host does find it once it becomes available, instead of
+/// silently never teleporting.
+/// <para>
+/// <b>Hosts are per UI thread.</b> A <see cref="Panel"/> can only adopt an element owned by its
+/// own thread, so a <see cref="Teleport"/> only ever sees hosts registered on its own thread, and
+/// an app that runs a second window on its own thread has a separate set of names there. The
+/// registry used to be process-wide: a host loading on one thread then made every
+/// <see cref="Teleport"/> on every other thread read its own properties from the wrong thread,
+/// and a duplicate name on another thread could hand a <see cref="Teleport"/> a panel it could
+/// not touch - both threw <see cref="InvalidOperationException"/> from inside a
+/// <see cref="FrameworkElement.Loaded"/> handler.
+/// </para>
 /// <para>
 /// <b>Any <see cref="Panel"/> works, and several <see cref="Teleport"/>s may target the same
 /// host</b> - which is the point of not restricting this to a <see cref="Grid"/>. Teleported
@@ -43,7 +53,10 @@ namespace Barbatos.Wpf.Aquarius.Xaml;
 /// </remarks>
 public static class TeleportHost
 {
-    private static readonly Dictionary<string, Panel> Hosts = [];
+    // Thread-static rather than one shared dictionary: see the "Hosts are per UI thread" remarks.
+    // It also means the dictionary is never touched by two threads at once.
+    [ThreadStatic]
+    private static Dictionary<string, Panel>? _hosts;
 
     /// <summary>
     /// The <see cref="Teleport"/>s currently rendering into a given host, ordered exactly as
@@ -63,6 +76,12 @@ public static class TeleportHost
     /// Raised whenever a host registers (or re-registers) under a name, so a
     /// <see cref="Teleport"/> waiting on that name can retry.
     /// </summary>
+    /// <remarks>
+    /// The event itself is process-wide, but it is raised on the thread of the panel that
+    /// registered, and that panel is visible only to <see cref="TryGetHost"/> calls on the same
+    /// thread. A handler that touches UI objects should check the thread first, as
+    /// <see cref="Teleport"/> does.
+    /// </remarks>
     public static event Action<string>? HostRegistered;
 
     /// <summary>
@@ -73,6 +92,9 @@ public static class TeleportHost
     /// inside a torn-down visual tree (e.g. a floating dialog <see cref="Window"/> that
     /// just closed).
     /// </summary>
+    /// <remarks>
+    /// Raised on the thread of the panel that unregistered; see <see cref="HostRegistered"/>.
+    /// </remarks>
     public static event Action<string>? HostUnregistered;
 
     /// <summary>The attached property that registers a <see cref="Panel"/> under a name.</summary>
@@ -89,10 +111,16 @@ public static class TeleportHost
     /// <summary>Gets <see cref="RegisterHostProperty"/>.</summary>
     public static string? GetRegisterHost(DependencyObject element) => (string?)element.GetValue(RegisterHostProperty);
 
-    /// <summary>Looks up the currently registered host <see cref="Panel"/> for <paramref name="name"/>.</summary>
+    /// <summary>
+    /// Looks up the host <see cref="Panel"/> currently registered for <paramref name="name"/> on
+    /// the calling thread.
+    /// </summary>
+    /// <remarks>
+    /// A host registered on another UI thread is not found: nothing on this thread could use it.
+    /// </remarks>
     public static bool TryGetHost(string name, out Panel panel)
     {
-        if (Hosts.TryGetValue(name, out var found))
+        if (_hosts is { } hosts && hosts.TryGetValue(name, out var found))
         {
             panel = found;
             return true;
@@ -195,15 +223,15 @@ public static class TeleportHost
 
     private static void Register(string name, Panel panel)
     {
-        Hosts[name] = panel;
+        (_hosts ??= [])[name] = panel;
         HostRegistered?.Invoke(name);
     }
 
     private static void Unregister(string name, Panel panel)
     {
-        if (Hosts.TryGetValue(name, out var current) && ReferenceEquals(current, panel))
+        if (_hosts is { } hosts && hosts.TryGetValue(name, out var current) && ReferenceEquals(current, panel))
         {
-            Hosts.Remove(name);
+            hosts.Remove(name);
             HostUnregistered?.Invoke(name);
         }
     }

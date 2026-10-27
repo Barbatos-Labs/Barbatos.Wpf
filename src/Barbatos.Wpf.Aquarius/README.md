@@ -838,8 +838,13 @@ typed into it, its own local values - but two things do not travel with it, unli
   it lands - its own `aq:Setup`, an explicit `DataContext="{Binding}"` at the declaration site
   (as the sample's toast does), or a host whose ancestors carry the right object.
 
-Like a DOM `id`, host names are expected to be unique app-wide; if two hosts register the
-same name, the most recently loaded one wins.
+Like a DOM `id`, host names are expected to be unique; if two hosts register the same name,
+the most recently loaded one wins. Names are kept per UI thread: a `Panel` can only adopt
+elements from its own thread, so a `Teleport` only sees hosts registered on its thread, and a
+second window running on its own thread has its own set of names. Earlier versions kept one
+process-wide registry, and a host loading on one thread made every `Teleport` on another thread
+throw from inside a `Loaded` handler; the test suite, which mounts controls on parallel STA
+threads, is what exposed it.
 
 ### Several Teleports, one host
 

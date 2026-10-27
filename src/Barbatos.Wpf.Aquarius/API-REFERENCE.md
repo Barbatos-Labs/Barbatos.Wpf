@@ -359,12 +359,16 @@ Use via `Converter={x:Static aq:Comparisons.Not}` etc.
 - **`RegisterHostProperty`** (`DependencyProperty`, `string`) - `SetRegisterHost`/
   `GetRegisterHost`, settable on any `Panel` - `UniformGrid`, `StackPanel`, `WrapPanel`,
   `DockPanel`, `Grid`, `Canvas`. Throws `InvalidOperationException` on anything else.
-- **`static event Action<string>? HostRegistered`**
-- **`static event Action<string>? HostUnregistered`** - raised when the currently-registered
-  host under a name unregisters (its `Unloaded` fired, or another value replaced its
-  `RegisterHostProperty`); lets a `Teleport` rendered there bring its content home instead
-  of leaving it orphaned.
-- **`static TryGetHost(string name, out Panel panel)`** → `bool`
+- **`static event Action<string>? HostRegistered`** - raised on the registering panel's
+  thread. The event is process-wide, so a handler that touches UI objects checks
+  `CheckAccess()` first, as `Teleport` does.
+- **`static event Action<string>? HostUnregistered`** - raised, on the panel's thread, when the
+  currently-registered host under a name unregisters (its `Unloaded` fired, or another value
+  replaced its `RegisterHostProperty`); lets a `Teleport` rendered there bring its content home
+  instead of leaving it orphaned.
+- **`static TryGetHost(string name, out Panel panel)`** → `bool` - looks only at hosts
+  registered on the calling thread: the registry is per UI thread, because a `Panel` can only
+  adopt elements from its own thread.
 
 Several `Teleport`s may share one host; their relative order is `Teleport.Order`, and they are
 kept contiguous and placed after whatever static children the host declares itself.

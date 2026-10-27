@@ -38,9 +38,11 @@ Sample: `MainWindow.xaml` (the `Overlay` host), `TeleportDemoView.xaml` + `.xaml
 
 - **Host**: any `Panel` (`Grid`, `StackPanel`, `DockPanel`, `UniformGrid`, `WrapPanel`, `Canvas`);
   anything else throws `InvalidOperationException`. It registers on `Loaded` and unregisters on
-  `Unloaded` in a process-wide registry - names are app-wide like a DOM `id`, and the most recently
-  loaded duplicate wins. `TeleportHost.TryGetHost(name, out panel)`, and the static events
-  `TeleportHost.HostRegistered`/`HostUnregistered`, expose it.
+  `Unloaded` in a registry kept per UI thread - names are unique like a DOM `id`, the most recently
+  loaded duplicate wins, and a `Teleport` never sees a host on another thread (a window on its own
+  thread has its own names). `TeleportHost.TryGetHost(name, out panel)` (calling thread only), and
+  the static events `TeleportHost.HostRegistered`/`HostUnregistered` (process-wide, raised on the
+  panel's thread - check `CheckAccess()` in a handler), expose it.
 - A `Teleport` that loads before its host picks the host up when it registers. `Disabled="True"`
   keeps the content local; unloading the `Teleport` (an enclosing `If` going false) brings the
   content home first.
