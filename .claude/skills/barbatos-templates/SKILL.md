@@ -80,9 +80,9 @@ dotnet new aqv-form -n Checkout --namespace MyApp.Features.Checkout
   ViewModel to another namespace leaves `DataContext` null, silently unless
   `Setup.ThrowOnUnresolved` (or `AquariusOptions.ThrowOnUnresolvedViewModels`, applied only by
   `UseAquarius()`) is on.
-- `aq-view` output: a `UserControl` with `aq:Setup.Enable`, a code-behind with only
-  `InitializeComponent()`, and a `sealed partial` `ObservableObject` with one
-  `[ObservableProperty]`. The ViewModel is parameterless, so `Setup.Resolve`'s `Activator`
+- `aq-view` output: a `UserControl` with `aq:Setup.Enable` and `aq:Lifecycle.Enable` (so the
+  ViewModel's lifecycle hooks fire), a code-behind with only `InitializeComponent()`, and a
+  `sealed partial` `ObservableObject` with one `[ObservableProperty]`. The ViewModel is parameterless, so `Setup.Resolve`'s `Activator`
   fallback builds it; register it in DI only once it gains constructor dependencies.
 - `aqv-form` output: **schema mode** (`Form.FromModel(new XModel())`) over a DataAnnotations
   model with `[Compare]` on `ConfirmPassword` - schema mode is the only mode where `[Compare]`

@@ -71,7 +71,7 @@ dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -f net8.0-windows --filter "Fu
 | --- | --- |
 | Pure logic: `Ref`/`Computed`, `Expr` parsing, path parser/tokenizer, `RouteMatcher`, `RouteSearchIndex`, `MemoryRouterHistory`, `Form`/`Field<T>` validation, `PeriodicSchedule`, input interactions | plain `[Fact]` or `async Task` |
 | A `DependencyObject`, control, `Window`, deferred dispatcher work, or a `Router` navigation (it constructs the entering Views through `Setup.Resolve`) | `StaThread.Run(() => …)` |
-| `Application.Current` (its `Windows`, `DispatcherUnhandledException`, Lifecycle error capture), or a failure the library defers with `BeginInvoke` | `TestApplication.Invoke(() => …)` |
+| `Application.Current` (its `Windows`, `DispatcherUnhandledException`), or a failure the library defers with `BeginInvoke` to the application's dispatcher | `TestApplication.Invoke(() => …)` (Lifecycle error capture listens on the element's own dispatcher, so it also works under `StaThread.Run` when the test pumps that thread) |
 | Core, a `Window` whose show/close/activation/focus must settle synchronously | a file-local `RunOnStaThread` that runs the body inside `Dispatcher.Run()` ([pattern](patterns.md#a-running-dispatcher-for-core-windows)) |
 
 - **Why two helpers.** `Application.Current` is a process-wide singleton bound to the thread that
