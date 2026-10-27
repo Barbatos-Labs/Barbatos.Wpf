@@ -30,12 +30,13 @@ public static class WpfProgram
         // The full 3-global + 3-local interceptor chain this session's own unit tests
         // (StoreActionInterceptorTests.SixChainedInterceptorsAllRunInOrderWhenEveryOneCallsNext /
         // AnyInterceptorBlockingInASixDeepChainPreventsTheActionAndEverythingAfterIt) verify in
-        // the abstract - this is the same shape with real, distinct responsibilities. Registered
-        // before AddStore<T>() so every interceptor is already in place by the time any store is
-        // first resolved (registration order among these calls otherwise does not matter). Only
-        // registered as IStoreActionInterceptor/keyed - nothing outside this method ever needs an
-        // interceptor instance directly, the same way a Pinia plugin is never imported into a
-        // component once pinia.use(plugin) has registered it.
+        // the abstract - this is the same shape with real, distinct responsibilities. A store reads
+        // its interceptors (and plugins) when it is first resolved, not when AddStore<T>() runs,
+        // so these could just as well come after the AddStore calls below; only their order among
+        // themselves matters, since that is the chain order. Only registered as
+        // IStoreActionInterceptor/keyed - nothing outside this method ever needs an interceptor
+        // instance directly, the same way a Pinia plugin is never imported into a component once
+        // pinia.use(plugin) has registered it.
         //
         // Four of the six need nothing but ApsuActivityLog, so DI constructs them outright - no
         // `new` anywhere for these. The other two (timing warning, checkout cooldown) also need a
@@ -60,8 +61,10 @@ public static class WpfProgram
         // Barbatos.Wpf.Apsu stores - see UserStore/OrderStore for the cross-store scenarios
         // (watch, explicit cross-store action calls, a getter combining both) they demonstrate.
         // OrderStore's constructor depends on UserStore, so both must be registered; which one
-        // is registered first does not matter; resolution order is decided by whichever is
-        // resolved first (here, OrderStore, since MainViewModel asks for it first below). Each
+        // is registered first does not matter. UserStore is always resolved first - MainViewModel's
+        // constructor takes it first, and OrderStore's constructor needs it anyway - so
+        // UserSessionPersistencePlugin restores the last selected user before OrderStore exists
+        // (see OrderStore's constructor for how it still loads that user's orders). Each
         // store's own local interceptors are declared right inside its own AddStore call, one
         // call total per store instead of a separate AddStoreInterceptor call per interceptor
         // plus a trailing AddStore.

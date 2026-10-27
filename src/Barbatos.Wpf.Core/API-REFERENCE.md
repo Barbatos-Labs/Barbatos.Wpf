@@ -1142,8 +1142,8 @@ MAUI's page-based navigation model has no equivalent of WPF's multi-window/owner
 State management: stores, getters, plugins, and a middleware-style action interceptor chain
 (design inspired by Vue's [Pinia](https://pinia.vuejs.org/) - see
 [State management](README.md#state-management-barbatoswpfapsu) in the README for the full
-behavior description, including the interceptor composition/ordering rules and the "call
-`next` first" constraint).
+behavior description, including the interceptor composition/ordering rules and why
+genuinely asynchronous interceptor work needs a `Task`-returning action).
 
 ### Classes / Interfaces
 
@@ -1206,6 +1206,19 @@ public sealed class Getter<T>
 #### Properties
 - **`Value`** (`T`) — recomputes only if invalidated (by any `dependencies` entry raising
   `StateChanged`) since the last access; otherwise returns the cached value.
+
+#### Remarks
+- **Raises no change notification.** A store property returning `Value` never raises
+  `PropertyChanged` by itself, so a XAML binding to it never updates; re-raise it from a
+  ViewModel on `StateChanged` of every dependency store.
+- **Invalidation happens on `StateChanged`, which `Patch` defers until it returns.** Outside
+  `Patch`, `PropertyChanged` subscribers that registered after the store's constructor already
+  see the getter invalidated; inside `Patch` they (and reads inside the patch callback) see the
+  stale cached value. Forward on `StateChanged`, not `PropertyChanged`.
+- **No `Dispose`/unsubscribe.** The constructor subscribes to each dependency's `StateChanged`
+  for good, so every dependency keeps the getter and everything `compute` captures alive. Create
+  getters inside stores; a getter built in a short-lived object over an app-lifetime store keeps
+  that object alive.
 
 ---
 
@@ -1284,8 +1297,11 @@ public interface IStoreActionInterceptor
 - **`InterceptAsync(StoreActionContext context, StoreActionDelegate next)`** — called for every
   intercepted action. Call `next` to continue the chain (its result becomes the action's return
   value), or don't call it at all to short-circuit the action entirely. Wrap it in `try`/`catch`
-  to observe or translate an error; wrap it in timing code to measure it; call it more than once
-  to retry.
+  to observe or translate an error; wrap it in timing code to measure it; call it again after a
+  failed attempt to retry. `next` may be called after an `await` and more than once, one call at
+  a time; each call re-runs every interceptor after this one in the chain (globals, then
+  locals) and then the action body, while interceptors outside this one see a single call. The action body runs on the
+  thread that calls `next`.
 
 #### Remarks
 
@@ -1295,21 +1311,21 @@ type only) with `StoreServiceCollectionExtensions.AddStoreInterceptor`. Both com
 single chain per store — every global interceptor runs, in registration order, outside every
 local one, closest to the actual action call.
 
-`InterceptAsync` is genuinely awaitable for a `Task`/`Task<TResult>`-returning action. For a
-*synchronous* action, the chain still runs through this same `async` shape, but the proxy blocks
-on the chain's result (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a
-synchronous caller — safe only if every interceptor in that chain does purely synchronous work;
-an interceptor that genuinely suspends while wrapping a synchronous action risks the classic WPF
-sync-over-async deadlock.
+`InterceptAsync` is genuinely awaitable for a `Task`/`Task<TResult>`-returning action: real
+asynchronous work before `next` (an async precondition) and after it (flushing a log) both
+work, and so does calling `next` again to retry an attempt that failed after the action's own
+first `await`. The innermost `next` proceeds through Castle DynamicProxy's
+`IInvocation.CaptureProceedInfo()`, captured when the call arrives, so it reaches the action
+from any continuation; an earlier pipeline used `IInvocation.Proceed()` directly, which
+re-entered the chain from a continuation and hung an interceptor that awaited before `next`.
 
 > [!IMPORTANT]
-> Call `next` as your first meaningful step if you're going to call it at all — never `await`
-> anything genuinely asynchronous before calling it. Castle DynamicProxy's underlying
-> `IInvocation.Proceed()` (what `next` eventually calls, at the innermost interceptor) is not
-> safe to reach from a continuation that already crossed a real `await` suspension relative to
-> `InterceptAsync`'s own synchronous call — doing so hangs the action forever rather than
-> throwing. Awaiting real asynchronous work is fully supported *after* `next` returns
-> (post-processing, e.g. flushing a log) — only work ordered before it is unsafe.
+> For a *synchronous* action, the chain still runs through this same `async` shape, but the
+> proxy blocks on the chain's result (`GetAwaiter().GetResult()`) since there's no `Task` to hand
+> back to a synchronous caller — safe only if every interceptor in that chain does purely
+> synchronous work. An interceptor that genuinely suspends anywhere while wrapping a synchronous
+> action, before or after `next`, risks the classic WPF sync-over-async deadlock; a global
+> interceptor wraps synchronous actions too, so it should await nothing but `next()` itself.
 
 ---
 
@@ -1392,9 +1408,20 @@ public static class StoreServiceCollectionExtensions
 
 `AddStore<TStore>()` builds a Castle DynamicProxy class proxy around `TStore` only when at least
 one `IStoreActionInterceptor` (global or local) applies to it — a store with none registered gets
-a plain `ActivatorUtilities`-created instance, no proxy involved. Building the proxy requires
-`TStore` to be **non-`sealed`** with **exactly one public constructor**; violating either throws
-a descriptive `InvalidOperationException` at first resolution.
+a plain `ActivatorUtilities`-created instance, no proxy involved. Interceptors and plugins are
+read at that first resolution, so registering them before or after `AddStore` makes no
+difference, and the chain is fixed from then on. Building the proxy requires `TStore` to be:
+
+- **non-`sealed`** — otherwise `InvalidOperationException` at first resolution;
+- **`public`**, and every type enclosing it — otherwise Castle throws `ArgumentException`
+  ("... is not accessible") at first resolution;
+- constructed through **exactly one public constructor** — otherwise `InvalidOperationException`.
+  Every parameter is resolved with `GetRequiredService`, so optional parameters' default values
+  are not used: an unregistered parameter type throws `InvalidOperationException` ("No service for
+  type ...") even where the plain `ActivatorUtilities` path would have used the default.
+
+A global interceptor applies to every store, so registering the first one moves every store onto
+the proxy path and can surface these errors in a store that has no interceptor of its own.
 
 ---
 
@@ -1449,8 +1476,10 @@ public sealed class InterceptorHandle
   place but becomes a transparent pass-through straight to the next interceptor (or the action
   itself), as if it had never been registered. A call already in flight when `Eject()` runs
   keeps using the interceptor, since its own pipeline was already built by the time `Eject()`
-  ran; every call that starts afterward skips it. There is no corresponding "re-attach" —
-  construct a new interceptor and register it again if the behavior needs to come back.
+  ran; every call that starts afterward skips it. One-way: there is no "re-attach", and
+  registering the interceptor again does not help, because each store reads its chain once, at
+  its first resolution — the behavior comes back only with a new container. For an on/off
+  setting, give the interceptor its own enabled flag (return `next()` while off) instead.
 
 ---
 
@@ -1472,11 +1501,15 @@ Connects to MCP servers and aggregates their tools.
 
 - **`Servers`** (`IReadOnlyList<McpServerStatus>`)
 - **`Tools`** (`IReadOnlyList<Microsoft.Extensions.AI.AITool>`) — aggregated from every
-  currently-connected server; if two servers expose a same-named tool, the most recently
-  connected one wins (logged as a warning).
+  currently-connected server; if two servers expose a same-named tool, the one from the server
+  added later (later in `Servers`) wins, logged as a warning naming both servers. A server takes
+  its place in `Servers` when `AddServerAsync` starts, so this is the order servers were added,
+  not the order they finished connecting.
 - **`Changed`** (`event EventHandler`) — a server was added, removed, connected, failed to
-  connect, or dropped off on its own. Raised on whichever thread caused the change, which for a
-  server dropping off is a background thread.
+  connect, or dropped off on its own. Raised on whichever thread caused the change: the caller's
+  for the "added" notification at the start of `AddServerAsync`, normally a thread-pool thread
+  for everything raised after an internal `ConfigureAwait(false)` await (connected, failed,
+  removed, dropped off).
 - **`AddServerAsync(McpServerDescriptor, CancellationToken = default)`** → `Task<McpServerStatus>`
   — throws `InvalidOperationException` for a descriptor that fails its own
   `McpServerDescriptor.Validate()`, `ArgumentException` for a duplicate `Name` (mirrors
@@ -1570,7 +1603,11 @@ server sets `OAuth`.
 - **`SectionName`** = `"Barbatos:Mcp"`
 - **`Enabled`** (`bool`, default `true`) — whether the seed `Servers` list is connected at
   startup; does not affect `AddServerAsync` calls made later at runtime.
-- **`Servers`** (`IList<McpServerDescriptor>`) — connected once, at startup, by `ConfigureMcp`.
+- **`Servers`** (`IList<McpServerDescriptor>`) — connected once, at startup, by `ConfigureMcp`,
+  in list order. A connection failure is logged and recorded on that entry's `McpServerStatus`;
+  an entry that fails `McpServerDescriptor.Validate()` or reuses a `Name` is rejected before a
+  status exists, so it is absent from `IMcpServerRegistry.Servers` and only the startup error log
+  records it.
 
 ### `IAiApiKeyProvider`
 
@@ -1594,7 +1631,8 @@ vault, ...) instead of the built-in `SecureStorageAiApiKeyProvider` (DPAPI via
 - **`AiProviderOptions`** (`SectionName` = `"Barbatos:Mcp:Provider"`): **`Provider`** (`string`,
   default `"openai"`, case-insensitive — only `"anthropic"` is special-cased, every other value
   is treated as OpenAI-wire-compatible), **`Model`** (`string?`, required), **`Endpoint`**
-  (`string?`, used for any non-`"openai"` OpenAI-compatible endpoint, e.g. Gemini's
+  (`string?`, the OpenAI-wire base URL used for every provider except `"anthropic"`, which
+  ignores it; `null` means the real OpenAI API, so set it for anything else — e.g. Gemini's
   `"https://generativelanguage.googleapis.com/v1beta/openai/"`), **`Providers`**
   (`IList<AiProviderDescriptor>`) — an optional catalog of provider choices the app wants to
   offer (e.g. in a settings UI), seeded the same way `McpOptions.Servers` seeds MCP servers.
@@ -1609,7 +1647,9 @@ currently-configured provider/model.
 - **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>` — true once a model is set
   and an API key has been stored for the configured provider, without building a client.
 - **`GetChatClientAsync(CancellationToken = default)`** → `Task<IChatClient>` — throws
-  `InvalidOperationException`, naming what's missing, if the model/endpoint/API key isn't set yet.
+  `InvalidOperationException`, naming what's missing, if the model isn't set or no API key is
+  stored for the configured provider yet. An endpoint is never required: `null` means the real
+  OpenAI API (and `"anthropic"` ignores it).
 - **`UpdateProvider(string provider, string model, string? endpoint = null)`** — changes the
   active provider/model, invalidating any cached client.
 - **`SelectProvider(string key)`** — looks `key` up in `AiProviderOptions.Providers` and calls
@@ -1670,9 +1710,14 @@ returned type is the framework's own `AIAgent`, not a wrapper — `RunAsync`, `R
 
 - **`ConfigurationChanged`** (`event EventHandler`) — forwards *both* `IAiChatClientFactory.ConfigurationChanged`
   and `IMcpServerRegistry.Changed`, since an agent is handed its tools once, at construction.
+  Raised synchronously on the forwarded event's thread, so a server connecting or dropping off
+  normally arrives on a thread-pool thread (once at startup, when a seed server connects); the
+  factory does not marshal — dispatch before touching UI state.
 - **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>` — forwards `IAiChatClientFactory.IsConfiguredAsync`.
 - **`GetAgentAsync(CancellationToken = default)`** → `Task<AIAgent>` — the default agent described by
-  `AiAgentOptions`, cached until anything it was built from changes.
+  `AiAgentOptions`, cached until `ConfigurationChanged` fires or `GetChatClientAsync` returns a
+  different client instance. `AiAgentOptions` is read only when the agent is built, so editing it
+  at runtime does not invalidate the cache.
 - **`CreateAgentAsync(AiAgentDescriptor, CancellationToken = default)`** → `Task<AIAgent>` — a one-off,
   uncached agent with its own instructions/tools/approval policy.
 
@@ -1685,7 +1730,9 @@ Both throw `InvalidOperationException` if no provider is fully configured yet;
   `"Assistant"`), **`Description`**/**`Instructions`** (`string?`), **`ToolApproval`**
   (`AiToolApprovalMode`, default `Always`), **`IncludeMcpTools`** (`bool`, default `true`),
   **`EnableLogging`** (`bool`, default `true`), **`EnableOpenTelemetry`** (`bool`, default
-  `false`), **`OpenTelemetrySourceName`** (`string`, default `"Barbatos.Wpf.Mcp"`).
+  `false`), **`OpenTelemetrySourceName`** (`string`, default `"Barbatos.Wpf.Mcp"`). Read when the
+  default agent is built; a runtime edit shows up only at the next rebuild (provider/key change,
+  server connect/disconnect), and a reloaded configuration file never reaches it.
 - **`AiAgentDescriptor`**: **`Name`** (`string?`, required), **`Description`**/**`Instructions`**
   (`string?`), **`ToolApproval`** (default `Always`), **`IncludeMcpTools`** (default `true`),
   **`Tools`** (`IList<AITool>`), plus **`Validate()`** — the same pure pre-flight check

@@ -198,10 +198,12 @@ public static class WpfProgram
         // hook above both report into - DI-constructed (it has no dependencies of its own).
         builder.Services.AddSingleton<SampleActivityLog>();
 
-        // Registered before AddStore<CounterStore>() so every [Action]-marked method on every
-        // store gets logged automatically, with zero per-store wiring - see CounterStore.Increment.
-        // DI-constructed - no `new` needed, since SampleActionLoggingInterceptor's own constructor
-        // needs nothing but the SampleActivityLog registered just above.
+        // A global interceptor: every [Action]-marked method on every store gets logged
+        // automatically, with zero per-store wiring - see CounterStore.Increment. A store reads its
+        // interceptors when it is first resolved, not when AddStore<T>() runs, so this could just
+        // as well be registered after AddStore<CounterStore>(). DI-constructed - no `new` needed,
+        // since SampleActionLoggingInterceptor's own constructor needs nothing but the
+        // SampleActivityLog registered just above.
         builder.Services.AddSingleton<IStoreActionInterceptor, SampleActionLoggingInterceptor>();
         builder.Services.AddStore<CounterStore>();
         builder.Services.AddSingleton<SettingsStore>();

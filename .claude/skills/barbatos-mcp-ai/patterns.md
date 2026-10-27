@@ -183,9 +183,11 @@ void CancelPendingApproval()
 still in flight. `RunContinuationsAsynchronously` keeps the button click from running the rest
 of the agent loop inline inside the click handler.
 
-The sample drops `_session` on `IAiAgentFactory.ConfigurationChanged`. That event is forwarded
-from `IMcpServerRegistry.Changed` and can arrive on a thread-pool thread, so a handler that also
-writes to a bound collection must dispatch first (next section).
+The sample drops `_session` on `IAiAgentFactory.ConfigurationChanged`, dispatching to the UI
+thread first: that event is forwarded from `IMcpServerRegistry.Changed` and arrives on a
+thread-pool thread when a server connects, and the handler writes to a bound collection
+(`MainViewModel`'s constructor captures `Dispatcher.GetForCurrentThread()`, then calls
+`Dispatch` when `IsDispatchRequired`; next section).
 
 ## Server status on screen
 

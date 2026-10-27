@@ -149,25 +149,47 @@ public class MainViewModel : INotifyPropertyChanged
         AiProviders = _aiProviderCatalog.Select(p => p.Key!).ToList();
 
         _mcpServerRegistry.Changed += (_, _) => OnPropertyChanged(nameof(McpServersDescription));
-        _counterStore.PropertyChanged += (_, _) =>
+
+        // StateChanged, not PropertyChanged: DoubleCountLabel is a Getter<T>, which raises no
+        // notification of its own and is invalidated on StateChanged - inside a Patch that comes
+        // after every PropertyChanged, so forwarding on PropertyChanged would re-read a stale value.
+        _counterStore.StateChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(Count));
             OnPropertyChanged(nameof(DoubleCountLabel));
         };
+
         activityLog.Logged += LogLifecycleEvent;
         _aiChat.ConfigurationChanged += (_, _) => _ = RefreshAiStatusAsync();
         // The agent is rebuilt whenever its inputs change, and an AgentSession belongs to the
         // agent that created it - so the remembered conversation is dropped here rather than
         // carried onto a different agent. In practice this fires once at startup, when the
-        // seeded MCP server finishes connecting and its tools become available.
+        // seeded MCP server finishes connecting and its tools become available - and that
+        // notification is forwarded from IMcpServerRegistry.Changed, which the registry raises
+        // on a thread-pool thread. LogLifecycleEvent adds to a bound ObservableCollection, which
+        // WPF only allows from the UI thread, and _aiSession is used by the UI-thread chat code,
+        // so the handler hops to the UI thread first. This constructor runs on it (App.OnStartup
+        // resolves this singleton), which is what makes the dispatcher captured here the UI
+        // thread's: GetForCurrentThread never returns null - WPF creates a dispatcher for
+        // whichever thread asks - so it cannot itself detect being called on the wrong thread.
+        var uiDispatcher = Barbatos.Wpf.Dispatching.Dispatcher.GetForCurrentThread()!;
         _aiAgentFactory.ConfigurationChanged += (_, _) =>
+        {
+            if (uiDispatcher.IsDispatchRequired)
+                uiDispatcher.Dispatch(ResetConversationAfterAgentRebuild);
+            else
+                ResetConversationAfterAgentRebuild();
+        };
+
+        void ResetConversationAfterAgentRebuild()
         {
             if (_aiSession is null)
                 return;
 
             _aiSession = null;
             LogLifecycleEvent("IAiAgentFactory.ConfigurationChanged - agent rebuilt, conversation reset");
-        };
+        }
+
         _ = RefreshAiStatusAsync();
 
         // The Activated and RouteRequested handlers below append to the UI-bound LifecycleEvents
@@ -296,10 +318,12 @@ public class MainViewModel : INotifyPropertyChanged
         LifecycleEvents.Add($"[{DateTime.Now:HH:mm:ss.fff}] {message}");
 
     /// <summary>State, read straight through from <see cref="CounterStore"/> - forwarded into
-    /// this ViewModel's own <see cref="PropertyChanged"/> by the subscription set up above.</summary>
+    /// this ViewModel's own <see cref="PropertyChanged"/> by the <see cref="StoreBase.StateChanged"/>
+    /// subscription set up in the constructor.</summary>
     public int Count => _counterStore.Count;
 
-    /// <summary>A getter, read straight through from <see cref="CounterStore"/>.</summary>
+    /// <summary>A getter, read straight through from <see cref="CounterStore"/> - it raises no
+    /// <see cref="PropertyChanged"/> itself, which is why the constructor forwards it.</summary>
     public string DoubleCountLabel => _counterStore.DoubleCountLabel;
 
     /// <summary>Calls the store's action directly - no ViewModel-side logic involved.</summary>
@@ -726,12 +750,22 @@ public class MainViewModel : INotifyPropertyChanged
     /// asking something the model can just answer from memory (the seeded NuGet server, for
     /// instance, has no "search for a package" tool at all).
     /// </summary>
+    /// <remarks>
+    /// A server is in <see cref="IMcpServerRegistry.Servers"/> from the moment its connect starts
+    /// (the seeded one already is before this window first binds), so an entry that is neither
+    /// connected nor carrying a <see cref="McpServerStatus.LastError"/> is one still connecting -
+    /// a failure or a drop-off always sets the error. An empty list means no server is configured
+    /// at all (seeding disabled, or every server removed).
+    /// </remarks>
     public string McpServersDescription =>
         _mcpServerRegistry.Servers.Count == 0
-            ? "(connecting to the seeded MCP server...)"
-            : string.Join(" | ", _mcpServerRegistry.Servers.Select(server => server.IsConnected
-                ? $"{server.Name}: connected - {string.Join(", ", server.Tools.Select(tool => tool.Name))}"
-                : $"{server.Name}: {server.LastError}"));
+            ? "(no MCP servers configured)"
+            : string.Join(" | ", _mcpServerRegistry.Servers.Select(server => server switch
+            {
+                { IsConnected: true } => $"{server.Name}: connected - {string.Join(", ", server.Tools.Select(tool => tool.Name))}",
+                { LastError: { } error } => $"{server.Name}: {error}",
+                _ => $"{server.Name}: connecting...",
+            }));
 
     /// <summary>
     /// The URL of a hosted, OAuth-protected MCP server to connect to at runtime - the "let the end

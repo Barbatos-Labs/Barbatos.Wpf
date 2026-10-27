@@ -18,6 +18,34 @@ namespace Barbatos.Wpf.Apsu;
 /// Vue's reactivity auto-tracks whichever stores the getter function actually reads; here, every
 /// store it reads must be listed explicitly.
 /// </summary>
+/// <remarks>
+/// <para>
+/// A getter raises no change notification of its own. A store property that returns
+/// <see cref="Value"/> is a plain read, so a XAML binding to it reads it once and never updates:
+/// expose it through a ViewModel property that raises <c>PropertyChanged</c> on
+/// <see cref="StoreBase.StateChanged"/> of every dependency store (never from the store's own
+/// <see cref="StoreBase.StateChanged"/> handler - each raise would fire
+/// <see cref="StoreBase.StateChanged"/> again).
+/// </para>
+/// <para>
+/// Forward on <see cref="StoreBase.StateChanged"/>, not on <c>PropertyChanged</c>. Outside
+/// <see cref="StoreBase.Patch"/>, the store's own <c>PropertyChanged</c> handler (subscribed
+/// first, in <see cref="StoreBase"/>'s constructor) raises <see cref="StoreBase.StateChanged"/>
+/// before any later subscriber runs, so the getter is already invalidated. Inside
+/// <see cref="StoreBase.Patch"/> that event is deferred until the patch returns:
+/// <c>PropertyChanged</c> handlers - and <see cref="Value"/> reads inside the patch callback -
+/// see the stale cached value, and nothing notifies again once it is invalidated.
+/// </para>
+/// <para>
+/// There is no <c>Dispose</c>. The constructor subscribes to every dependency's
+/// <see cref="StoreBase.StateChanged"/> and never unsubscribes, so each dependency keeps this
+/// getter - and everything <c>compute</c> captures - alive for as long as it lives itself.
+/// Inside a store that costs nothing (the store and its getter share one lifetime); a getter
+/// built in a short-lived object over an app-lifetime store keeps that object alive for the
+/// life of the app. Create getters inside stores only, and derive per-screen values in the
+/// ViewModel with something it can dispose.
+/// </para>
+/// </remarks>
 /// <typeparam name="T">The type of the computed value.</typeparam>
 public sealed class Getter<T>
 {

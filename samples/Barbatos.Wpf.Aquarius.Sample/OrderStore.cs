@@ -47,6 +47,32 @@ public class OrderStore : StoreBase
             if (args.PropertyName == nameof(UserStore.SelectedUserId))
                 await RefreshOrdersAsync();
         };
+
+        // ...and, like Vue's watch(..., { immediate: true }), react to the value already there.
+        // UserSessionPersistencePlugin restores the last session's SelectedUserId while UserStore
+        // is still being resolved - always before this constructor runs, since it needs that
+        // UserStore - so the change notification for it was raised before the subscription above
+        // existed and will never arrive. Without this, a restored user showed no orders until the
+        // selection changed again.
+        if (_userStore.SelectedUserId is not null)
+            LoadOrdersForRestoredUser();
+    }
+
+    // async void because nothing can await a constructor. Unlike the watch handler (a click the
+    // user just made), this runs at startup, so being offline must not take the app down: the
+    // logging interceptor has already reported the failure by the time it lands here, and
+    // "Refresh orders" tries again. RefreshOrdersAsync is an action, so this call runs the
+    // interceptor chain too - Castle wires a proxy's interceptors before the store's own
+    // constructor runs.
+    async void LoadOrdersForRestoredUser()
+    {
+        try
+        {
+            await RefreshOrdersAsync();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+        }
     }
 
     /// <summary>State.</summary>

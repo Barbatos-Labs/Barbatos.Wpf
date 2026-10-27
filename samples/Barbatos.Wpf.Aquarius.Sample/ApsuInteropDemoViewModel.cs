@@ -42,6 +42,14 @@ public sealed partial class ApsuInteropDemoViewModel : ObservableObject
     /// JSONPlaceholder user id (valid range 1-10).</summary>
     public Ref<int> UserIdInput { get; } = new(1);
 
+    /// <summary>
+    /// <see cref="OrderStore.Summary"/>, re-raised here - the view binds this rather than the store
+    /// property, because a <see cref="Getter{T}"/>-backed property raises no
+    /// <c>PropertyChanged</c> of its own, so a binding straight to it would show the first value
+    /// forever. See the constructor for why it is forwarded on <see cref="StoreBase.StateChanged"/>.
+    /// </summary>
+    public string OrderSummary => OrderStore.Summary;
+
     public ApsuInteropDemoViewModel(UserStore userStore, OrderStore orderStore, ApsuActivityLog activityLog, Action<string> log)
     {
         _log = log;
@@ -54,9 +62,21 @@ public sealed partial class ApsuInteropDemoViewModel : ObservableObject
         OrderStore.PropertyChanged += (_, args) => _log($"OrderStore.{args.PropertyName} changed (Barbatos.Wpf.Apsu)");
         Watch.On(UserIdInput, (newValue, oldValue) => _log($"UserIdInput changed {oldValue} -> {newValue} (Aquarius ref, local to this view)"));
 
+        // The getter reads both stores, so either one changing can change it. StateChanged rather
+        // than PropertyChanged: inside a Patch (UserStore.Reset uses one) PropertyChanged arrives
+        // before the getter is invalidated, and forwarding then would re-read the old value.
+        UserStore.StateChanged += (_, _) => OnPropertyChanged(nameof(OrderSummary));
+        OrderStore.StateChanged += (_, _) => OnPropertyChanged(nameof(OrderSummary));
+
         // One subscription covers all six interceptors - each reports into this same shared
         // sink instead of exposing its own event (see ApsuActivityLog's own remarks for why).
         activityLog.Logged += _log;
+
+        if (UserStore.SelectedUserId is { } restoredUserId)
+        {
+            _log($"UserStore.SelectedUserId {restoredUserId} was restored from the last session by UserSessionPersistencePlugin " +
+                "- OrderStore read it when it subscribed and is loading that user's orders");
+        }
     }
 
     [RelayCommand]

@@ -24,7 +24,8 @@ ASP.NET Core-style middleware over a Castle DynamicProxy class proxy. Not here: 
   [API-REFERENCE `Barbatos.Wpf.Apsu`](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md#barbatoswpfapsu-namespace).
 - Code wins over docs: `src/Barbatos.Wpf.Core/Essentials/Apsu/` - `StoreServiceCollectionExtensions.cs`
   (registration, proxy vs plain path, plugin/registry order), `ActionInterceptor.cs` (pipeline,
-  return-type handling), `StoreBase.cs`, `Getter.cs`, `IStoreActionInterceptor.cs` (the hang rule).
+  return-type handling), `StoreBase.cs`, `Getter.cs`, `IStoreActionInterceptor.cs` (awaiting,
+  retrying, the sync-action deadlock).
 - Samples: `samples/Barbatos.Wpf.Core.Sample/` - `CounterStore.cs`,
   `SampleActionLoggingInterceptor.cs`, `WpfProgram.cs`, `MainViewModel.cs` (forwarding a getter).
   `samples/Barbatos.Wpf.Aquarius.Sample/` - `UserStore.cs`/`OrderStore.cs` (cross-store),
@@ -32,7 +33,8 @@ ASP.NET Core-style middleware over a Castle DynamicProxy class proxy. Not here: 
   `UserSessionPersistencePlugin.cs`, `ApsuActivityLog.cs`, `ApsuInteropDemoViewModel.cs`.
 - Tests that pin behaviour: `tests/Barbatos.Wpf.Core.UnitTests/StoreBaseTests.cs` (StateChanged,
   Patch, Reset, Getter), `StoreFeatureTests.cs` (singleton, laziness, registry, plugins),
-  `StoreActionInterceptorTests.cs` (chain order, short-circuit, errors, async, eject, sealed).
+  `StoreActionInterceptorTests.cs` (chain order, short-circuit, errors, async, awaiting before
+  `next`, retry, eject, sealed).
 - [patterns.md](patterns.md) - read when you need a complete worked example: cross-store store,
   argument/state/cooldown guards, error reporting, persistence plugin, exposing a getter to XAML,
   an ejectable toggle, or a test harness for an interceptor.
@@ -119,8 +121,9 @@ Shape rules - each one fails differently, some only after the first interceptor 
   store mutated inside the callback notifies on its own.
 - `Patch` and `Reset` are not actions, so interceptors never see them. Call them from an
   `[Action]` when they must be audited or guarded.
-- Wrap a multi-property `Reset` in `Patch`. `UserStore.Reset` sets three properties without it,
-  so `StateChanged` fires up to three times and `UserSessionPersistencePlugin` writes each time.
+- Wrap a multi-property `Reset` in `Patch`, as `UserStore.Reset` does: without it
+  `StateChanged` fires once per property, and a plugin that persists on `StateChanged`
+  (`UserSessionPersistencePlugin`) writes once per property too.
 
 ## Getters
 
@@ -129,12 +132,12 @@ Shape rules - each one fails differently, some only after the first interceptor 
   coarse (a simplification, not a gap to close): any `StateChanged` on any dependency invalidates
   (`GetterInvalidatesEvenWhenAnUnrelatedPropertyChanges`); `Value` recomputes on the next read only.
 - **A getter raises no change notification.** `{Binding OrderStore.Summary}` reads once and never
-  updates (the Aquarius sample's own `ApsuInteropDemoView.xaml` binds exactly that). Expose the
-  value through a ViewModel that re-raises it on `StateChanged` of every dependency store - see
+  updates. Expose the value through a ViewModel that re-raises it on `StateChanged` of every
+  dependency store, as `ApsuInteropDemoViewModel.OrderSummary` does - see
   [patterns.md](patterns.md#exposing-a-getter-to-xaml).
 - Forward on `StateChanged`, not `PropertyChanged`. Outside a `Patch`, `StoreBase`'s own handler
-  runs first, so the getter is already invalidated when other `PropertyChanged` subscribers run -
-  that is why `MainViewModel` in the Core sample works. Inside a `Patch`, `PropertyChanged`
+  runs first, so the getter is already invalidated when other `PropertyChanged` subscribers run.
+  Inside a `Patch`, `PropertyChanged`
   arrives **before** the getter is invalidated, so a forwarded read returns the stale value and
   nothing re-notifies afterwards. The same applies to reading a getter inside the `Patch` callback.
 - Create `Getter<T>` only inside stores. It subscribes to each dependency's `StateChanged` and has
@@ -148,12 +151,14 @@ Shape rules - each one fails differently, some only after the first interceptor 
 
 `IStoreActionInterceptor.InterceptAsync(StoreActionContext context, StoreActionDelegate next)`
 returns `Task<object?>`. `context` carries `Store`, `ActionName` and `Arguments` (declaration
-order). From `samples/Barbatos.Wpf.Core.Sample/SampleActionLoggingInterceptor.cs`:
+order). From `samples/Barbatos.Wpf.Aquarius.Sample/ApsuActionLoggingInterceptor.cs` (log prefix
+shortened):
 
 ```csharp
 public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
 {
-    var label = $"{context.Store.GetType().Name}.{context.ActionName}()";
+    // context.Store is the generated proxy subclass; BaseType is the store's own type.
+    var label = $"{context.Store.GetType().BaseType!.Name}.{context.ActionName}()";
     _activityLog.Log($"[Interceptor] {label} starting");
     var stopwatch = Stopwatch.StartNew();
     try
@@ -170,8 +175,8 @@ public async Task<object?> InterceptAsync(StoreActionContext context, StoreActio
 }
 ```
 
-(`context.Store.GetType()` is the proxy subclass, so that label shows the generated type's name;
-use `GetType().BaseType!.Name` for the store's own.)
+An interceptor only runs on a proxied store, so `context.Store.GetType().Name` is always the
+generated type's name (`OrderStoreProxy`-style); `GetType().BaseType!.Name` is the store's own.
 
 - **Short-circuit** by returning without calling `next` - the action body never runs. Return
   `Task.FromResult<object?>(null)` for `void`/`Task` actions; for value-returning actions return
@@ -191,25 +196,30 @@ use `GetType().BaseType!.Name` for the store's own.)
   call (`OrderStore.CheckoutAsync` -> `UserStore.RefreshProfileAsync`) and a plugin calling an
   action each run the full chain again. Expect nested log lines; guards see inner calls too.
 
-### The one rule that will hang your app
+### Awaiting before `next`, and retrying
 
-> **Call `next` as your first meaningful step, if you call it at all. Never `await` anything that
-> genuinely suspends before it.**
+`ActionInterceptor` captures Castle's `IInvocation.CaptureProceedInfo()` when the call arrives
+and the innermost `next` proceeds through it, so `next` reaches the action from any
+continuation - not only while Castle's `Intercept()` call is on the stack
+(`NextCalledFromAContinuationAfterTheInterceptedCallReturnedReachesTheAction`).
 
-`next` ends in Castle's `IInvocation.Proceed()`. After a real suspension the Castle interception
-call has already returned, and `Proceed()` then re-enters `ActionInterceptor` instead of the
-action: the whole chain is rebuilt, suspends at the same `await`, re-enters again - forever. No
-exception, no timeout. Recorded by running it: an earlier test fixture that awaited a delay
-before `next()` hung the test host until it was killed (`DelayingMiddleware` remarks in
-`StoreActionInterceptorTests.cs`).
-
-- Safe: synchronous checks before `next`; awaiting already-completed tasks; awaiting real work
-  **after** `next` returns for a `Task` action (`MiddlewareCanGenuinelyAwaitAsynchronousWorkAfterCallingNext`).
-- Retry is the same trap. Calling `next` again after `await next()` genuinely suspended (an
-  async action that failed after its first real `await`) is exactly the forbidden shape. Retry
-  only synchronous actions; no test covers retry.
-- An async precondition (a server check) belongs inside the action, or in a separate action the
-  caller awaits first - not before `next`.
+- An async precondition (a server check) may be awaited **before** `next` for a `Task` action
+  (`MiddlewareCanGenuinelyAwaitAsynchronousWorkBeforeCallingNext`); real work after `next` works
+  too (`MiddlewareCanGenuinelyAwaitAsynchronousWorkAfterCallingNext`). Wrapping a sync action
+  called on the UI thread, either one deadlocks it - see [Return types](#return-types-and-blocking).
+- Retry by calling `next` again after a failed attempt, also when the async action failed after
+  its own first real `await` (`MiddlewareCanRetryAnAsyncActionThatFailedAfterItsFirstAwait`,
+  `RetryGivesUpAndPropagatesTheErrorOnceItsAttemptsAreSpent`,
+  `MiddlewareCanRetryASynchronousActionByCallingNextAgain`). Each call re-runs the interceptors
+  **after** this one in the chain (see [Registration and order](#registration-and-order)) and then
+  the action body; interceptors outside it see one call.
+  Await one attempt before starting the next - never call `next` concurrently.
+- No `ConfigureAwait(false)` before `next`: the action body runs on whichever thread calls
+  `next`, and would then mutate UI-bound store state from the thread pool.
+- Packages built before the `CaptureProceedInfo` change used `IInvocation.Proceed()` directly,
+  which re-entered the whole chain from a continuation: an `await` before `next` hung forever
+  with no exception (the test host had to be killed) and a retry re-ran the outer interceptors,
+  nested. A hang there on an old package version is that bug.
 
 ### Return types and blocking
 
@@ -222,8 +232,8 @@ before `next()` hung the test host until it was killed (`DelayingMiddleware` rem
 - Because sync actions block, an interceptor that genuinely suspends **anywhere** in a sync
   action's chain - even after `next` - waits for a UI-thread continuation while the UI thread is
   blocked: the classic WPF sync-over-async deadlock. Global interceptors wrap sync actions too,
-  so a global interceptor must not genuinely `await`; hand async I/O (a remote log flush) off to
-  something that runs on its own instead.
+  so a global interceptor must await nothing but `next()` itself (which a sync action completes
+  synchronously); hand async I/O (a remote log flush) off to something that runs on its own.
 - After `await next()` the interceptor resumes on the caller's context (the pipeline deliberately
   omits `ConfigureAwait(false)`), so after-code may touch UI-bound state. Keep it that way in
   your interceptors.
@@ -274,9 +284,11 @@ that ejects can reach it.
 - A plugin can read/write state, subscribe to `StateChanged`, and call actions (through the
   chain). It cannot wrap actions - that is an interceptor's job.
 - State a plugin restores is set while the store is still being resolved, before anything else
-  can subscribe. In the Aquarius sample, `OrderStore` wires its watch on `SelectedUserId` after
-  `UserSessionPersistencePlugin` restored it, so the restored user does not refresh orders.
-  Whatever reacts to restored state must read the current value when it subscribes.
+  can subscribe, so its change notifications reach nobody. Whatever reacts to restored state must
+  read the current value when it subscribes (an "immediate" watch): in the Aquarius sample,
+  `UserSessionPersistencePlugin` restores `SelectedUserId` before `OrderStore` exists, so
+  `OrderStore`'s constructor checks `_userStore.SelectedUserId` right after wiring its watch and
+  loads that user's orders (`LoadOrdersForRestoredUser`).
 - `IStoreRegistry.Stores` is a snapshot of the stores resolved so far, in the order each finished
   resolving (after its plugins; a store's dependency stores come first); a registered but
   never-resolved store is absent. It is registered by the first `AddStore` call
@@ -304,7 +316,7 @@ singleton must unsubscribe from store events when it goes away - the store outli
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Interceptor never runs for an action | Method not `virtual`, missing `[Action]`, store not registered via `AddStore`, local registered for another `TStore`, or handle ejected | Fix the shape/registration; check `IsEjected` |
-| Intercepted action never completes, no exception | Interceptor awaited real async work before `next`, or retried after an async failure | Move the work after `next` or into the action |
+| Intercepted action never completes, no exception | An interceptor returned a task that never completes (it awaits something that never finishes); on a package built before the `CaptureProceedInfo` fix, an `await` before `next` | Find the interceptor's unfinished await; update the package |
 | UI freezes when a sync action runs | An interceptor genuinely suspends inside a sync action's chain | Make the action return `Task`, or keep interceptors synchronous |
 | `InvalidOperationException` "must not be sealed" right after adding a global interceptor | A `sealed` store now needs a proxy | Remove `sealed` |
 | `InvalidOperationException` "must have exactly one public constructor ... (found N)" | Proxy path needs one constructor | Collapse to one |
@@ -331,10 +343,12 @@ Adding a store: `public`, non-`sealed`, one public constructor over singletons; 
 `AddStore<TStore>` call with its local interceptors in the callback; getter-backed values reach
 XAML through a ViewModel forwarding `StateChanged`.
 
-Adding an interceptor: `next` first; no genuine `await` at all if it may wrap a sync action
-(every global does); filter by `nameof` action; short-circuit with a correctly typed value;
-`throw;` after observing; guards before token-spending interceptors; a test in the style of
-`StoreActionInterceptorTests.BuildStore` - never one that awaits before `next`.
+Adding an interceptor: await nothing but `next()` if it may wrap a sync action (every global
+does); no `ConfigureAwait(false)` before `next`; retries call `next` one attempt at a time;
+filter by `nameof` action; short-circuit with a correctly typed value; `throw;` after observing;
+guards before token-spending interceptors; a test in the style of
+`StoreActionInterceptorTests.BuildStore`, with async steps gated by a `TaskCompletionSource`
+the test completes rather than by delays.
 
 Changing `src/Barbatos.Wpf.Core/Essentials/Apsu/` itself: follow `barbatos-package-authoring`
 (stores stay the documented `sealed` exception; the pipeline's reflection is why the Core

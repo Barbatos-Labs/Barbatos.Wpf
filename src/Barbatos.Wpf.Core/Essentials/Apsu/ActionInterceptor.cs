@@ -33,8 +33,16 @@ internal sealed class ActionInterceptor : IInterceptor
             return;
         }
 
+        // Captured here, while Castle's interceptor index still points at this interceptor: a
+        // plain invocation.Proceed() made after Intercept has returned - from an interceptor that
+        // awaited before next(), or one calling next() again to retry after the action's first
+        // real await - finds that index reset and re-enters Intercept instead of reaching the
+        // action, rebuilding the whole chain every time (an endless loop, verified by running
+        // it). The captured proceed info restores the index for each call, so next() reaches the
+        // action from any continuation, as often as it is called.
+        var proceed = invocation.CaptureProceedInfo();
         var context = new StoreActionContext((StoreBase)invocation.Proxy, invocation.Method.Name, invocation.Arguments);
-        var pipeline = BuildPipeline(context, () => InvokeCoreAsync(invocation));
+        var pipeline = BuildPipeline(context, () => InvokeCoreAsync(invocation, proceed));
 
         var returnType = invocation.Method.ReturnType;
         if (returnType == typeof(Task))
@@ -71,9 +79,13 @@ internal sealed class ActionInterceptor : IInterceptor
         return pipeline;
     }
 
-    static Task<object?> InvokeCoreAsync(IInvocation invocation)
+    static Task<object?> InvokeCoreAsync(IInvocation invocation, IInvocationProceedInfo proceed)
     {
-        invocation.Proceed();
+        // ReturnValue is read straight after the call, on the same thread, before anything else
+        // can run the action again - so each call (a retry included) sees its own result. The
+        // value the proxy hands its caller was already read when Intercept returned, so a later
+        // call overwriting ReturnValue cannot change what that caller got.
+        proceed.Invoke();
         return invocation.ReturnValue is Task task
             ? AwaitAndBoxResultAsync(task)
             : Task.FromResult(invocation.ReturnValue);

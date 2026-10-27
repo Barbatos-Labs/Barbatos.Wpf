@@ -54,8 +54,11 @@ registered in the same container.**
   * [Plugins](#plugins)
   * [Registry](#registry)
 * **[AI chat + MCP (Barbatos.Wpf.Mcp)](#ai-chat--mcp-barbatoswpfmcp)**
+  * [Hosted servers that need a sign-in (OAuth)](#hosted-servers-that-need-a-sign-in-oauth)
   * [Agents (Microsoft Agent Framework)](#agents-microsoft-agent-framework)
   * [Providers](#providers)
+  * [Models (IAiModelCatalog)](#models-iaimodelcatalog)
+  * [Attachments (images, documents)](#attachments-images-documents)
   * [Configuration](#configuration)
 * **[Ecosystem](#ecosystem)**
   * [Repository layout](#repository-layout)
@@ -1367,7 +1370,8 @@ the base every store derives from:
 Register a store with **`AddStore<TStore>()`** - it becomes a singleton, created lazily on
 first resolution and cached for the container's lifetime after that, keyed by `TStore` itself.
 A store's constructor can take further dependencies - other services, or other stores,
-resolved by the container the same way any other constructor dependency is. Register its local
+resolved from the container (once interceptors apply, with the stricter rules listed at the end
+of [Actions and action interceptors](#actions-and-action-interceptors)). Register its local
 interceptors in the same call by chaining `Add` on the builder it hands you - one `AddStore`
 call handles the store and every local interceptor it needs, instead of a separate
 `AddStoreInterceptor<TStore>(...)` call per interceptor plus a trailing `AddStore<TStore>()`:
@@ -1406,6 +1410,34 @@ C# has no proxy-based reactivity to auto-track that on its own - this is a coars
 specific property it actually reads), a deliberate simplification over a full
 dependency-tracking system.
 
+Three things a getter does not do, each of which bites when it is shown in XAML:
+
+- **It raises no `PropertyChanged`.** `Summary` above is a plain property read, so
+  `{Binding OrderStore.Summary}` reads it once and never updates. Expose it through a ViewModel
+  that re-raises it whenever any store the getter reads changes:
+
+  ```csharp
+  orderStore.StateChanged += (_, _) => OnPropertyChanged(nameof(Summary));
+  userStore.StateChanged += (_, _) => OnPropertyChanged(nameof(Summary));
+
+  public string Summary => _orderStore.Summary;
+  ```
+
+  Raise it from a ViewModel, not from the store's own `StateChanged` handler - a store raising its
+  own `PropertyChanged` there fires `StateChanged` again, recursively.
+- **Forwarding on `PropertyChanged` goes stale inside `Patch`.** Outside a `Patch`, the store's
+  own `PropertyChanged` handler (subscribed first, in `StoreBase`'s constructor) raises
+  `StateChanged` before any later subscriber runs, so the getter is already invalidated. Inside a
+  `Patch`, `StateChanged` waits until the patch returns: a `PropertyChanged` handler that reads
+  the getter gets the old cached value, and nothing notifies again afterwards. Forward on
+  `StateChanged`, as above.
+- **It has no `Dispose`.** Its constructor subscribes to every dependency's `StateChanged` and
+  never unsubscribes. Inside a store that costs nothing - store and getter share one lifetime -
+  but a `Getter<T>` built in a short-lived ViewModel over an app-lifetime store keeps that
+  ViewModel, and everything the callback captures, alive for the life of the app. Create getters
+  inside stores; for a per-screen derived value use something the ViewModel can dispose (for
+  example Aquarius's `Computed<T>`).
+
 ### Actions and action interceptors
 
 A `[Action]`-marked `public virtual` method is interceptable, shaped as ASP.NET Core-style
@@ -1419,13 +1451,19 @@ public sealed class LoggingInterceptor : IStoreActionInterceptor
 {
     public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
     {
-        Console.WriteLine($"[{context.Store.GetType().Name}] {context.ActionName} starting");
-        var result = await next(); // call first - see the warning below
-        Console.WriteLine($"[{context.Store.GetType().Name}] {context.ActionName} done");
+        // context.Store is the generated proxy subclass; its BaseType is the store's own type.
+        var store = context.Store.GetType().BaseType!.Name;
+        Console.WriteLine($"[{store}] {context.ActionName} starting");
+        var result = await next(); // the rest of the chain, then the action itself
+        Console.WriteLine($"[{store}] {context.ActionName} done");
         return result;
     }
 }
 ```
+
+An interceptor only ever runs on a store built behind the proxy (below), so
+`context.Store.GetType()` is always the generated subclass - `OrderStoreProxy` or similar - and
+`GetType().BaseType` is the type you registered.
 
 ```csharp
 // Global - wraps every store's actions. DI-constructed - no `new` needed, since
@@ -1477,19 +1515,53 @@ public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDeleg
 `StoreActionContext.Arguments` carries the actual call arguments in declaration order, so a
 condition can be about *what an action was called with*, not just the store's current state.
 
+`next` can be called after other asynchronous work, and called again to retry. An async
+precondition (a server-side permission check) can be awaited *before* `next()`, and a retry
+interceptor can call `next()` again after an attempt failed - even one that failed after the
+action's own first `await`. A local retry interceptor on a store whose actions return `Task`
+(see the note below for why that matters):
+
+```csharp
+public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+{
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            return await next(); // re-runs the interceptors after this one, then the action
+        }
+        catch (HttpRequestException) when (attempt < 3)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(attempt)); // back off, then try again
+        }
+    }
+}
+```
+
+Each call of `next` re-runs the rest of the chain - every interceptor after this one in the
+chain order above, then the action body - while interceptors outside this one see a single
+call. Make one call at a time (await it before starting the next), and keep the awaits before
+`next` on the caller's context (no `ConfigureAwait(false)`): the action body runs on whichever
+thread calls `next`.
+
+Both shapes used to hang or misbehave: the pipeline reached the action through Castle
+DynamicProxy's `IInvocation.Proceed()`, which only works while Castle's own `Intercept()` call is
+still on the stack. Called from a later continuation it re-entered the whole chain instead of
+running the action - an `await` before `next` then suspended again on every re-entry, a hang
+with no exception (confirmed by killing a stuck test host), and a retry ran the outer
+interceptors again, nested. The pipeline now proceeds through `IInvocation.CaptureProceedInfo()`,
+captured when the call arrives - the API Castle provides for continuing an invocation after an
+`await` - and `StoreActionInterceptorTests` pins both shapes.
+
 > [!IMPORTANT]
-> **Call `next` as your first meaningful step if you're going to call it at all - never `await`
-> anything genuinely asynchronous before calling it.** Castle DynamicProxy's underlying
-> `Proceed()` (what `next` eventually reaches) is not safe to call from a continuation that
-> already crossed a real `await` suspension - doing so hangs the action forever instead of
-> throwing (confirmed by isolating and killing the stuck process during this feature's own
-> testing). Awaiting real asynchronous work *after* `next()` returns (post-processing, e.g.
-> flushing a log) is fully supported - only work ordered *before* it is unsafe. A synchronous
-> action's interceptor chain still runs through this same `async` shape, but the proxy blocks on
-> it (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a synchronous caller -
-> safe as long as every interceptor in that chain only does synchronous work, but risks the
-> classic WPF sync-over-async deadlock if one doesn't. Pair genuinely asynchronous interceptor
-> logic with a `Task`-returning action to avoid this entirely.
+> **Genuinely asynchronous interceptor work needs a `Task`-returning action.** A synchronous
+> action's interceptor chain still runs through the same `async` shape, but the proxy blocks on
+> it (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a synchronous caller.
+> That is safe as long as every interceptor in the chain only does synchronous work (an
+> `async` method awaiting already-completed tasks counts), but an interceptor that genuinely
+> suspends anywhere in it - before or after `next` - waits for a continuation on the UI thread
+> the proxy is blocking: the classic WPF sync-over-async deadlock. A global interceptor wraps
+> every store's synchronous actions too, so it should await nothing but `next()` itself.
 
 Combine with `OnDispatcherUnhandledException` (see [Lifecycle events](#lifecycle-events)) to give
 a store action's error and any other unhandled exception one shared reporting path, since an
@@ -1506,17 +1578,29 @@ public sealed class ErrorReportingInterceptor : IStoreActionInterceptor
         }
         catch (Exception ex)
         {
-            Report(context.Store.GetType().Name, context.ActionName, ex); // same sink OnDispatcherUnhandledException uses
+            Report(context.Store.GetType().BaseType!.Name, context.ActionName, ex); // same sink OnDispatcherUnhandledException uses
             throw;
         }
     }
 }
 ```
 
-A store using interceptors must be **non-`sealed`** with **exactly one public constructor**
-(interception works by generating a runtime subclass via Castle DynamicProxy that overrides every
-`[Action]`-marked method) - `AddStore<TStore>()` throws a descriptive `InvalidOperationException`
-at first resolution otherwise, rather than failing silently.
+Interception works by generating a runtime subclass via Castle DynamicProxy that overrides every
+`[Action]`-marked method, and that asks more of a store than the plain path does. A store with
+at least one interceptor applying to it - and a **global** interceptor applies to every store, so
+adding one can break a store that has none of its own - must be:
+
+- **non-`sealed`** - otherwise `InvalidOperationException` ("must not be sealed") at first
+  resolution;
+- **`public`**, along with every type it is nested in - Castle's generated assembly cannot
+  subclass anything less visible, and throws `ArgumentException` ("is not accessible");
+- built through **exactly one public constructor** - otherwise `InvalidOperationException`
+  ("must have exactly one public constructor"). Each of its parameters is resolved with
+  `GetRequiredService`, so an optional parameter's default value is *not* used the way
+  `ActivatorUtilities` (the plain path) uses it: a parameter whose type isn't registered throws
+  "No service for type ..." even when it has a default.
+
+All three fail loudly at first resolution rather than silently skipping interception.
 
 #### Removing an interceptor at runtime
 
@@ -1528,16 +1612,43 @@ remove an interceptor later without rebuilding the host - `axios`'s
 builder.Services.AddStoreInterceptor(new LoggingInterceptor(), out var loggingHandle);
 // Local interceptors have the same overload: AddStoreInterceptor<TStore>(interceptor, out handle)
 
-// Later, e.g. from a settings toggle:
+// Later, e.g. once a diagnostics session is over for good:
 loggingHandle.Eject();
 ```
 
 Ejecting doesn't remove the interceptor from the chain structurally - its slot just becomes a
 transparent pass-through straight to the next interceptor (or the action itself) from that call
 onward, as if it had never been registered. A call already in flight when `Eject()` runs keeps
-using the interceptor; every call that starts afterward skips it. There's no "re-attach" -
-construct and register a new interceptor if you need the behavior back. Most interceptors don't
-need this - it's opt-in per interceptor, not automatic.
+using the interceptor; every call that starts afterward skips it. Most interceptors don't need
+this - it's opt-in per interceptor, not automatic.
+
+Ejecting is one-way. There's no "re-attach", and registering the interceptor again doesn't bring
+it back either: each store reads its chain once, when it is first resolved, so a registration
+added after that never joins it - getting the behavior back takes a new container. For behavior a
+user can switch on and off (a settings toggle), give the interceptor its own flag instead:
+
+```csharp
+public sealed class ToggleableLoggingInterceptor : IStoreActionInterceptor
+{
+    public bool Enabled { get; set; } = true; // flipped by a settings screen, any number of times
+
+    public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next) =>
+        Enabled ? LogAroundAsync(context, next) : next();
+
+    async Task<object?> LogAroundAsync(StoreActionContext context, StoreActionDelegate next)
+    {
+        Console.WriteLine($"{context.ActionName} starting");
+        var result = await next();
+        Console.WriteLine($"{context.ActionName} done");
+        return result;
+    }
+}
+
+// Register the instance so the settings screen can reach the same object:
+var logging = new ToggleableLoggingInterceptor();
+builder.Services.AddSingleton(logging);
+builder.Services.AddSingleton<IStoreActionInterceptor>(logging);
+```
 
 ### Plugins
 
@@ -1561,6 +1672,12 @@ constructor has already run, in plugin-registration order. A plugin can read/wri
 subscribe to `StateChanged`, but cannot transparently intercept an action call (use an
 `IStoreActionInterceptor` for that instead).
 
+`Apply` runs inside that store's own DI resolution, so state a plugin *restores* is set before
+anything else can have subscribed to the store - the change notifications for it reach nobody.
+Whatever reacts to that state has to read the current value when it subscribes, the way Vue's
+`watch(..., { immediate: true })` does: the Aquarius sample's `OrderStore` checks for a restored
+`UserStore.SelectedUserId` right after wiring its watch, and loads that user's orders.
+
 ### Registry
 
 `IStoreRegistry` (resolved automatically - there's normally no need to depend on it directly)
@@ -1572,11 +1689,13 @@ See the `Barbatos.Wpf.Apsu` namespace in the [API Reference](#api-reference) for
 list. Two worked examples ship with this repository:
 
 - **`samples/Barbatos.Wpf.Core.Sample`** - `CounterStore` (state, a getter, two actions) plus
-  `SampleActionLoggingInterceptor`, a single global interceptor also called directly from the
-  `OnDispatcherUnhandledException` lifecycle hook, showing the two error paths share one policy.
+  `SampleActionLoggingInterceptor`, a single global interceptor that logs into
+  `SampleActivityLog`; the `OnDispatcherUnhandledException` lifecycle hook reports into that same
+  log, so a failed action and any other unhandled exception share one sink and one policy.
 - **`samples/Barbatos.Wpf.Aquarius.Sample`** (`ApsuInteropDemoView`/`ApsuInteropDemoViewModel`) -
   a richer scenario against a real API (jsonplaceholder.typicode.com): `UserStore`/`OrderStore`
-  watching each other's state and calling across stores, a getter combining both, and a full
+  watching each other's state and calling across stores, a getter combining both (forwarded to
+  XAML by the ViewModel), a plugin that restores the last selected user, and a full
   3-global + 3-local interceptor chain (logging, timing, audit trail, argument-based validation,
   a state-based guard, and a cooldown) demonstrating short-circuiting at every layer.
 
@@ -1751,7 +1870,15 @@ structured output via `RunAsync<T>`, and so on.
   `options.ToolApproval = AiToolApprovalMode.Never` for the older auto-execute behavior.
 - **The agent is rebuilt when its inputs change** - a different provider/model/API key, or an MCP
   server connecting or disconnecting. Ask `GetAgentAsync()` per conversation rather than holding
-  one forever; an `AgentSession` survives those rebuilds.
+  one forever; an `AgentSession` survives those rebuilds. `AiAgentOptions` itself is not one of
+  those inputs: it is read when the agent is built, so editing it at runtime only shows up at the
+  next rebuild. For different instructions or tools at runtime, use `CreateAgentAsync` (below) or
+  per-run instructions in `ChatClientAgentRunOptions`.
+- **`IAiAgentFactory.ConfigurationChanged` can arrive on a thread-pool thread.** It forwards
+  `IMcpServerRegistry.Changed`, which the registry raises after awaiting the connection - so a
+  seed server finishing its connect at startup reaches your handler off the UI thread. The MCP
+  layer is UI-agnostic and does not marshal; dispatch before touching bindings or a bound
+  collection (the sample's `MainViewModel` does).
 - **`CreateAgentAsync(descriptor)`** builds a second, differently-scoped agent (a summarizer, a
   code reviewer) with its own instructions, its own tools, and its own approval policy, without
   disturbing the default one.
@@ -1908,16 +2035,26 @@ A few behaviors worth knowing before relying on this feature:
   actually runs (for example because end users can add their own untrusted MCP servers), use
   `IAiAgentFactory` instead - its default `AiToolApprovalMode.Always` pauses the run and hands the
   pending call back to you, which is what the "Agents" section above is about.
-- **Tool name collisions**: if two connected servers expose a same-named tool, the one from
-  whichever server connected most recently wins - a warning is logged when this happens.
+- **Tool name collisions**: if two connected servers expose a same-named tool, the one from the
+  server *added* later wins - the one later in `IMcpServerRegistry.Servers` - and a warning naming
+  both servers is logged. A server takes its place in that list when `AddServerAsync` starts,
+  before it connects, so precedence follows the order servers were added (the seed list in
+  order, then runtime additions), not the order they happened to finish connecting.
 - **A failed server connection is still tracked** - `IMcpServerRegistry.Servers` includes it with
   `IsConnected = false` and `LastError` set, rather than disappearing; `AddServerAsync` also
   rethrows the exception, so a caller doesn't have to poll `Servers` just to notice a failure.
+  An entry rejected *before* connecting is different: a descriptor failing `Validate()`, or one
+  reusing a tracked `Name`, throws before any status exists, so a seed entry like that is missing
+  from `Servers` entirely and only the startup error log mentions it.
 - **Runtime-mutable state does not persist itself** - like every other runtime-mutable feature in
   this library (`ITrayIconService`, `IPeriodicServiceScheduler`), an `IMcpServerRegistry.AddServerAsync`/
   `IAiChatClientFactory.UpdateProvider` call made from a settings UI is not written back to a
-  config file automatically; persist it yourself (see `SettingsStore` in the sample) if it should
-  survive a restart.
+  config file automatically; persist it yourself if it should survive a restart. The sample
+  deliberately doesn't: its `SettingsStore` shows the pattern (a JSON file the host loads back into
+  configuration on the next start) for the tray, keep-awake, periodic-service and notification
+  settings only, so its AI provider/model and any server added at runtime start from the seeded
+  defaults on every launch. What does survive is held by the secret stores: the API key
+  (`IAiApiKeyProvider`) and a signed-in server's OAuth tokens (`IMcpTokenStore`).
 
 ---
 

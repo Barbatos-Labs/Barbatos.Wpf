@@ -44,6 +44,19 @@ public class OrderStore : StoreBase
             if (args.PropertyName == nameof(UserStore.SelectedUserId))
                 await RefreshOrdersAsync();
         };
+
+        // "immediate": a plugin may have restored SelectedUserId before this store existed, and
+        // that change notification is gone - read the value that is already there.
+        if (_userStore.SelectedUserId is not null)
+            LoadOrdersForRestoredUser();
+    }
+
+    // async void: nothing awaits a constructor. Startup must survive being offline, so network
+    // failures are swallowed here (the logging interceptor already reported them).
+    async void LoadOrdersForRestoredUser()
+    {
+        try { await RefreshOrdersAsync(); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { }
     }
 
     public int OrderCount
@@ -183,7 +196,10 @@ public sealed class UserSessionPersistencePlugin(IPreferences preferences) : ISt
 ```
 
 (The sample spells the constructor out; the primary constructor here is equivalent.) The restore
-happens during `UserStore`'s resolution - before `OrderStore` exists to watch it.
+happens during `UserStore`'s resolution - before `OrderStore` exists to watch it - which is why
+`OrderStore`'s constructor reads the current value after subscribing (see
+[Cross-store stores](#cross-store-stores)). `UserStore.Reset` clears its three properties in one
+`Patch`, so this plugin writes once per reset rather than once per property.
 
 ## Exposing a getter to XAML
 
@@ -207,9 +223,9 @@ public sealed class OrdersViewModel : ObservableObject
 }
 ```
 
-Register such a ViewModel as a singleton, or unsubscribe when it goes away. The Core sample's
-`MainViewModel` forwards on `PropertyChanged` instead; that only works because `CounterStore`
-never uses `Patch`.
+Register such a ViewModel as a singleton, or unsubscribe when it goes away. Both samples do
+this: `ApsuInteropDemoViewModel.OrderSummary` (Aquarius sample) for `OrderStore.Summary`, and
+the Core sample's `MainViewModel` for `CounterStore.DoubleCountLabel`.
 
 For a short-lived ViewModel, a disposable alternative from Aquarius (`Barbatos.Wpf.Aquarius.Reactivity`)
 that reads raw store state rather than the store's getter:
@@ -230,8 +246,27 @@ and the README:
 builder.Services.AddStoreInterceptor(new LoggingInterceptor(), out var loggingHandle);   // global
 // local: builder.Services.AddStoreInterceptor<OrderStore>(interceptor, out var handle);
 
-// Later, e.g. from a settings toggle:
+// Later, once it should be gone for good:
 loggingHandle.Eject();   // next call skips it; a call already running keeps it
+```
+
+Ejecting is one-way, and a second registration never joins a store that already exists. For a
+setting the user can switch back on, use an enabled flag instead (from the README):
+
+```csharp
+public sealed class ToggleableLoggingInterceptor : IStoreActionInterceptor
+{
+    public bool Enabled { get; set; } = true;
+
+    public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next) =>
+        Enabled ? LogAroundAsync(context, next) : next();
+
+    // LogAroundAsync: log, await next(), log.
+}
+
+var logging = new ToggleableLoggingInterceptor();
+builder.Services.AddSingleton(logging);                            // the settings screen's handle
+builder.Services.AddSingleton<IStoreActionInterceptor>(logging);  // the chain's
 ```
 
 Only instance overloads return a handle, and `StoreInterceptorBuilder<TStore>.Add` has none -
@@ -271,8 +306,11 @@ static TStore BuildStore<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTy
 ```
 
 The store under test is a `public` non-`sealed` nested class with `public virtual` `[Action]`
-methods (`InterceptedStore`). Never add a fixture that awaits before `next` - it hangs the test
-host instead of failing. Run with `barbatos-wpf-testing`'s per-TFM discipline:
+methods (`InterceptedStore`). To test an interceptor that awaits before `next` or retries, gate
+the async step with a `TaskCompletionSource` the test completes only after the call returned
+(`AwaitBeforeNextMiddleware`, `InterceptedStore.FlakyGate`) and bound the wait with
+`WaitAsync(TimeSpan)`, so a regression fails instead of hanging the test host. Run with
+`barbatos-wpf-testing`'s per-TFM discipline:
 
 ```bash
 dotnet test tests/Barbatos.Wpf.Core.UnitTests -f net8.0-windows10.0.17763.0 --filter "FullyQualifiedName~StoreActionInterceptorTests"
