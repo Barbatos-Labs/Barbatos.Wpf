@@ -9,14 +9,71 @@ using System.Runtime.InteropServices;
 namespace Barbatos.Wpf.ApplicationModel.Communication;
 
 /// <summary>
-/// Composes a new email through Simple MAPI (<c>MAPISendMail</c>), ported nearly verbatim
-/// from .NET MAUI's Windows <c>EmailHelper</c> — this was already pure Win32 interop, not
-/// WinRT, so no substitution was needed.
+/// Composes a new email through Simple MAPI (<c>MAPISendMailW</c>), ported from .NET MAUI's
+/// Windows <c>EmailHelper</c> — this was already pure Win32 interop, not WinRT, so no
+/// substitution was needed.
 /// </summary>
+/// <remarks>
+/// Two deliberate departures from the MAUI original. It calls the Unicode entry point
+/// <c>MAPISendMailW</c> with the <c>MapiMessageW</c>/<c>MapiRecipDescW</c>/<c>MapiFileDescW</c>
+/// layouts instead of the ANSI <c>MAPISendMail</c>: the ANSI structures squeeze the subject,
+/// body, recipients and attachment paths through the system code page, so text outside it
+/// (Vietnamese on an English-locale machine, for one) reached the client as <c>?</c>.
+/// <c>MAPISendMailW</c> has been in the Windows MAPI stub since Windows 8, below the
+/// Windows 10 1809 floor this package targets, and for a client that implements only the ANSI
+/// call the stub converts the strings itself - no worse than calling the ANSI entry point
+/// directly. And the MAPI result is no longer discarded: MAUI's version completed normally
+/// even when no mail client was installed, so <see cref="ThrowOnFailure"/> turns every failure
+/// into an exception, while a user who closes the compose window remains a normal completion.
+/// </remarks>
 static class EmailHelper
 {
-    public static Task<bool> ShowComposeNewEmailAsync(PlatformEmailMessage message) =>
-        Task.Run(() => SendMail(message) == 0);
+    // Simple MAPI result codes, from MAPI.h.
+    const int SUCCESS_SUCCESS = 0;
+    const int MAPI_USER_ABORT = 1;
+    const int MAPI_E_FAILURE = 2;
+    const int MAPI_E_LOGIN_FAILURE = 3;
+    const int MAPI_E_ATTACHMENT_NOT_FOUND = 11;
+    const int MAPI_E_NOT_SUPPORTED = 26;
+    const int MAPI_E_UNICODE_NOT_SUPPORTED = 27;
+
+    public static Task ShowComposeNewEmailAsync(PlatformEmailMessage message) =>
+        Task.Run(() => ThrowOnFailure(SendMail(message)));
+
+    /// <summary>
+    /// Maps a Simple MAPI result to the exception <see cref="IEmail.ComposeAsync"/> documents.
+    /// </summary>
+    /// <remarks>
+    /// The codes that mean "no usable mail client answered" - the generic failure, a logon
+    /// failure and the two not-supported codes - become <see cref="FeatureNotSupportedException"/>,
+    /// the type Essentials already uses for "this machine cannot do that", so one <c>catch</c>
+    /// covers the <c>mailto:</c> fallback. Which of them a machine without a client returns
+    /// depends on the Windows build and on what is registered as the default client, so they are
+    /// grouped instead of being told apart.
+    /// </remarks>
+    static void ThrowOnFailure(int result)
+    {
+        switch (result)
+        {
+            case SUCCESS_SUCCESS:
+            case MAPI_USER_ABORT:
+                return;
+
+            case MAPI_E_FAILURE:
+            case MAPI_E_LOGIN_FAILURE:
+            case MAPI_E_NOT_SUPPORTED:
+            case MAPI_E_UNICODE_NOT_SUPPORTED:
+                throw new FeatureNotSupportedException(
+                    $"No Simple MAPI email client could compose the message (MAPI error {result}). " +
+                    "Install a desktop email client and make it the default, or offer a mailto: link instead.");
+
+            case MAPI_E_ATTACHMENT_NOT_FOUND:
+                throw new FileNotFoundException("The email client could not find one of the attachments.");
+
+            default:
+                throw new InvalidOperationException($"Simple MAPI could not compose the message (MAPI error {result}).");
+        }
+    }
 
     static int SendMail(PlatformEmailMessage message)
     {
@@ -25,7 +82,7 @@ static class EmailHelper
         var recipients = GetRecipients(message);
         var attachments = GetAttachments(message);
 
-        var msg = new MapiMessage
+        var msg = new MapiMessageW
         {
             subject = message.Subject,
             noteText = message.Body,
@@ -37,7 +94,13 @@ static class EmailHelper
 
         try
         {
-            return NativeMethods.MAPISendMail(IntPtr.Zero, IntPtr.Zero, ref msg, flags, 0);
+            return NativeMethods.MAPISendMailW(IntPtr.Zero, IntPtr.Zero, ref msg, flags, 0);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // No Simple MAPI stub at all (a stripped-down Windows image): to the caller that is
+            // the same situation as "no mail client installed".
+            throw new FeatureNotSupportedException("Simple MAPI (MAPI32.DLL) is not available on this machine.", ex);
         }
         finally
         {
@@ -86,14 +149,14 @@ static class EmailHelper
         }
     }
 
-    static MapiRecipDesc[]? GetRecipients(PlatformEmailMessage message)
+    static MapiRecipDescW[]? GetRecipients(PlatformEmailMessage message)
     {
         var recipCount = message.To.Count + message.CC.Count + message.Bcc.Count;
 
         if (recipCount == 0)
             return null;
 
-        var recipients = new MapiRecipDesc[recipCount];
+        var recipients = new MapiRecipDescW[recipCount];
 
         var idx = 0;
         foreach (var to in message.To)
@@ -105,9 +168,9 @@ static class EmailHelper
 
         return recipients;
 
-        static MapiRecipDesc Create(PlatformEmailRecipient recipient, RecipientClass type)
+        static MapiRecipDescW Create(PlatformEmailRecipient recipient, RecipientClass type)
         {
-            return new MapiRecipDesc
+            return new MapiRecipDescW
             {
                 name = recipient.Address,
                 recipClass = type,
@@ -115,14 +178,14 @@ static class EmailHelper
         }
     }
 
-    static MapiFileDesc[]? GetAttachments(PlatformEmailMessage message)
+    static MapiFileDescW[]? GetAttachments(PlatformEmailMessage message)
     {
         var attachCount = message.Attachments.Count;
 
         if (attachCount == 0)
             return null;
 
-        var attachments = new MapiFileDesc[attachCount];
+        var attachments = new MapiFileDescW[attachCount];
 
         var idx = 0;
         foreach (var file in message.Attachments)
@@ -130,9 +193,9 @@ static class EmailHelper
 
         return attachments;
 
-        static MapiFileDesc Create(string filename)
+        static MapiFileDescW Create(string filename)
         {
-            return new MapiFileDesc
+            return new MapiFileDescW
             {
                 name = Path.GetFileName(filename),
                 path = filename,
@@ -143,12 +206,14 @@ static class EmailHelper
 
     static class NativeMethods
     {
-        [DllImport("MAPI32.DLL")]
-        internal static extern int MAPISendMail(IntPtr sess, IntPtr hwnd, ref MapiMessage message, SendMailFlags flg, int rsv);
+        [DllImport("MAPI32.DLL", ExactSpelling = true)]
+        internal static extern int MAPISendMailW(IntPtr sess, IntPtr hwnd, [In] ref MapiMessageW message, SendMailFlags flg, int rsv);
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    struct MapiMessage
+    // MAPI.h's MapiMessageW, MapiFileDescW and MapiRecipDescW: field for field the same layout
+    // as the ANSI structures, with every string a PWSTR - hence CharSet.Unicode.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct MapiMessageW
     {
         private int reserved;
         public string? subject;
@@ -164,8 +229,8 @@ static class EmailHelper
         public IntPtr files;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    struct MapiFileDesc
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct MapiFileDescW
     {
         private int reserved;
         public int flags;
@@ -175,8 +240,8 @@ static class EmailHelper
         public IntPtr type;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    struct MapiRecipDesc
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct MapiRecipDescW
     {
         private int reserved;
         public RecipientClass recipClass;

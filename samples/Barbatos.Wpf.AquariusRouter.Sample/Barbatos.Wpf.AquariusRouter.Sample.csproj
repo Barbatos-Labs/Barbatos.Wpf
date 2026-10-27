@@ -10,8 +10,9 @@
     <Product>Barbatos.Wpf.AquariusRouter Sample</Product>
     <Company>Barbatos Labs</Company>
     <Version>1.0.0</Version>
-    <!-- See Barbatos.Wpf.Core.Sample.csproj: without these the sample reports the library's
-         AssemblyVersion (from Directory.Build.props) to File Explorer instead of its own. -->
+    <!-- See Barbatos.Wpf.Core.Sample.csproj: without these the sample inherits the library's
+         AssemblyVersion pinned in Directory.Build.props, and AppInfo.Version and File Explorer
+         report that instead of its own. -->
     <AssemblyVersion>$(Version)</AssemblyVersion>
     <FileVersion>$(Version)</FileVersion>
     <Copyright>Copyright (c) 2026 Barbatos Labs</Copyright>

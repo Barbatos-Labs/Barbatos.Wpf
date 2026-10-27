@@ -17,6 +17,6 @@ public sealed class SignupModel
     public string Password { get; set; } = "";
 
     [Required(ErrorMessage = "Validation.Required")]
-    [Compare(nameof(Password), ErrorMessage = "Validation.Passwords Must Match Nha")]
+    [Compare(nameof(Password), ErrorMessage = "Validation.PasswordsMustMatch")]
     public string ConfirmPassword { get; set; } = "";
 }

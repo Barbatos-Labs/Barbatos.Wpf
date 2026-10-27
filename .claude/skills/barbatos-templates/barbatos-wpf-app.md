@@ -30,20 +30,24 @@ what every Aquarius-dependent site tests, never `IncludeAquarius` itself - Route
 on Aquarius, so ticking either pulls it in while the Aquarius checkbox stays unticked.
 
 - `AquariusEffective`: the `Barbatos.Wpf.Aquarius` `PackageReference`; in `WpfProgram.cs`
-  `Setup.ServiceProvider = app.Services;` after `Build()`; in `MainWindow.xaml` the `aq` and
+  `builder.Services.AddAquarius();` before `Build()` and `app.Services.UseAquarius();` after it
+  (which points `Setup.ServiceProvider` at the container); in `MainWindow.xaml` the `aq` and
   `local` xmlns plus `aq:Setup.ViewModel="{x:Type local:MainViewModel}"` (explicit type -
   `MainWindow` does not end in `View`, so `Setup.Enable`'s convention would find nothing) and
   the `Count` text/button; in `MainViewModel.cs` `Ref<int> Count` and `[RelayCommand] Increment`.
   When it is **off**, `MainWindow`'s constructor takes `MainViewModel` and sets `DataContext`
   itself - the only path that does not go through `Setup`.
 - `IncludeAquariusRouter`: the Router `PackageReference`; the route files;
-  `builder.Services.AddSingleton(_ => new Router(AppRoutes.Build()))` and
-  `Router.Current = app.Services.GetRequiredService<Router>()`; in `MainWindow.xaml` a `DockPanel`
-  with a nav bar (`aqr:RouterLink.To="/"` and `{aqr:RouteTo Name=about}`), a search `TextBox` +
-  `ListBox`, and `<aqr:RouterView Margin="16" />`; `MainWindow.OnSourceInitialized` runs
+  `builder.Services.AddAquariusRouter(_ => AppRoutes.Build());` before `Build()` and
+  `app.Services.UseAquariusRouter();` after it (which publishes `Router.Current`); in
+  `MainWindow.xaml` a `DockPanel` with a nav bar (`aqr:RouterLink.To="/"` and
+  `{aqr:RouteTo Name=about}`), a search `TextBox` + `ListBox`, and
+  `<aqr:RouterView Margin="16" />`; `MainWindow.OnSourceInitialized` runs
   `await Router.Current!.Start("/")` (a memory-history router has no URL to seed the first route);
   `MainViewModel` takes `Router`, builds a `RouteSearchIndex`, and exposes `SearchQuery`,
-  `SearchResults`, `HasSearchResults` and `GoToSearchResultCommand`.
+  `SearchResults`, `HasSearchResults` and `GoToSearchResultCommand`, which pushes
+  `RouteSearchResult.To` - always the record's `Name`, and an `InvalidOperationException` for a
+  searchable route without one.
   `HomeView` finds `HomeViewModel` by `aq:Setup.Enable`; `AboutView` names no ViewModel and is
   paired with `AboutViewModel` by `RouteRecord.ViewModel` - the two wirings are deliberate.
 - `IncludeValee`: the Valee `PackageReference`; the SignUp files (ad-hoc `DefineField` mode with
@@ -70,13 +74,13 @@ All but the splash screen add their `ConfigureXxx` call to `WpfProgram.cs` betwe
 `CreateBuilder()` and `Build()`. The `ConfigureXxx` methods live in `Barbatos.Wpf.Hosting`; the
 per-flag `using` lines bring in the feature's own types. "Off by default" means the service is
 registered but does nothing until its options `Enabled` is set (code or `Barbatos:<Feature>`
-config) or its runtime service toggles it - the template sets neither, and generates no toggle UI.
+config, which overrides code) or its runtime service toggles it.
 
 | Flag | Generated code | Behaviour of the generated app |
 | --- | --- | --- |
 | `IncludeSingleInstance` | `builder.ConfigureSingleInstance();` | On; keyed by `AppInfo.AppId` |
-| `IncludeRunOnStartup` | `builder.ConfigureRunOnStartup();` | Off by default - nothing is written to the Run key |
-| `IncludeTrayIcon` | `ConfigureTrayIcon` with "Open" (`IsDefault`), `TrayMenuItem.Separator`, "Exit", both via `IWpfPlatformApplication.Current` | Off by default - `TrayIconOptions.Enabled` is `false`, so no icon appears |
+| `IncludeRunOnStartup` | `builder.ConfigureRunOnStartup();` with `Enabled` left `false`; `MainViewModel` takes `IRunOnStartupService` and exposes `RunOnStartupEnabled` (get `IsEnabled`, set `SetEnabled`); `MainWindow.xaml` binds a "Launch when Windows starts" `CheckBox` to it | Nothing is written to the Run key until the user ticks the box - never register a first run unasked |
+| `IncludeTrayIcon` | `ConfigureTrayIcon` setting `options.Enabled = true`, with "Open" (`IsDefault`; shows, un-minimizes and activates the main window), `TrayMenuItem.Separator`, "Exit", both via `IWpfPlatformApplication.Current` | On - icon shown from launch; `Barbatos:TrayIcon:Enabled` in configuration overrides the code |
 | `IncludeKeepAwake` | `builder.ConfigureKeepAwake();` | Off by default |
 | `IncludeNotifications` | `builder.ConfigureNotifications();` | On |
 | `IncludePushNotifications` | `ConfigurePushNotifications` setting `options.Enabled = false` and `DeduplicationHistorySize = 256`, and `configureSignalR:` setting `ServerUrl`, `AppId`, `Tags["channel"]` (a comment points at `AppKey` / `AcknowledgeMethodName`) | Deliberately disabled - no server exists |
@@ -89,10 +93,11 @@ config) or its runtime service toggles it - the template sets neither, and gener
 ## Conditional seams that break when edited
 
 - **`MainViewModel`'s constructor** is a comma ladder: the parameter list exists only under
-  `#if (IncludeI18n || IncludeDialogs || IncludeAquariusRouter)`, and each comma has its own
-  condition (`IncludeI18n && IncludeDialogs`, then `(IncludeI18n || IncludeDialogs) &&
-  IncludeAquariusRouter`). A fourth injected service means widening the outer condition and
-  adding a comma condition that covers every earlier parameter.
+  `#if (IncludeI18n || IncludeDialogs || IncludeAquariusRouter || IncludeRunOnStartup)`, and each
+  comma has its own condition (`IncludeI18n && IncludeDialogs`, then `(IncludeI18n ||
+  IncludeDialogs) && IncludeAquariusRouter`, then `(IncludeI18n || IncludeDialogs ||
+  IncludeAquariusRouter) && IncludeRunOnStartup`). A fifth injected service means widening the
+  outer condition and adding a comma condition that covers every earlier parameter.
 - **`MainWindow.xaml` opens and closes its layout in two places**: the router branch opens a
   `DockPanel` + inner `StackPanel` at the top and closes them (plus `RouterView`) at the bottom
   under a second `<!--#if (IncludeAquariusRouter) -->` / `<!--#else -->`. Change one half, change
@@ -107,11 +112,12 @@ config) or its runtime service toggles it - the template sets neither, and gener
 
 ## The identity block in the csproj
 
-- `<Version>1.0.0</Version>` with `<AssemblyVersion>$(Version)</AssemblyVersion>` and
-  `<FileVersion>$(Version)</FileVersion>`: one value for all three, so the number Explorer and
-  installers read moves with the one `AppInfo` reports. Both derived properties accept numeric
-  parts only - for a prerelease `<Version>` the csproj comment says to set them to the bare
-  `x.y.z`.
+- `<Version>1.0.0</Version>` alone. The SDK derives `AssemblyVersion` and `FileVersion` from it
+  with any prerelease suffix stripped (`1.1.0-beta.1` -> `1.1.0.0`), so `AppInfo.Version` (the
+  assembly version) and the file version Explorer shows move with it. Never add
+  `<AssemblyVersion>$(Version)</AssemblyVersion>`: it fails a prerelease build with `CS7034`.
+  The repo's samples do carry that line, because they inherit `Directory.Build.props`' pinned
+  library `<AssemblyVersion>` - a generated app has no such file.
 - `<Product>` (= project name), `<Company>Your Company</Company>`, `<Copyright>`: feed `AppInfo` /
   `PublisherInfo`. `Company` + `AppId` decide `%LocalAppData%\{Company}\{AppId}\`, so changing
   either after shipping strands user data.

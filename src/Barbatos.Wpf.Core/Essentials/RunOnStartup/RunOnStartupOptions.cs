@@ -25,7 +25,8 @@ public class RunOnStartupOptions
     public bool Enabled { get; set; }
 
     /// <summary>
-    /// The name of the startup entry. Defaults to the application name.
+    /// The name of the startup entry. Defaults to the entry assembly's name (not
+    /// <c>AppInfo.Name</c>, which prefers assembly metadata and <c>&lt;Product&gt;</c>).
     /// </summary>
     public string? EntryName { get; set; }
 

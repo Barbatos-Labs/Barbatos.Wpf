@@ -23,18 +23,18 @@ public class WpfHostEnvironment : IHostEnvironment
 
     /// <inheritdoc />
     /// <remarks>
-    /// Set once when the <see cref="WpfAppBuilder"/> constructs this environment, from the
-    /// <see cref="HostDefaults.EnvironmentKey"/> configuration key of
-    /// <see cref="WpfAppBuilder.Configuration"/> — which in turn is populated by the
-    /// <c>DOTNET_ENVIRONMENT</c> environment variable via a "DOTNET_"-prefixed environment
-    /// variables configuration source, the same bootstrap step
-    /// <c>Microsoft.Extensions.Hosting.HostBuilder</c> performs before building the rest of its
-    /// configuration. Because it is a normal property (unlike the previous implementation,
-    /// which recomputed it from <see cref="System.Environment.GetEnvironmentVariable(string)"/>
-    /// on every access and always threw on <c>set</c>), it can also be overridden after the
-    /// fact — from code, or from any other configuration source (appsettings.json,
-    /// command-line arguments, ...) added to <see cref="WpfAppBuilder.Configuration"/> before
-    /// <see cref="WpfAppBuilder.Build"/> runs.
+    /// <see cref="WpfAppBuilder"/> creates this environment lazily and reads the value once, at
+    /// that moment: on the first access of <see cref="WpfAppBuilder.Environment"/>, or - if the
+    /// builder never touches it - when <see cref="IHostEnvironment"/> is first resolved from the
+    /// built container. It comes from the <see cref="HostDefaults.EnvironmentKey"/> key of
+    /// <see cref="WpfAppBuilder.Configuration"/>, which the <c>DOTNET_ENVIRONMENT</c>
+    /// environment variable feeds through a "DOTNET_"-prefixed environment variables source
+    /// added first (lowest priority) - the same bootstrap step
+    /// <c>Microsoft.Extensions.Hosting.HostBuilder</c> performs. So a configuration source that
+    /// sets that key (appsettings.json, command-line arguments, an in-memory collection, ...)
+    /// overrides the variable when it is added before that first read; one added afterwards is
+    /// never seen. Being a plain settable property, it can also be assigned directly from code
+    /// at any time.
     /// </remarks>
     public string EnvironmentName { get; set; } = Environments.Production;
 

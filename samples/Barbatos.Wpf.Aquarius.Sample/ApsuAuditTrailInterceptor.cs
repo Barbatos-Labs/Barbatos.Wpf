@@ -27,7 +27,8 @@ public sealed class ApsuAuditTrailInterceptor : IStoreActionInterceptor
     public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
     {
         var arguments = string.Join(", ", context.Arguments);
-        var entry = $"{DateTimeOffset.Now:T} {context.Store.GetType().Name}.{context.ActionName}({arguments})";
+        // BaseType: context.Store is the generated proxy subclass, not the store's own type.
+        var entry = $"{DateTimeOffset.Now:T} {context.Store.GetType().BaseType!.Name}.{context.ActionName}({arguments})";
         Trail.Add(entry);
         _activityLog.Log($"[Global interceptor #3 - audit] recorded: {entry}");
         return next();

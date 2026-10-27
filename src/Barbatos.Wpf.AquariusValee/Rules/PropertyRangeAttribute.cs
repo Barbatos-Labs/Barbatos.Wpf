@@ -36,7 +36,9 @@ namespace Barbatos.Wpf.AquariusValee.Rules;
 /// hand-written ad-hoc rule closure, this cannot resolve a string-localizer key at validation time.
 /// <see cref="ValidationAttribute.ErrorMessage"/> is a plain <see cref="string.Format(IFormatProvider?, string, object?[])"/>
 /// template instead - <c>{0}</c> is the display name, <c>{1}</c> the min bound's current value,
-/// <c>{2}</c> the max bound's current value.
+/// <c>{2}</c> the max bound's current value. A resource string named by
+/// <see cref="ValidationAttribute.ErrorMessageResourceType"/>/<see cref="ValidationAttribute.ErrorMessageResourceName"/>
+/// is the same kind of template, which is how this message is localized without losing the bounds.
 /// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
@@ -46,14 +48,15 @@ public sealed class PropertyRangeAttribute : ValidationAttribute, IDependsOnProp
     private readonly string _maxPropertyName;
 
     /// <summary>Creates the attribute, naming the two sibling properties (typically via <see langword="nameof"/>) that hold the current lower and upper bound.</summary>
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
     public PropertyRangeAttribute(string minPropertyName, string maxPropertyName)
+        : base("The {0} field must be between {1} and {2}.")
     {
         ArgumentException.ThrowIfNullOrEmpty(minPropertyName);
         ArgumentException.ThrowIfNullOrEmpty(maxPropertyName);
 
         _minPropertyName = minPropertyName;
         _maxPropertyName = maxPropertyName;
-        ErrorMessage ??= "The {0} field must be between {1} and {2}.";
     }
 
     /// <inheritdoc/>

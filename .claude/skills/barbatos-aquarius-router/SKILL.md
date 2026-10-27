@@ -64,19 +64,21 @@ Then once, at startup (`MainWindow.OnSourceInitialized` in the sample):
 - `routes` is a **factory**, called once when `Router` is first resolved, so a per-route
   `BeforeEnter` can close over a DI service. Optional second argument:
   `options => options.PathOptions = new PathParserOptions { Strict = true }` - set it in code;
-  nothing binds `RouterOptions` from configuration (its `SectionName` is unused). Without DI:
-  `new Router(routes)` + `Router.Current = router`.
+  nothing in the package binds `RouterOptions` from configuration (its `SectionName` is only a
+  name). For a settings file, add
+  `builder.Services.Configure<RouterOptions>(builder.Configuration.GetSection(RouterOptions.SectionName))`
+  after `AddAquariusRouter`. Without DI: `new Router(routes)` + `Router.Current = router`.
 - `Router` and `IRouterHistory` go in with `TryAddSingleton`: register your own first to win.
 - **Routed Views and ViewModels are transient.** `Router` resolves a fresh instance on every
   genuine (re-)entry through `Setup.Resolve` (container first, `Activator.CreateInstance`
   fallback); a singleton fights that and is never released. Register only types with
   constructor dependencies - parameterless ones need nothing.
 - `Start(initial)` is `Push` that replaces the seed history entry. There is no default top-level
-  route and no ambient URL. A cold-start protocol URI is
-  `Start(RouteLocationRaw.Parse(uri.PathAndQuery + uri.Fragment))` - the URI's host is not in
-  `PathAndQuery` (`myapp://users/42` arrives as `/42`), so use `myapp:///users/42` or prepend
-  `uri.Host`. A `FullPath` the app stored itself (e.g. in a toast's `Arguments`) is
-  `RouteLocationRaw.Parse(text)`.
+  route and no ambient URL. A cold-start protocol URI `myapp://users/42?ref=mail#detail` is
+  `Start(RouteLocationRaw.Parse($"/{uri.Host}{uri.PathAndQuery}{uri.Fragment}"))` - `System.Uri`
+  reads `users` as the host, so `PathAndQuery` alone is `/42?ref=mail`; for the empty-authority
+  form `myapp:///users/42` it is `uri.PathAndQuery + uri.Fragment`. A `FullPath` the app stored
+  itself (e.g. in a toast's `Arguments`) is `RouteLocationRaw.Parse(text)`.
 - Register global guards from an `IWpfInitializeService` (sample: `AppNavigationGuardsInitializer`).
   `BeforeEach`/`BeforeResolve`/`AfterEach` return an `IDisposable`; dispose it when the
   registering object is shorter-lived than the router.
@@ -167,9 +169,10 @@ await router.Back();                                              // Go(-1); For
   pipeline as an *update* (same instance). `Go`/`Back`/`Forward` run the guards but skip steps 1-2
   below; out of range is a silent `null` with no `AfterEach`.
 - **Navigate on the UI thread.** `Push` constructs Views synchronously. Marshal callbacks from
-  toasts (`INotificationService.Activated`), thread-pool timers or `Task.Run` through the
-  Dispatcher first. Input-system actions, global hotkeys included, are raised on the UI thread
-  in a normal startup, so the sample's `ShortcutRouting` pushes directly.
+  thread-pool timers or `Task.Run` through the Dispatcher first. `INotificationService.Activated`
+  and `IPushNotificationService.RouteRequested` already arrive on the UI thread, so a toast
+  handler can `Push` directly; so are input-system actions, global hotkeys included, in a normal
+  startup, which is why the sample's `ShortcutRouting` pushes directly.
 
 ## Guards
 
@@ -186,7 +189,8 @@ the real instance - `to.Params` is right there, no `next(vm => ...)`.
 **Pipeline order** (`Router.NavigateWithRedirect` + `RunGuardPipeline`; pinned by
 `RouterNavigationGuardOrderTests`):
 
-1. Static `Redirect` on the resolved leaf - recursive, **no cycle detector**.
+1. Static `Redirect` on the resolved leaf - followed again while the new leaf redirects; each hop
+   counts toward the 30-hop redirect limit.
 2. Duplicate check -> `Duplicated` unless `Force`.
 3. `IOnBeforeRouteLeave`, deepest child first.
 4. Global `BeforeEach`, registration order.
@@ -203,12 +207,14 @@ the real instance - `to.Params` is right there, no `next(vm => ...)`.
 - A guard's `Cancel` -> `Aborted` (4); a newer navigation started meanwhile -> `Cancelled` (8),
   checked at the end of every stage; `Duplicated` is 16. Real flags, so
   `NavigationFailures.IsNavigationFailure(f, NavigationFailureType.Aborted | NavigationFailureType.Cancelled)` tests both.
-- A guard's `Redirect` restarts at the new target; after 30 chained hops it throws
-  `InvalidOperationException` ("Infinite redirect loop..."). A **static** redirect cycle has no
-  such stop and recurses until the stack overflows - the process dies.
+- A guard's `Redirect` restarts at the new target. Static and guard redirects share one limit of
+  30 chained hops per navigation; past it `Push` throws `InvalidOperationException` ("Infinite
+  redirect loop detected...") and commits nothing - unlike Vue Router, which only counts guard
+  redirects.
 - A guard that **throws** is not a failure: the exception leaves `Push` as-is (`RouterLink`
-  rethrows it on the Dispatcher). Views already constructed in step 7 are not released on that
-  path, so say no with `Cancel`/`Redirect`, never by throwing.
+  rethrows it on the Dispatcher). Like a refusal it commits nothing and releases any View built in
+  step 7, so a retry constructs fresh ones. Still say no with `Cancel`/`Redirect`: a throw reaches
+  the caller as an error, not as a `NavigationFailure`.
 - Data hooks (`IOnRouteEnter`/`IOnRouteUpdate`) run before their stage's guards and before every
   later stage, and are never rolled back. Do not start subscriptions or timers there - an
   entering instance can be discarded unmounted; use the Aquarius mount hooks.
@@ -225,8 +231,8 @@ intended target in the query (`LoginRedirect.To(to)`), and push it back with
 `/users/1/settings` -> `/users/2/settings` is an **update** (same record, same instance), not a
 leave, so a leave guard alone lets the edit vanish. And because step 5 runs `IOnRouteUpdate`
 first, a ViewModel whose `IOnRouteUpdate` reloads state destroys the edit before its own update
-guard can see it (the sample's `UserSettingsViewModel` does exactly this). Load inside the guard,
-after the decision:
+guard can see it. Load inside the guard, after the decision - the sample's
+`UserSettingsViewModel` does exactly this:
 
 ```csharp
 public sealed partial class UserSettingsViewModel : ObservableObject,
@@ -309,10 +315,19 @@ automatically).
   routing terms only, the main window stays usable.
 - One history: `Back` closes it; leaving the record closes it; closing the host closes all.
   Sibling records naming the same `Window` type share one window and swap its outlet.
-- [X] navigates from `Window.Closed`: `Push` to the parent by name (a new entry, current params
-  kept), or `Back` if the parent has no name. **It cannot be vetoed** - a leave guard that
-  cancels then leaves the route on the modal record with no window, and pushing that route again
-  returns `Duplicated`.
+- [X] (or `Close()`) becomes a navigation: `Push` to the parent by name (a new entry, current
+  params kept), or `Back` if the parent has no name. The window goes once it commits and stays
+  open if a guard refuses, throws, or a newer navigation supersedes it - so an unsaved-changes
+  leave guard on a modal ViewModel works. An async guard keeps the window up until it decides. A
+  throw is rethrown on the Dispatcher, as for a `RouterLink` click.
+- **Name the parent.** Unnamed, [X] is `Back`, a no-op when the app started on the modal route:
+  the window still closes, but the route stays on the modal record and re-pushing it is
+  `Duplicated`.
+- Your own `Window.Closing` handler on the dialog runs on every attempt, and again when a later
+  commit closes the window - put once-only work in `Closed`. If it cancels, no navigation starts -
+  provided it runs before `RouterWindows`' (attach it in XAML or the constructor, or cancel in an
+  `OnClosing` override before the base call). An owner closing or app shutdown cannot be vetoed:
+  the dialog goes, its guards are asked once.
 
 **Independent stack** - a window that is a second application surface: a second `Router` with its
 **own** route table, set once with `aqr:RouterScope.Router` on the `Window` (inheritance stops at
@@ -344,12 +359,12 @@ alive until that router navigates elsewhere (`RouterDialogWindowTests`).
 | Clicking the current link does nothing; `AfterEach` logs `Duplicated` | Same location | `Force = true` to re-run as an update |
 | Dispatcher exception "No Router is available" | `UseAquariusRouter`/`Router.Current` not set before the window loaded | Call `UseAquariusRouter()` right after `Build()` |
 | Every outlet empty, no error | `Start` never called - `CurrentRoute` is still `RouteLocation.Start` | `await router.Start("/")` once at startup |
-| `InvalidOperationException` "Infinite redirect loop" | A guard redirects to a target it also redirects | Exempt the target (`/login`) from the guard |
-| Process crashes with a stack overflow on navigation | Static `Redirect` cycle | Break the cycle; static redirects have no detector |
+| `InvalidOperationException` "Infinite redirect loop" | A guard redirects to a target it also redirects, or static `Redirect`s form a cycle (30 hops in all) | Exempt the target (`/login`) from the guard; break the static cycle |
 | Link inside a dialog navigates the main window | No `RouterScope.Router` on the dialog (or only `RouterView.Router` set) | `aqr:RouterScope.Router` on the `Window` |
 | Dialog outlet shows the top-level route's View | `RouterView` in a window without `RouterWindows`/`RouterScope` is depth 0 | Modal route, or an independent stack |
 | Modal dialog opens once, then throws on the next open | `Window` registered singleton | `AddTransient<TWindow>()` |
-| Dialog won't reopen after [X] | Its leave guard cancelled the [X] navigation | No cancelling leave guard on modal-route ViewModels |
+| Dialog stays open after [X] | A leave guard refused (or is still awaiting) the navigation away, or your own `Closing` handler cancelled | Intended - the route still claims the window; answer the guard |
+| Dialog closed, but its link does nothing (`Duplicated`) | Parent record unnamed and no earlier history entry, so [X]'s `Back` went nowhere | Give the modal route's parent a `Name` |
 | `RouteSearchResult.To` throws, or pushing it throws "Missing required param" | Record has no `Name`, or needs a param the current location lacks | Name it; only make param-free routes searchable |
 | A left screen is never collected, or memory grows per navigation | Singleton View/ViewModel, or an undisposed `CurrentRoute` watch | Transient registrations; dispose watches |
 | `InvalidOperationException` about thread/STA during `Push` | Navigating from a background callback | Marshal through the Dispatcher |

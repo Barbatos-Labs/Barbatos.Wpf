@@ -37,7 +37,9 @@ namespace Barbatos.Wpf.AquariusRouter.Searching;
 /// how a large share of real Vietnamese users actually type into a search box. <b>Ranking</b> then
 /// prefers whichever entries matched via <see cref="RouteSearchEntry.Title"/> itself over ones that
 /// only matched via <see cref="RouteSearchEntry.Keywords"/>, with an exact/prefix title match
-/// ranked above a same-tier match; ties preserve registration order.
+/// ranked above a same-tier match. Ties keep <see cref="Router.GetRoutes"/> order, which is the
+/// matcher's ranking order - most specific path first, declaration order only among equally
+/// ranked paths - and then each record's own <see cref="RouteRecord.Search"/> order.
 /// </para>
 /// </remarks>
 public sealed class RouteSearchIndex(Router router)
@@ -100,8 +102,9 @@ public sealed class RouteSearchIndex(Router router)
             }
         }
 
-        // A stable sort, so entries that tie on rank keep route-registration order - List.Sort is
-        // introsort and would not preserve it.
+        // A stable sort, so entries that tie on rank keep the order they were found in (GetRoutes'
+        // ranking order, then each record's Search order) - List.Sort is introsort and would not
+        // preserve it.
         return matches.OrderBy(m => m.Rank).Select(m => m.Result).ToList();
     }
 

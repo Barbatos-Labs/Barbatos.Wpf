@@ -160,9 +160,9 @@ app.Services.UseAquariusRouter();
 - Their only `Microsoft.Extensions` references are `DependencyInjection.Abstractions` and
   `Options` (Valee gets both through Aquarius), beside `CommunityToolkit.Mvvm`. Never build or
   own a container; adding any package (a configuration binder included) needs the maintainer's
-  yes. Nothing in them binds `AquariusOptions.SectionName` or
-  `RouterOptions.SectionName`, whatever the `AddAquarius`/`AddAquariusRouter` XML docs say; do
-  not repeat that claim in a new `AddXxx`.
+  yes. Nothing in them binds `AquariusOptions.SectionName` or `RouterOptions.SectionName`: the
+  `AddAquarius`/`AddAquariusRouter` docs say options come from code, and show the one-line
+  `AddOptions<…>().Bind(…)` an app adds itself. A new `AddXxx` documents the same way.
 - Tests that call `UseXxx` must save and restore the statics it writes (`WithRestoredStatics`,
   `WithRestoredCurrent` in the two DI test files).
 
@@ -275,9 +275,9 @@ Detail and the reasons: [build-and-release.md](build-and-release.md). The rules 
   `--skip-duplicate`. The release tag is never read: the version is whatever
   `Directory.Build.props` says on that commit, and an unchanged version publishes nothing while
   the run still goes green.
-- CI runs no tests. Run every test project per TFM yourself before releasing
-  (`barbatos-wpf-testing`).
-- `*.snk` is not git-ignored (the `.gitignore` line is commented out). Never commit a key.
+- The release workflow runs no tests. `barbatos-wpf-ci.yml` runs every project per TFM on pull
+  requests and `main`; release only from a commit whose CI run is green (`barbatos-wpf-testing`).
+- `*.snk` is git-ignored; never force-add a key or weaken that entry.
 
 ## Symptom -> cause -> fix
 
@@ -297,7 +297,7 @@ Detail and the reasons: [build-and-release.md](build-and-release.md). The rules 
 | An app's replacement service is ignored, or both implementations end up registered | `Add*` instead of `TryAdd*`, or the app registered after `ConfigureXxx` | `TryAdd*`; document "register yours first" |
 | Code values beat `appsettings.json` | `Bind` ran before `Configure` | `Configure`, then `Bind` |
 | The app crashes inside `Build()` | An `IWpfInitializeService` threw | Catch and log recoverable failures in the initializer |
-| A `Barbatos:Aquarius` / `Barbatos:AquariusRouter` value has no effect | Nothing binds those sections | Configure from code; adding binding is a dependency change - ask |
+| A `Barbatos:Aquarius` / `Barbatos:AquariusRouter` value has no effect | Nothing in the package binds those sections | The app binds them itself after `AddAquarius`/`AddAquariusRouter` (`services.AddOptions<AquariusOptions>().Bind(configuration.GetSection(AquariusOptions.SectionName))`); adding binding to the package is a dependency change - ask |
 | New package never reaches nuget.org | Not under the `/src/` folder of `Barbatos.Wpf.slnx`, or its name contains `Test` | Add it to the solution's `/src/` folder; rename |
 | `IDE0073` error in the IDE (the build does not enforce code style, so CI never catches it) | Missing or altered MIT header | Copy the header from a neighbouring file |
 

@@ -222,7 +222,7 @@ await registry.RemoveServerAsync("NuGet");                // false if unknown
   thread-pool thread. `IAiAgentFactory.ConfigurationChanged` forwards it. Marshal to the UI
   thread before touching an `ObservableCollection` or other UI state.
 - `IMcpServerRegistry.Tools` aggregates connected servers only. On a name collision the server
-  later in `Servers` (registration order, not connect order) wins, with a warning logged.
+  later in `Servers` (registration order, not connect order) wins, with a warning naming both.
 - A stdio `LastError` carries the exit code and stderr tail - usually the real reason; every
   stderr line is also logged at `Debug`. Servers see the client as the static
   `AppInfo.Current.Name` (`"Barbatos.Wpf"` if empty) and `VersionString`, not a DI-replaced

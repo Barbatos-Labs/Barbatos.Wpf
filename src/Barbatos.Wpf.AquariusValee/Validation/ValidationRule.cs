@@ -32,5 +32,16 @@ public delegate string? ValidationRule<in T>(T value);
 /// its result, since real cancellation is idiomatic .NET and wasn't available to vee-validate
 /// (JS Promises aren't cancellable). Forwarding the token is what turns that into actually
 /// cutting the stale work short, not just ignoring its result after the fact.
+/// <para>
+/// <b>Throwing is safe, but it is not a message.</b> <see cref="FieldMeta.Pending"/> is lowered
+/// whichever way the rule ends, and the exception reaches whoever awaits the pass
+/// (<see cref="Field{T}.ValidateAsync"/>, <see cref="Form.ValidateAllAsync"/>, a
+/// <see cref="Form.HandleSubmit"/> command) or, for a pass nobody awaits (typing, blur,
+/// <see cref="Field{T}.DependsOn{TSource}"/>), is rethrown on the UI thread's dispatcher - see
+/// <see cref="Field{T}"/>'s remarks. Only the cancellation of a superseded pass is swallowed, so a
+/// timeout surfacing as <see cref="TaskCanceledException"/> is not mistaken for one. When a failed
+/// check (offline, a timeout) should simply show as an error under the field, catch it here and
+/// return the message.
+/// </para>
 /// </remarks>
 public delegate Task<string?> AsyncValidationRule<in T>(T value, CancellationToken cancellationToken);

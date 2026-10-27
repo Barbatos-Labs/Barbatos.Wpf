@@ -44,7 +44,21 @@ namespace Barbatos.Wpf.Aquarius.Animation;
 /// applies here too. Vue does not play the enter animation on a component's very first
 /// render unless the <c>appear</c> prop is set; this mirrors that - the initial
 /// <see cref="Child"/> is displayed directly, <see cref="Enter"/> only plays on a later
-/// <c>false</c>→<c>true"</c> toggle.
+/// <c>false</c>→<c>true</c> toggle.
+/// <para>
+/// Both storyboards are begun on this control itself, so they animate its own properties
+/// (<c>Opacity</c> above). <see cref="Leave"/> is begun <i>controllable</i> and kept until the
+/// next show, because a finished <see cref="Storyboard"/> keeps holding its end value
+/// (<see cref="FillBehavior.HoldEnd"/>, the default). <see cref="Show"/> going back to
+/// <c>true</c> - mid-<see cref="Leave"/> or long after it finished - plays <see cref="Enter"/>
+/// first, which takes over whatever properties it animates (an animation in it with no
+/// <c>From</c> starts from the value <see cref="Leave"/> had reached), then removes
+/// <see cref="Leave"/>, so every property only <see cref="Leave"/> animated returns to its own
+/// value. An earlier version began <see cref="Leave"/> non-controllable: stopping it on
+/// a re-toggle did nothing, the animation ran on, and a <see cref="Transition"/> whose
+/// <see cref="Enter"/> did not animate the same property (or that had no <see cref="Enter"/>)
+/// re-showed its content still at the leave's end value - <c>Opacity</c> 0, invisible.
+/// </para>
 /// </remarks>
 [ContentProperty(nameof(Child))]
 public class Transition : ContentControl
@@ -77,7 +91,9 @@ public class Transition : ContentControl
     public static readonly DependencyProperty LeaveProperty =
         DependencyProperty.Register(nameof(Leave), typeof(Storyboard), typeof(Transition));
 
-    private Storyboard? _runningLeave;
+    // The Leave instance last begun - in flight, or finished but still holding its end value -
+    // until the next ShowContent removes it.
+    private Storyboard? _leave;
 
     /// <inheritdoc cref="ChildProperty"/>
     public object? Child
@@ -111,7 +127,7 @@ public class Transition : ContentControl
     {
         var transition = (Transition)d;
 
-        // If Show is false, _runningLeave (if any) owns Content until it completes; the new
+        // If Show is false, a running _leave (if any) owns Content until it completes; the new
         // Child is simply what gets shown the next time Show flips true.
         if (transition.Show)
             transition.Content = transition.Child;
@@ -129,21 +145,25 @@ public class Transition : ContentControl
 
     private void ShowContent()
     {
-        // A re-toggle mid-Leave: stop the in-flight animation (detaching Completed first, so
-        // Stop() can never trigger a stray removal) rather than letting two animations fight.
-        if (_runningLeave is { } leave)
-        {
+        // Detached first, so a Leave still in flight can never complete and remove the content
+        // this is about to restore.
+        if (_leave is { } leave)
             leave.Completed -= OnLeaveCompleted;
-            leave.Stop(this);
-            _runningLeave = null;
-        }
 
         Content = Child;
+
+        // Enter before removing Leave: under the default SnapshotAndReplace handoff an Enter
+        // animation with no From starts from where Leave had the property (a half-faded panel fades
+        // back in from there), while removing Leave first would snap it to its own value before
+        // Enter began.
         Enter?.Clone().Begin(this);
+        RemoveLeave();
     }
 
     private void HideContent()
     {
+        RemoveLeave();
+
         if (Leave is not { } leave)
         {
             Content = null;
@@ -153,18 +173,31 @@ public class Transition : ContentControl
         // Clone before Begin(): Storyboard.Completed is a plain CLR event on the (often
         // resource-shared) Timeline object itself, not scoped per-target - without cloning,
         // two Transitions sharing one Leave resource would each receive *both* completions.
+        // Controllable, so RemoveLeave can actually stop it - see this type's remarks.
         var instance = leave.Clone();
-        _runningLeave = instance;
+        _leave = instance;
         instance.Completed += OnLeaveCompleted;
-        instance.Begin(this);
+        instance.Begin(this, isControllable: true);
+    }
+
+    private void RemoveLeave()
+    {
+        if (_leave is not { } leave)
+            return;
+
+        _leave = null;
+        leave.Completed -= OnLeaveCompleted;
+        leave.Remove(this);
     }
 
     private void OnLeaveCompleted(object? sender, EventArgs e)
     {
-        if (sender is Storyboard storyboard)
-            storyboard.Completed -= OnLeaveCompleted;
+        // The sender is the storyboard's Clock, not the Storyboard, so unsubscribe through the
+        // field. _leave itself stays: its clock still holds the end value until the next show.
+        if (_leave is { } leave)
+            leave.Completed -= OnLeaveCompleted;
 
-        _runningLeave = null;
-        Content = null;
+        if (!Show)
+            Content = null;
     }
 }

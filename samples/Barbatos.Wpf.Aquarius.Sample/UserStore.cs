@@ -71,12 +71,18 @@ public class UserStore : StoreBase
         CompanyName = user?.Company?.Name ?? "";
     }
 
-    public override void Reset()
+    /// <summary>
+    /// Clears all three properties in one <see cref="StoreBase.Patch"/>, so
+    /// <see cref="StoreBase.StateChanged"/> fires once rather than once per property - and
+    /// <c>UserSessionPersistencePlugin</c>, which writes on every <see cref="StoreBase.StateChanged"/>,
+    /// writes the cleared selection once instead of three times.
+    /// </summary>
+    public override void Reset() => Patch(_ =>
     {
         SelectedUserId = null;
         UserName = "";
         CompanyName = "";
-    }
+    });
 
     sealed record JsonPlaceholderUser(int Id, string Name, JsonPlaceholderCompany? Company);
 

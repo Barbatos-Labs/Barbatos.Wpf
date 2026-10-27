@@ -47,6 +47,15 @@ public interface IAiAgentFactory
     /// went away and the agent's tool list is no longer current (forwarded from
     /// <see cref="IMcpServerRegistry.Changed"/>).
     /// </summary>
+    /// <remarks>
+    /// Raised synchronously on the thread of whichever event it forwards. A provider change
+    /// arrives on the thread that called <see cref="IAiChatClientFactory.UpdateProvider"/> or
+    /// <see cref="IAiChatClientFactory.RefreshApiKeyAsync"/>, but a server connecting or dropping
+    /// off normally arrives on a thread-pool thread (see <see cref="IMcpServerRegistry.Changed"/>) -
+    /// in practice once at startup, when a seed server finishes connecting. This layer is
+    /// deliberately UI-agnostic and does not marshal: a handler that touches bindings, a bound
+    /// collection or other UI-thread state must dispatch to the UI thread itself.
+    /// </remarks>
     event EventHandler? ConfigurationChanged;
 
     /// <summary>
@@ -58,9 +67,12 @@ public interface IAiAgentFactory
 
     /// <summary>
     /// Gets the default agent described by <see cref="AiAgentOptions"/>, building (and caching)
-    /// one if needed. The cache is dropped whenever <see cref="ConfigurationChanged"/> fires, so
+    /// one if needed. The cache is dropped whenever <see cref="ConfigurationChanged"/> fires, or
+    /// when <see cref="IAiChatClientFactory.GetChatClientAsync"/> returns a different client
+    /// (a new key stored without <see cref="IAiChatClientFactory.RefreshApiKeyAsync"/>), so
     /// callers should ask for the agent per conversation rather than holding one forever - an
     /// <c>AgentSession</c>, however, is safe to keep across rebuilds of the same agent shape.
+    /// Editing <see cref="AiAgentOptions"/> at runtime does not drop it - see that type's remarks.
     /// </summary>
     /// <exception cref="InvalidOperationException">The model is unset, or no API key has been
     /// stored yet for the configured provider - the message names which one, exactly as

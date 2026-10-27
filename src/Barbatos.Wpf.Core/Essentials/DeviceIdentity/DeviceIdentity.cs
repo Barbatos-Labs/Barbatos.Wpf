@@ -22,10 +22,20 @@ public interface IDeviceIdentity
 {
     /// <summary>
     /// Gets a random identifier generated on first use and persisted via
-    /// <see cref="Barbatos.Wpf.Storage.SecureStorage"/>, unique to this app installation. The least
-    /// invasive option: it identifies "this install", not the physical machine, and resets if
-    /// the app's local data is cleared or it is reinstalled.
+    /// <see cref="Barbatos.Wpf.Storage.SecureStorage"/> under the key
+    /// <c>Barbatos.Wpf.DeviceIdentity.InstanceId</c>. The least invasive option: it identifies
+    /// this app's data for this Windows user, not the physical machine.
     /// </summary>
+    /// <remarks>
+    /// The id lives in <c>%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppId}\Settings\securestorage.dat</c>,
+    /// which an ordinary uninstaller leaves behind, so it usually <b>survives a reinstall</b>. It
+    /// changes when that file is lost (deleted by the user or a cleanup tool, a new Windows user
+    /// profile, a new machine), when <see cref="Barbatos.Wpf.Storage.ISecureStorage.RemoveAll"/>
+    /// runs, or when <see cref="IAppInfo.AppId"/> or <see cref="IPublisherInfo.Name"/> changes
+    /// (both are part of the path). Calls within one process are serialized, so concurrent first
+    /// calls all receive the same id; two processes starting at the same moment can still each
+    /// mint one, and the last one written wins on disk.
+    /// </remarks>
     /// <returns>A newly generated or previously stored GUID string.</returns>
     Task<string> GetInstanceIdAsync();
 
@@ -35,9 +45,10 @@ public interface IDeviceIdentity
     /// app — like Apple's <c>IdentifierForVendor</c> — rather than being a single hardware ID
     /// usable to correlate the same machine across unrelated apps. The underlying serial
     /// numbers are never stored or returned in raw form, only as a one-way SHA-256 hash.
-    /// Survives reinstalls and clearing the app's local data (unlike <see cref="GetInstanceIdAsync"/>),
-    /// which is what makes it suitable for enforcing a per-machine activation limit that a
-    /// user can't bypass by simply reinstalling.
+    /// Survives reinstalls, deleting the app's local data and switching Windows user (unlike
+    /// <see cref="GetInstanceIdAsync"/>, which lives in that data), which is what makes it
+    /// suitable for enforcing a per-machine activation limit that a user can't bypass by
+    /// clearing the app's data.
     /// </summary>
     /// <returns>
     /// A 64-character uppercase hex SHA-256 hash. Falls back to hashing

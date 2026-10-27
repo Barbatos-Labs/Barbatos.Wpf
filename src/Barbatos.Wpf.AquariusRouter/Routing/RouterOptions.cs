@@ -19,7 +19,17 @@ namespace Barbatos.Wpf.AquariusRouter.Routing;
 /// </remarks>
 public sealed class RouterOptions
 {
-    /// <summary>The configuration section these options bind from, following this repository's <c>Barbatos:</c> convention.</summary>
+    /// <summary>
+    /// The configuration section name these options would bind from, following this repository's
+    /// <c>Barbatos:</c> convention.
+    /// </summary>
+    /// <remarks>
+    /// Not read by anything in this package -
+    /// <see cref="AquariusRouterServiceCollectionExtensions.AddAquariusRouter"/> applies its
+    /// <c>configure</c> delegate only. It is here so an app that binds the options from its own
+    /// configuration uses the same section name as every other <c>Barbatos:</c> feature; see
+    /// that method's remarks for the one-line binding.
+    /// </remarks>
     public const string SectionName = "Barbatos:AquariusRouter";
 
     /// <summary>

@@ -29,22 +29,32 @@ public interface IMcpServerRegistry : IAsyncDisposable
     /// <see cref="Servers"/> on each access (no I/O involved - each server's own tool list was
     /// already fetched once, at connect time). Pass this straight into <c>ChatOptions.Tools</c>,
     /// or rely on <see cref="IAiChatService"/> to do so automatically. If two connected servers
-    /// expose a same-named tool, the one from whichever server connected most recently wins - a
-    /// warning is logged when this happens.
+    /// expose a same-named tool, the one from the server added later wins - a warning naming
+    /// both servers is logged when this happens.
     /// </summary>
     /// <remarks>
+    /// "Added later" means later in <see cref="Servers"/>: a server takes its place there when its
+    /// <see cref="AddServerAsync"/> call starts, before it connects, so precedence follows the
+    /// order servers were added (the <see cref="McpOptions.Servers"/> seed list in order, then
+    /// runtime additions) - not the order they finished connecting. A server removed and added
+    /// again moves to the end.
+    /// <para>
     /// Typed as the general <see cref="AITool"/> (rather than the MCP-SDK-specific
     /// <c>ModelContextProtocol.Client.McpClientTool</c>, which every tool here actually is under
     /// the hood) so this interface's public surface never leaks the underlying MCP client SDK.
+    /// </para>
     /// </remarks>
     IReadOnlyList<AITool> Tools { get; }
 
     /// <summary>
     /// Occurs whenever <see cref="Servers"/> changes - a server was added, removed, connected,
     /// failed to connect, or dropped off on its own (a stdio server process that exited, an HTTP
-    /// session the server tore down). Raised on whichever thread caused the change, which for a
-    /// server dropping off is a background thread - marshal to the UI thread before touching
-    /// bindings.
+    /// session the server tore down). Raised on whichever thread caused the change: the caller's
+    /// thread for the "added" notification at the start of <see cref="AddServerAsync"/>, but
+    /// normally a thread-pool thread for anything the registry raises after awaiting - a server
+    /// connecting, failing to connect, being removed once its connection is disposed, or dropping
+    /// off - since those awaits use <c>ConfigureAwait(false)</c>. Marshal to the UI thread before
+    /// touching bindings or a bound collection.
     /// </summary>
     event EventHandler? Changed;
 

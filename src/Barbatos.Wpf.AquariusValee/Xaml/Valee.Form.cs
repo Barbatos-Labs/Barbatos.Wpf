@@ -76,7 +76,7 @@ public static partial class Valee
 
     private static void FocusField(IField field)
     {
-        if (!ElementsByField.TryGetValue(field, out var element))
+        if (!ElementsByField.TryGetValue(field, out var reference) || !reference.TryGetTarget(out var element))
             return;
 
         element.Focus();

@@ -1,3 +1,8 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,9 +23,10 @@ namespace Barbatos.Wpf.Aquarius.UnitTests;
 /// event is a process-lifetime root, so the control, its content subtree and - through
 /// <c>DataContext</c> - the whole ViewModel graph never become collectable.
 /// <para>
-/// These are the only GC-based assertions in the repo; see <see cref="GcProbe"/> for why they are
-/// written the way they are, and why the object under test is always built inside a separate
-/// non-inlined method.
+/// These are this project's GC-based assertions (AquariusRouter's <c>RouterLeakTests</c> and
+/// <c>RouterDialogWindowTests</c> use that project's own copy of the same probe); see
+/// <see cref="GcProbe"/> for why they are written the way they are, and why the object under test
+/// is always built inside a separate non-inlined method.
 /// </para>
 /// </remarks>
 public class LifecycleLeakTests
@@ -58,10 +64,10 @@ public class LifecycleLeakTests
     [Fact]
     public void AnElementWithLifecycleEnabledIsCollectableAfterUnmounting()
     {
-        // Lifecycle's own LifecycleState subscribes Application.Current.DispatcherUnhandledException
-        // while mounted - the one subscription in this library that outlives the element's own
-        // tree - so an unbalanced mount would pin the element and its ViewModel to the
-        // Application singleton.
+        // Lifecycle's own LifecycleState subscribes its dispatcher's UnhandledException while
+        // mounted - the one subscription in this library that outlives the element's own tree (a
+        // dispatcher lives as long as its thread, the Application's for the whole process) - so an
+        // unbalanced mount would pin the element and its ViewModel to that dispatcher.
         TestApplication.Invoke(() => GcProbe.AssertCollected(RunLifecycleElement(loadedCount: 2), "the Lifecycle-enabled element"));
     }
 

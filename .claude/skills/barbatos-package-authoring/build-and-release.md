@@ -75,8 +75,7 @@ For a project with `GeneratePackageOnBuild` `true`, `Directory.Build.targets` pa
 
 `API-REFERENCE.md` is **not** packed. The packed README is read on nuget.org, where a relative
 link resolves to nothing, so cross-file links in a package README must be absolute
-`https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/...` URLs (the Valee README still has
-three relative `API-REFERENCE.md#...` links that are dead there - do not copy them).
+`https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/...` URLs.
 
 A plain `dotnet build` already produces the `.nupkg` and `.snupkg` (`GeneratePackageOnBuild`), so
 packaging problems show up in an ordinary local build.
@@ -109,8 +108,8 @@ When code is ported (not just its API shape) from another project, its notice be
 - Local Debug and Release builds are unsigned; the released packages are signed.
 - The key exists only on the CI runner, written from the `STRONG_NAME_KEY` secret. A local
   `-p:SourceLinkEnabled=true` build fails for lack of it - that is expected.
-- `.gitignore` has its `*.snk` line commented out, so a key written into the tree shows up in
-  `git status`. Never commit it.
+- `.gitignore` excludes `*.snk`, so a key written into the tree stays untracked. Never force-add
+  it.
 - Only test projects suppress `CS8002` (referenced assembly has no strong name), and only CI
   signs, so an unsigned new dependency surfaces as a warning in the release build alone.
 
@@ -177,8 +176,9 @@ nuget.org the push is skipped and the run still succeeds.
 
 ## Checklist: cutting a release
 
-1. Every test project passes, one project and one TFM at a time (`barbatos-wpf-testing`) - CI
-   will not catch a failure.
+1. Every test project passes, one project and one TFM at a time: the `barbatos-wpf-ci` run for
+   the release commit is green (it runs them exactly that way). The release workflow itself runs
+   no tests, so it will not catch a failure.
 2. Bump `<Version>` and `<AssemblyVersion>` in `Directory.Build.props` (`AssemblyVersion` stays
    numeric; a prerelease suffix goes on `Version` only). One version covers all four packages, so
    pick the bump by SemVer across all of them: patch for fixes with no public API change (2.5.1),

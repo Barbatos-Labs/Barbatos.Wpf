@@ -20,8 +20,14 @@ public interface INotificationPlatform
 
     /// <summary>
     /// Occurs when the user clicks a notification (or one of its buttons) shown through this
-    /// platform.
+    /// platform. May be raised on any thread.
     /// </summary>
+    /// <remarks>
+    /// An implementation does not need to marshal: <see cref="INotificationService"/> moves the
+    /// event to the UI thread before raising its own <see cref="INotificationService.Activated"/>.
+    /// The default platform raises it on the Windows Community Toolkit's background activation
+    /// thread.
+    /// </remarks>
     event EventHandler<NotificationActivatedEventArgs>? Activated;
 
     /// <summary>
@@ -47,9 +53,18 @@ public interface INotificationPlatform
 internal sealed class ToastNotificationPlatform : INotificationPlatform, IDisposable
 {
     const string ArgumentsKey = "barbatosArgs";
+    const string ToastIdKey = "barbatosToastId";
 
-    string _lastTitle = string.Empty;
-    string _lastMessage = string.Empty;
+    // How many shown toasts keep their text for NotificationActivatedEventArgs. Bounded so an app
+    // that shows toasts all day does not grow this without limit; a click on anything older
+    // reports empty Title/Message, the same as a toast an earlier run of the app showed.
+    const int RememberedToastCapacity = 100;
+
+    // Toast id -> the text it was shown with, plus arrival order so the oldest can be forgotten.
+    // Locked because Show runs on the caller's thread and OnActivated on the Toolkit's
+    // background activation thread.
+    readonly Dictionary<string, (string Title, string Message)> _shownToasts = new(StringComparer.Ordinal);
+    readonly Queue<string> _shownToastOrder = new();
 
     public ToastNotificationPlatform() =>
         ToastNotificationManagerCompat.OnActivated += OnActivated;
@@ -58,8 +73,14 @@ internal sealed class ToastNotificationPlatform : INotificationPlatform, IDispos
 
     public void Show(NotificationOptions options, NotificationContent content)
     {
-        _lastTitle = content.Title;
-        _lastMessage = content.Message;
+        // An activation carries back only the arguments, never the toast's text, so each toast
+        // gets an id to look its own title/message up by. A Guid rather than a counter: toasts
+        // outlive the process in the notification center, and a counter restarting at 1 would
+        // match an old toast to a new one's text. The text itself stays out of the arguments:
+        // the builder copies them onto every button, repeating a long message once per button
+        // in the toast's XML.
+        var toastId = Guid.NewGuid().ToString("N");
+        RememberShownToast(toastId, content.Title, content.Message);
 
         var builder = new ToastContentBuilder()
             .AddText(content.Title)
@@ -72,6 +93,13 @@ internal sealed class ToastNotificationPlatform : INotificationPlatform, IDispos
 
         if (!string.IsNullOrWhiteSpace(content.ImagePath))
             builder.AddHeroImage(new Uri(Path.GetFullPath(content.ImagePath)));
+
+        // Added through the builder rather than per button: ToastContentBuilder copies its own
+        // arguments onto every button that can carry them, whether added before or after, and
+        // never overwrites a key the button set itself (AddButton/AddArgumentHelper in Toolkit
+        // 7.1.3, read from the decompiled assembly) - so the id comes back whichever part of the
+        // toast is clicked. Protocol (LaunchUri) buttons get none, and never activate the app.
+        builder.AddArgument(ToastIdKey, toastId);
 
         if (!string.IsNullOrWhiteSpace(content.Arguments))
             builder.AddArgument(ArgumentsKey, content.Arguments);
@@ -113,14 +141,44 @@ internal sealed class ToastNotificationPlatform : INotificationPlatform, IDispos
     void OnActivated(ToastNotificationActivatedEventArgsCompat e)
     {
         string? arguments = null;
+        var title = string.Empty;
+        var message = string.Empty;
+
         if (!string.IsNullOrEmpty(e.Argument))
         {
             var parsed = ToastArguments.Parse(e.Argument);
             if (parsed.Contains(ArgumentsKey))
                 arguments = parsed[ArgumentsKey];
+
+            if (parsed.Contains(ToastIdKey) && TryGetShownToast(parsed[ToastIdKey], out var shown))
+                (title, message) = shown;
         }
 
-        Activated?.Invoke(this, new NotificationActivatedEventArgs(_lastTitle, _lastMessage, arguments));
+        Activated?.Invoke(this, new NotificationActivatedEventArgs(title, message, arguments));
+    }
+
+    void RememberShownToast(string toastId, string title, string message)
+    {
+        lock (_shownToasts)
+        {
+            _shownToasts[toastId] = (title, message);
+            _shownToastOrder.Enqueue(toastId);
+
+            while (_shownToastOrder.Count > RememberedToastCapacity)
+                _shownToasts.Remove(_shownToastOrder.Dequeue());
+        }
+    }
+
+    bool TryGetShownToast(string? toastId, out (string Title, string Message) shown)
+    {
+        shown = default;
+        if (string.IsNullOrEmpty(toastId))
+            return false;
+
+        lock (_shownToasts)
+        {
+            return _shownToasts.TryGetValue(toastId, out shown);
+        }
     }
 
     public void Dispose() =>

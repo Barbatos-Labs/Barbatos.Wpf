@@ -8,7 +8,8 @@ namespace Barbatos.Wpf.Aquarius.Composition;
 /// <summary>
 /// Options for the Aquarius feature set, applied by
 /// <see cref="AquariusServiceProviderExtensions.UseAquarius"/>. Configured from code via
-/// <see cref="AquariusServiceCollectionExtensions.AddAquarius"/>.
+/// <see cref="AquariusServiceCollectionExtensions.AddAquarius"/>, and from configuration only if
+/// the app binds <see cref="SectionName"/> itself.
 /// </summary>
 /// <remarks>
 /// Every setting here has a static counterpart that has always been settable directly
@@ -20,7 +21,12 @@ namespace Barbatos.Wpf.Aquarius.Composition;
 /// </remarks>
 public sealed class AquariusOptions
 {
-    /// <summary>The configuration section these options bind from, following this repository's <c>Barbatos:</c> convention.</summary>
+    /// <summary>
+    /// The configuration section this repository's <c>Barbatos:</c> convention reserves for these
+    /// options. Nothing binds it automatically - see
+    /// <see cref="AquariusServiceCollectionExtensions.AddAquarius"/> for the one line an app adds
+    /// to read it from configuration.
+    /// </summary>
     public const string SectionName = "Barbatos:Aquarius";
 
     /// <summary>

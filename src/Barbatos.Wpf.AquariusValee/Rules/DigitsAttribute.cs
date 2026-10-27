@@ -18,10 +18,11 @@ namespace Barbatos.Wpf.AquariusValee.Rules;
 public sealed class DigitsAttribute : ValidationAttribute
 {
     /// <summary>Creates the attribute requiring exactly <paramref name="length"/> ASCII digits.</summary>
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
     public DigitsAttribute(int length)
+        : base("The {0} field must be exactly " + length + " digits.")
     {
         Length = length;
-        ErrorMessage ??= "The {0} field must be exactly " + length + " digits.";
     }
 
     /// <summary>The required exact digit count.</summary>

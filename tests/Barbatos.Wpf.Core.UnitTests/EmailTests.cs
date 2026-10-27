@@ -3,6 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.IO;
 using Barbatos.Wpf.ApplicationModel;
 using Barbatos.Wpf.ApplicationModel.Communication;
 
@@ -29,6 +30,24 @@ public class EmailTests
         var message = new EmailMessage("Subject", "Body") { BodyFormat = EmailBodyFormat.Html };
 
         await Assert.ThrowsAsync<FeatureNotSupportedException>(() => Email.ComposeAsync(message));
+    }
+
+    // Before failures were surfaced, a missing attachment still went to Simple MAPI and the
+    // client's MAPI_E_ATTACHMENT_NOT_FOUND was discarded, so the call reported success. The
+    // check now runs before any mail client is started - which is also what keeps this test
+    // from opening a compose window or a "no email program" prompt on the machine running it.
+    // The timeout turns the old behaviour (a call into MAPI that can sit behind such a prompt)
+    // into a failure instead of a hung run.
+    [Fact]
+    public async Task ComposeAsyncThrowsFileNotFoundForAMissingAttachmentBeforeAnyClientStarts()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), $"Barbatos.Wpf.EmailTests.{Guid.NewGuid():N}.txt");
+        var message = new EmailMessage("Subject", "Body") { Attachments = [new EmailAttachment(missingPath)] };
+
+        var exception = await Assert.ThrowsAsync<FileNotFoundException>(
+            () => Email.ComposeAsync(message).WaitAsync(TimeSpan.FromSeconds(30)));
+
+        Assert.Equal(missingPath, exception.FileName);
     }
 
     [Fact]

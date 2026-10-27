@@ -1,3 +1,8 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 namespace Barbatos.Wpf.AquariusRouter.UnitTests;
 
 public class RouterRedirectAndFailureTests
@@ -85,6 +90,55 @@ public class RouterRedirectAndFailureTests
                 Task.FromResult(NavigationGuardResult.Redirect(to.Name == "home" ? "/other" : "/")));
 
             Assert.Throws<InvalidOperationException>(() => router.Start("/").GetAwaiter().GetResult());
+        });
+    }
+
+    /// <summary>
+    /// A static <see cref="RouteRecord.Redirect"/> cycle recurses synchronously - nothing awaits
+    /// between hops - so without a hop limit it ends in a stack overflow, which .NET cannot catch:
+    /// the whole process dies. It must fail the way a guard-redirect loop does instead. The cycle
+    /// below breaks itself after 200 hops, so that without the limit this test fails on its
+    /// assertion rather than taking the test host down with it.
+    /// </summary>
+    [Fact]
+    public void AStaticRedirectLoopThrowsAfterTooManyHopsInsteadOfOverflowingTheStack()
+    {
+        StaThread.Run(() =>
+        {
+            var hops = 0;
+            var router = new Router([
+                new RouteRecord { Path = "/a", Redirect = _ => ++hops < 200 ? "/b" : "/end" },
+                new RouteRecord { Path = "/b", Redirect = _ => ++hops < 200 ? "/a" : "/end" },
+                new RouteRecord { Path = "/end", Name = "end", View = typeof(RecordingViewA) },
+            ]);
+            var afterEachCalled = false;
+            using var afterEach = router.AfterEach((_, _, _) => afterEachCalled = true);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => router.Start("/a").GetAwaiter().GetResult());
+
+            Assert.StartsWith("Infinite redirect loop detected", exception.Message);
+            Assert.Equal(30, hops);
+            Assert.Same(RouteLocation.Start, router.CurrentRoute.Value);
+            Assert.False(afterEachCalled);
+        });
+    }
+
+    /// <summary>The hop limit counts a loop, not ordinary use: a short chain of static redirects still lands on its target.</summary>
+    [Fact]
+    public void AChainOfStaticRedirectsWithinTheLimitStillResolves()
+    {
+        StaThread.Run(() =>
+        {
+            var router = new Router([
+                new RouteRecord { Path = "/a", Redirect = _ => "/b" },
+                new RouteRecord { Path = "/b", Redirect = _ => "/c" },
+                new RouteRecord { Path = "/c", Redirect = _ => "/end" },
+                new RouteRecord { Path = "/end", Name = "end", View = typeof(RecordingViewA) },
+            ]);
+
+            Assert.Null(router.Start("/a").GetAwaiter().GetResult());
+
+            Assert.Equal("end", router.CurrentRoute.Value.Name);
         });
     }
 
@@ -306,6 +360,109 @@ public class RouterRedirectAndFailureTests
             Assert.Null(router.Push("/dashboard").GetAwaiter().GetResult());
 
             Assert.NotSame(abortedAttemptView, dashboard.Instances["default"]);
+        });
+    }
+
+    /// <summary>
+    /// The throwing counterpart of the cancel/redirect tests above. A guard that throws is not a
+    /// <see cref="NavigationFailure"/> - the exception leaves <c>Push</c> as-is - but the
+    /// navigation never committed all the same, so the Views it had already built must go too.
+    /// </summary>
+    [Fact]
+    public void ANavigationWhoseGuardThrowsLeavesNoConstructedViewInstancesBehind()
+    {
+        StaThread.Run(() =>
+        {
+            var dashboard = new RouteRecord { Path = "/dashboard", Name = "dashboard", View = typeof(RecordingViewA) };
+            var router = new Router([new RouteRecord { Path = "/", Name = "home", View = typeof(RecordingViewB) }, dashboard]);
+            Assert.Null(router.Start("/").GetAwaiter().GetResult());
+
+            using var guard = router.BeforeResolve((_, _) => throw new InvalidOperationException("Guard failed."));
+
+            var exception = Assert.Throws<InvalidOperationException>(() => router.Push("/dashboard").GetAwaiter().GetResult());
+
+            Assert.Equal("Guard failed.", exception.Message);
+            Assert.Empty(dashboard.Instances);
+            Assert.Equal("home", router.CurrentRoute.Value.Name);
+        });
+    }
+
+    /// <summary>The observable consequence: after a throwing guard is fixed, the retry gets a fresh View, not the failed attempt's.</summary>
+    [Fact]
+    public void RetryingAfterAThrowingGuardConstructsAFreshView()
+    {
+        StaThread.Run(() =>
+        {
+            var dashboard = new RouteRecord { Path = "/dashboard", Name = "dashboard", View = typeof(RecordingViewA) };
+            var router = new Router([new RouteRecord { Path = "/", Name = "home", View = typeof(RecordingViewB) }, dashboard]);
+            Assert.Null(router.Start("/").GetAwaiter().GetResult());
+
+            object? failedAttemptView = null;
+            var shouldThrow = true;
+            using var guard = router.BeforeResolve((_, _) =>
+            {
+                if (!shouldThrow)
+                    return Task.FromResult(NavigationGuardResult.Continue);
+
+                failedAttemptView = dashboard.Instances["default"];
+                throw new InvalidOperationException("Guard failed.");
+            });
+
+            Assert.Throws<InvalidOperationException>(() => router.Push("/dashboard").GetAwaiter().GetResult());
+            Assert.NotNull(failedAttemptView);
+
+            shouldThrow = false;
+            Assert.Null(router.Push("/dashboard").GetAwaiter().GetResult());
+
+            Assert.NotSame(failedAttemptView, dashboard.Instances["default"]);
+        });
+    }
+
+    /// <summary>An in-component enter guard runs after its own View was built, so its throw has a View to clean up after too.</summary>
+    [Fact]
+    public void AnEnterGuardThatThrowsLeavesNoConstructedViewInstancesBehind()
+    {
+        StaThread.Run(() =>
+        {
+            var guarded = new RouteRecord
+            {
+                Path = "/guarded", Name = "guarded",
+                View = typeof(RecordingViewA),
+                ViewModel = typeof(ThrowingEnterGuardViewModel),
+            };
+            var router = new Router([new RouteRecord { Path = "/", Name = "home", View = typeof(RecordingViewB) }, guarded]);
+            Assert.Null(router.Start("/").GetAwaiter().GetResult());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => router.Push("/guarded").GetAwaiter().GetResult());
+
+            Assert.Equal("Enter guard failed.", exception.Message);
+            Assert.Empty(guarded.Instances);
+        });
+    }
+
+    /// <summary>
+    /// Entering Views are built root first, so a child View whose constructor throws fails the
+    /// navigation after its parent's View already exists - that one has to be released as well.
+    /// </summary>
+    [Fact]
+    public void AViewConstructorThatThrowsReleasesTheViewsBuiltBeforeIt()
+    {
+        StaThread.Run(() =>
+        {
+            var parent = new RouteRecord
+            {
+                Path = "/parent", Name = "parent", View = typeof(RecordingViewA),
+                Children = [new RouteRecord { Path = "child", Name = "child", View = typeof(ThrowingConstructorView) }],
+            };
+            var router = new Router([new RouteRecord { Path = "/", Name = "home", View = typeof(RecordingViewB) }, parent]);
+            Assert.Null(router.Start("/").GetAwaiter().GetResult());
+
+            // Activator.CreateInstance wraps a constructor's exception, and a container may wrap
+            // it differently - which exception arrives is not the point here.
+            Assert.ThrowsAny<Exception>(() => router.Push("/parent/child").GetAwaiter().GetResult());
+
+            Assert.Empty(parent.Instances);
+            Assert.Equal("home", router.CurrentRoute.Value.Name);
         });
     }
 }

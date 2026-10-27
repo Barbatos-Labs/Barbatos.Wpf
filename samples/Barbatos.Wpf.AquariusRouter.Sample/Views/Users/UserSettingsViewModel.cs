@@ -14,7 +14,14 @@ namespace Barbatos.Wpf.AquariusRouter.Sample.Views.Users;
 /// <c>UserSettingsViewModel</c> instance stays mounted for the shared parent path. Without its own
 /// <see cref="OnBeforeRouteUpdate"/>, unsaved text would be silently discarded on that switch.
 /// </summary>
-public sealed partial class UserSettingsViewModel : ObservableObject, IOnRouteEnter, IOnRouteUpdate, IOnBeforeRouteLeave, IOnBeforeRouteUpdate
+/// <remarks>
+/// <b>Deliberately no <c>IOnRouteUpdate</c>.</b> The router runs every updating record's
+/// <c>IOnRouteUpdate</c> before any <c>IOnBeforeRouteUpdate</c>, so reloading there would overwrite
+/// the edit - and reset what it is compared against - before the update guard could see it, and
+/// the prompt would never appear. The next user's data is loaded inside the update guard instead,
+/// once the user has agreed to discard the edit (or there was none).
+/// </remarks>
+public sealed partial class UserSettingsViewModel : ObservableObject, IOnRouteEnter, IOnBeforeRouteLeave, IOnBeforeRouteUpdate
 {
     private string _savedNickname = "";
 
@@ -24,24 +31,33 @@ public sealed partial class UserSettingsViewModel : ObservableObject, IOnRouteEn
     [ObservableProperty]
     private string _nickname = "";
 
-    public void OnRouteEnter(RouteLocation to, RouteLocation from)
+    public void OnRouteEnter(RouteLocation to, RouteLocation from) => Load(to);
+
+    public Task<NavigationGuardResult> OnBeforeRouteLeave(RouteLocation to, RouteLocation from) =>
+        Task.FromResult<NavigationGuardResult>(ConfirmDiscardUnsavedChanges());
+
+    public Task<NavigationGuardResult> OnBeforeRouteUpdate(RouteLocation to, RouteLocation from)
+    {
+        if (!ConfirmDiscardUnsavedChanges())
+            return Task.FromResult(NavigationGuardResult.Cancel);
+
+        // A later stage (this sample's global BeforeResolve, or a newer navigation) could still
+        // stop this one after the load; an app where that matters reloads once the route has
+        // actually changed instead, for example from a Watch on Router.CurrentRoute.
+        Load(to);
+        return Task.FromResult(NavigationGuardResult.Continue);
+    }
+
+    private void Load(RouteLocation to)
     {
         UserId = (string)to.Params["id"]!;
         Nickname = _savedNickname = $"user-{UserId}";
     }
 
-    public void OnRouteUpdate(RouteLocation to, RouteLocation from) => OnRouteEnter(to, from);
-
-    public Task<NavigationGuardResult> OnBeforeRouteLeave(RouteLocation to, RouteLocation from) =>
-        ConfirmDiscardUnsavedChanges();
-
-    public Task<NavigationGuardResult> OnBeforeRouteUpdate(RouteLocation to, RouteLocation from) =>
-        ConfirmDiscardUnsavedChanges();
-
-    private Task<NavigationGuardResult> ConfirmDiscardUnsavedChanges()
+    private bool ConfirmDiscardUnsavedChanges()
     {
         if (Nickname == _savedNickname)
-            return Task.FromResult(NavigationGuardResult.Continue);
+            return true;
 
         var result = MessageBox.Show(
             "You have unsaved changes to the nickname. Leave anyway?",
@@ -49,6 +65,6 @@ public sealed partial class UserSettingsViewModel : ObservableObject, IOnRouteEn
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
-        return Task.FromResult<NavigationGuardResult>(result == MessageBoxResult.Yes);
+        return result == MessageBoxResult.Yes;
     }
 }

@@ -21,7 +21,7 @@ Contents: [RouteRecord members](#routerecord-members) -
 | `ViewModel` / `ViewModels` | `Type?` / `IReadOnlyDictionary<string, Type>?` | Assigned as `DataContext` after the View is built, overriding its `aq:Setup`. Both set, or a key with no matching outlet -> `InvalidOperationException`. Outlets left out keep their own `DataContext`. |
 | `Children` | `IReadOnlyList<RouteRecord>?` | `init`-only; runtime children go through `Router.AddRoute(parentName, record)`. |
 | `Window` | `Type?` | Modal route; needs `RouterWindows.Enable` on the main window. |
-| `Redirect` | `Func<RouteLocation, RouteLocationRaw>?` | Always a delegate (`_ => "/target"`); runs before any guard; the redirecting record's own guards never run. |
+| `Redirect` | `Func<RouteLocation, RouteLocationRaw>?` | Always a delegate (`_ => "/target"`); runs before any guard; the redirecting record's own guards never run. Chained hops count toward the 30-hop limit shared with guard redirects (`InvalidOperationException` past it). |
 | `Alias` | `IReadOnlyList<string>?` | Extra paths onto the same record object; path-only (never registered by name); children are not re-attached under the alias. |
 | `Meta` | `IReadOnlyDictionary<string, object?>?` | Merged root-to-leaf into `RouteLocation.Meta` on every resolve. |
 | `BeforeEnter` | `NavigationGuard?` | Only on a genuine entry - not on a param/query update, not when moving between its own children. |
@@ -152,7 +152,8 @@ inside WPF's `Loaded` broadcast would take the process down instead of being cat
 ## What keeps a View alive
 
 - `RouteRecord.Instances` holds the live View (and through it the ViewModel) while the record is
-  matched. Leaving clears it at commit; a cancelled or redirected entry removes the Views it built.
+  matched. Leaving clears it at commit; an entry that is cancelled, redirected, superseded or
+  throws (a guard, data hook or View constructor) removes the Views it built.
   `RouterLeakTests` pins that a left route's View and ViewModel are collectable.
 - `RouterView`, `RouterLink` and `RouterWindows` watch `CurrentRoute` only while loaded, and
   re-arm safely on a second `Loaded` (a `TabControl` raises it twice).

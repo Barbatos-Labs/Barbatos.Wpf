@@ -30,10 +30,12 @@ A failure is real only once it reproduces with that class alone, on that one TFM
 
 - WPF objects need STA. In the Aquarius-family projects use `StaThread.Run(...)` for plain
   controls and `TestApplication.Invoke(...)` for anything that touches `Application.Current` —
-  they are not interchangeable. Each of those projects carries its own copy (Aquarius and Router
-  also have `GcProbe`; Valee does not). For a new suite copy `TestApplication` from the Router or
-  Valee project: the Aquarius copy lacks `ShutdownMode.OnExplicitShutdown`, so a test that closes
-  the last window shuts the shared `Application` down for every later test.
+  they are not interchangeable. Each of those projects carries its own copy, plus `GcProbe`. For
+  a new suite copy the Aquarius `TestApplication`: like every copy it sets
+  `ShutdownMode.OnExplicitShutdown` (without it, a test that closes the last window shuts the
+  shared `Application` down for every later test), and it also fails fast on a stray exception.
+- A control a test leaves loaded keeps its static-event subscriptions after the test's thread
+  exits; library handlers on static events check `CheckAccess()` (`barbatos-wpf-testing`).
 - `Barbatos.Wpf.Core.UnitTests` has none of these helpers. A Core `Window` test uses a file-local
   `RunOnStaThread` (see `DialogServiceTests.cs`); timer tests pump
   `Barbatos.Wpf.Dispatching.Dispatcher.GetForCurrentThread()` with a `DispatcherFrame`
@@ -49,8 +51,8 @@ A failure is real only once it reproduces with that class alone, on that one TFM
 - Match the project's using style: the Aquarius-family test projects take package namespaces
   from `<Using Include="…"/>` in the `.csproj`; Core's test project globalizes only `Xunit` and
   `Barbatos.Wpf.Hosting`, and each Core test file writes its other namespaces as `using` lines.
-- MIT file header on every new test file. Core's tests all carry it; **none** of the files in the
-  three Aquarius-family test projects do, so copy it from `src/` or a Core test, not from a
-  neighbour. Nothing catches a missing one at build time (`IDE0073` is not enforced in the build).
+- MIT file header on every new test file, copied from any neighbouring `.cs` file (every file in
+  `src/` and `tests/` carries it). Nothing catches a missing one at build time (`IDE0073` is not
+  enforced in the build).
 - **Never add `InternalsVisibleTo`.** Test through public API, or make the behaviour real public
   API first (`barbatos-package-authoring`).

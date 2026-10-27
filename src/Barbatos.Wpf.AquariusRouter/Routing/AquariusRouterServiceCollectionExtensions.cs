@@ -35,18 +35,28 @@ namespace Barbatos.Wpf.AquariusRouter.Routing;
 /// neither sets a <see cref="Router"/> of its own.
 /// <para>
 /// <see cref="Router"/> and <see cref="IRouterHistory"/> are both registered with
-/// <c>TryAdd</c>, so an app that needs something else (a history that persists across restarts, a
-/// <see cref="Router"/> subclass) simply registers it first and wins.
+/// <c>TryAdd</c>, so an app that needs something else registers it first and wins - an
+/// <see cref="IRouterHistory"/> that persists across restarts, or a <see cref="Router"/> built
+/// differently (<c>services.AddSingleton(sp =&gt; new Router(...))</c>). <see cref="Router"/> is
+/// sealed, so a replacement is a differently-constructed instance, never a subclass.
 /// </para>
 /// </remarks>
 public static class AquariusRouterServiceCollectionExtensions
 {
     /// <summary>
     /// Registers the <see cref="Router"/> singleton, its <see cref="IRouterHistory"/>, and
-    /// <see cref="RouterOptions"/> - configured from code via <paramref name="configure"/> and/or
-    /// from the <c>Barbatos:AquariusRouter</c> configuration section (configuration values
-    /// override code values).
+    /// <see cref="RouterOptions"/>, configured from code via <paramref name="configure"/>.
     /// </summary>
+    /// <remarks>
+    /// Nothing here binds <see cref="RouterOptions"/> from configuration: this package references
+    /// only the dependency-injection and options abstractions, not the configuration binder, so
+    /// <see cref="RouterOptions.SectionName"/> is a convention name rather than something read
+    /// automatically. An app that wants the options in a settings file binds the section itself,
+    /// after this call so the file wins over <paramref name="configure"/> -
+    /// <c>services.Configure&lt;RouterOptions&gt;(configuration.GetSection(RouterOptions.SectionName))</c>,
+    /// with <c>Microsoft.Extensions.Options.ConfigurationExtensions</c>, which a
+    /// <c>Barbatos.Wpf.Core</c> host already brings.
+    /// </remarks>
     /// <param name="services">The service collection to add to.</param>
     /// <param name="routes">
     /// Builds the route table from the container, so a per-route <see cref="RouteRecord.BeforeEnter"/>

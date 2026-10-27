@@ -40,9 +40,21 @@ public partial class App : WpfApplication
         },
     };
 
+    /// <summary>
+    /// The id of the taskbar Jump List action this process was launched from, if any.
+    /// </summary>
+    string? _launchAppActionId;
+
     /// <inheritdoc />
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Subscribed *before* base.OnStartup(e): a Jump List click starts a new process, and
+        // UseEssentials() raises the activation from the WpfLifecycle.OnStartup event, which
+        // runs inside base.OnStartup - a subscription placed after it never fires. No main
+        // window exists yet at that point, so the handler only records the id; it is acted on
+        // once MainWindow is shown below.
+        AppActions.OnAppAction += (sender, args) => _launchAppActionId = args.AppAction.Id;
+
         base.OnStartup(e);
 
         // Resolve the (singleton) MainViewModel and await its slow startup query *before*
@@ -62,16 +74,17 @@ public partial class App : WpfApplication
         if (Services.GetService<ITrayIconService>() is ITrayIconService trayIcon)
             trayIcon.DoubleClicked += (sender, args) => ShowMainWindow();
 
-        // The "Open" app action (taskbar Jump List entry) re-opens the main window.
-        AppActions.OnAppAction += (sender, args) =>
-        {
-            if (args.AppAction.Id == "open")
-                ShowMainWindow();
-        };
-
         // The main window is composed by (and resolved from) the dependency injection container.
         MainWindow = Services.GetRequiredService<MainWindow>();
         MainWindow.Show();
+
+        // The "Open" app action (taskbar Jump List entry), now that there is a window to act on.
+        // This is the cold-start path. While the sample is already running,
+        // ConfigureSingleInstance() makes the relaunched process exit inside Build(), before any
+        // activation is raised, and the running instance restores its own window instead - the
+        // action id never reaches it.
+        if (_launchAppActionId == "open")
+            ShowMainWindow();
     }
 
     /// <summary>

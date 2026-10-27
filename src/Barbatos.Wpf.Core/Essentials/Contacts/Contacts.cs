@@ -35,9 +35,12 @@ public interface IContacts
 /// unpackaged desktop WPF app. Both members therefore throw
 /// <see cref="FeatureNotSupportedException"/> on this platform; the type surface (this
 /// interface, <see cref="Contact"/>, <see cref="ContactEmail"/>, <see cref="ContactPhone"/>)
-/// is kept identical so code written against it compiles and can be swapped for a real
-/// implementation (for example a custom <see cref="IContacts"/> backed by an address book
-/// service) via <c>Contacts.SetDefault</c>.
+/// is kept identical so code written against it compiles unchanged. To use a real
+/// implementation (for example an <see cref="IContacts"/> backed by Microsoft Graph or an
+/// address-book service), register it with <c>builder.Services.AddSingleton&lt;IContacts, ...&gt;()</c>
+/// and inject <see cref="IContacts"/>: that registration replaces the one <c>UseEssentials()</c>
+/// made, but this static facade cannot be redirected and keeps the built-in, throwing
+/// implementation.
 /// </remarks>
 public static class Contacts
 {

@@ -133,8 +133,10 @@ public static class AppRoutes
             // router.Push from a ViewModel, a keyboard shortcut, a deep link.
             //
             // One router, one history. /dashboard stays matched and keeps showing behind the
-            // dialog, Back closes it, and closing it with [X] navigates back to /dashboard - the
-            // route and what is on screen can never disagree.
+            // dialog, Back closes it, and closing it with [X] navigates back to /dashboard. The
+            // window goes once that navigation commits (here after the global BeforeResolve's
+            // short delay), and stays if a guard refuses it - the route and what is on screen
+            // stay in step.
             //
             // Two siblings rather than a parent and a child: they share one Window type, so
             // stepping between them keeps the same window and only swaps its outlet - a dialog

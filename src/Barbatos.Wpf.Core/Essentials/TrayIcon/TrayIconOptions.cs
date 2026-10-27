@@ -23,7 +23,8 @@ public class TrayIconOptions
     public bool Enabled { get; set; }
 
     /// <summary>
-    /// The tooltip of the tray icon. Defaults to the application name.
+    /// The tooltip of the tray icon. Defaults to the entry assembly's name (not
+    /// <c>AppInfo.Name</c>, which prefers assembly metadata and <c>&lt;Product&gt;</c>).
     /// </summary>
     public string? ToolTip { get; set; }
 

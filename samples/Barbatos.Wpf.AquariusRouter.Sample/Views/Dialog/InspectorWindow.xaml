@@ -19,7 +19,7 @@
         </StackPanel>
 
         <TextBlock DockPanel.Dock="Bottom" TextWrapping="Wrap" Foreground="Gray" Margin="0,12,0,0"
-                   Text="One router, one history. /dashboard is still matched and still showing behind this window, Back closes it, and closing it with [X] navigates back to /dashboard - the route and what is on screen can never disagree. Watch the navigation history panel behind: every step here is an ordinary entry on the app's own stack." />
+                   Text="One router, one history. /dashboard is still matched and still showing behind this window, Back closes it, and closing it with [X] navigates back to /dashboard - the window goes once that navigation commits, so the route and what is on screen stay in step. Watch the navigation history panel behind: every step here is an ordinary entry on the app's own stack." />
 
         <Border BorderBrush="#DDD" BorderThickness="1" Padding="12">
             <aqr:RouterView />

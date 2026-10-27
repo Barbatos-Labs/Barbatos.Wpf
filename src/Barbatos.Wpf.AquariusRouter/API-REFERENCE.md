@@ -111,8 +111,8 @@ a worked example.
 | `ViewModel` | `Type?` | ViewModel assigned as the View's `DataContext`, pairing the two from the route table - the option when neither file may be edited. Shorthand for `ViewModels["default"]`; setting both throws at registration. Overrides the View's own `aq:Setup`. |
 | `ViewModels` | `IReadOnlyDictionary<string, Type>?` | Per-outlet ViewModels. Every key must name an outlet `View`/`Views` declares, or registration throws. |
 | `Children` | `IReadOnlyList<RouteRecord>?` | Nested child records. |
-| `Window` | `Type?` | Renders this record into a `Window` of its own - a **modal route**. Declare it on a child of the route that should stay showing behind it, give the window a `RouterView`, and set `RouterWindows.Enable` once on the main window; `RouterWindows` then opens, re-points and closes it purely from the current route. One router, one history: the parent stays matched, `Back` closes the dialog, and closing the dialog navigates back to the parent. See [Dialog windows](README.md#dialog-windows). |
-| `Redirect` | `Func<RouteLocation, RouteLocationRaw>?` | Resolved before any guard runs - see README. |
+| `Window` | `Type?` | Renders this record into a `Window` of its own - a **modal route**. Declare it on a child of the route that should stay showing behind it, give the window a `RouterView`, and set `RouterWindows.Enable` once on the main window; `RouterWindows` then opens, re-points and closes it purely from the current route. One router, one history: the parent stays matched, `Back` closes the dialog, and closing the dialog navigates back to the parent - the window goes once that navigation commits, and stays open if a guard refuses it. Prefer a named outlet (`Views`) to a plain `View`: a `"default"` View is also claimed by any default outlet in the main window that reaches this record's depth. See [Dialog windows](README.md#dialog-windows). |
+| `Redirect` | `Func<RouteLocation, RouteLocationRaw>?` | Resolved before any guard runs; a target that redirects again is followed in turn. Static and guard redirects share one 30-hop limit per navigation, past which `Push` throws `InvalidOperationException` - see [The Full Pipeline Order](README.md#the-full-pipeline-order). |
 | `Alias` | `IReadOnlyList<string>?` | Alternate paths resolving to this same record. |
 | `Meta` | `IReadOnlyDictionary<string, object?>?` | Arbitrary data, merged root-to-leaf into `RouteLocation.Meta`. |
 | `BeforeEnter` | `NavigationGuard?` | Per-route guard, only for a genuinely new entry. |
@@ -150,7 +150,11 @@ A navigation target, as passed to `Push`/`Replace`/`Resolve`.
 | `Replace` | `bool` | Replace instead of push. |
 | `Force` | `bool` | Bypass the duplicate-navigation short-circuit. |
 | `implicit operator RouteLocationRaw(string path)` | | Shorthand for `new RouteLocationRaw { Path = path }`. |
-| `static Parse(string fullPath)` | `RouteLocationRaw` | Splits a serialized `path[?query][#hash]` back into its parts, percent-decoding the query - the inverse of how `Router.Resolve` composes `FullPath`. Used by `Go`/`Back`/`Forward` on history entries, and for protocol-activation URIs. |
+| `static Parse(string fullPath)` | `RouteLocationRaw` | Splits a serialized `path[?query][#hash]` back into its parts, percent-decoding the query - the inverse of how `Router.Resolve` composes `FullPath`. Used by `Go`/`Back`/`Forward` on history entries, and for protocol-activation URIs - where `System.Uri` reads `myapp://users/42`'s `users` as the host, so it is `Parse($"/{uri.Host}{uri.PathAndQuery}{uri.Fragment}")` (see [Introduction](README.md#introduction)). |
+
+`Params` and `Query` are read-only dictionary interfaces, so a target-typed `new() { ... }` does not
+compile against them: write `new Dictionary<string, object?> { ["id"] = "42" }` /
+`new Dictionary<string, string?> { ["q"] = "hello" }`.
 
 ### `NavigationGuard` (delegate)
 
@@ -233,7 +237,7 @@ See [The Router](README.md#the-router) for a concept-first walkthrough.
 | `static Current` | `Router? { get; set; }` | Ambient default for `RouterView`/`RouterLink`. |
 | `CurrentRoute` | `Ref<RouteLocation> { get; }` | The live, current location. |
 | `Resolve` | `RouteLocation Resolve(RouteLocationRaw location)` | Resolves without navigating. |
-| `Push` | `Task<NavigationFailure?> Push(RouteLocationRaw to)` | Navigates, running the full guard pipeline. |
+| `Push` | `Task<NavigationFailure?> Push(RouteLocationRaw to)` | Navigates, running the full guard pipeline. A refusal (guard `Cancel`/`Redirect`, a superseding navigation, a duplicate) is a returned `NavigationFailure`; the task faults instead with `InvalidOperationException` for a target matching no route or more than 30 chained redirects, and with whatever a guard, data hook or View constructor throws. On every non-success outcome nothing is committed and any View the navigation had constructed is released. |
 | `Replace` | `Task<NavigationFailure?> Replace(RouteLocationRaw to)` | Like `Push`, replacing the current history entry. |
 | `Start` | `Task<NavigationFailure?> Start(RouteLocationRaw initial)` | The very first navigation - alias for `Push`. |
 | `Go` | `Task<NavigationFailure?> Go(int delta)` | Moves through history; silent no-op if out of range. |
@@ -248,8 +252,11 @@ See [The Router](README.md#the-router) for a concept-first walkthrough.
 
 ### `RouterOptions` (sealed class)
 
-Configuration for the `Router` built by `AddAquariusRouter`. `SectionName` is
-`"Barbatos:AquariusRouter"`.
+Configuration for the `Router` built by `AddAquariusRouter`, set from code through its
+`configure` delegate. `SectionName` is `"Barbatos:AquariusRouter"`, but nothing in this package
+reads it - the package does not reference the configuration binder. An app that wants the options
+in a settings file binds the section itself, after `AddAquariusRouter`:
+`services.Configure<RouterOptions>(configuration.GetSection(RouterOptions.SectionName))`.
 
 | Member | Type | Meaning |
 | --- | --- | --- |
@@ -261,9 +268,11 @@ Configuration for the `Router` built by `AddAquariusRouter`. `SectionName` is
 | --- | --- |
 | `AddAquariusRouter` | `IServiceCollection AddAquariusRouter(this IServiceCollection services, Func<IServiceProvider, IEnumerable<RouteRecord>> routes, Action<RouterOptions>? configure = null)` |
 
-Registers `RouterOptions`, an `IRouterHistory` (`MemoryRouterHistory`) and the `Router` singleton,
-all with `TryAdd` so an app's own prior registration wins. `routes` is a factory so a per-route
-`BeforeEnter` guard can close over a DI-resolved service.
+Registers `RouterOptions` (from `configure` only - see `RouterOptions`), an `IRouterHistory`
+(`MemoryRouterHistory`) and the `Router` singleton; the history and the `Router` go in with
+`TryAdd`, so an app's own prior registration wins (a differently-constructed `Router` - it is
+sealed, so not a subclass). `routes` is a factory so a per-route `BeforeEnter` guard can close
+over a DI-resolved service.
 
 ### `AquariusRouterServiceProviderExtensions` (static class)
 
@@ -314,9 +323,10 @@ German/Nordic behave accent-insensitively while Japanese dakuten, Thai vowel sig
 `й` - which are letters, not decorations - stay intact. Arabic harakat and Hebrew niqqud are
 therefore preserved too; put the unvowelled spelling in `Keywords` if a title carries them.
 
-Ranking (lower is better; ties preserve registration order): `0` = `Title` equals the query
-exactly, `1` = `Title` starts with the query, `2` = every term found in `Title` (any order), `3` =
-at least one term only found via `Keywords`.
+Ranking (lower is better): `0` = `Title` equals the query exactly, `1` = `Title` starts with the
+query, `2` = every term found in `Title` (any order), `3` = at least one term only found via
+`Keywords`. Ties keep `Router.GetRoutes()` order - the matcher's ranking order, most specific path
+first and declaration order only among equally ranked paths - then each record's `Search` order.
 
 ---
 
@@ -342,7 +352,7 @@ route - the modal-route half of [Dialog windows](README.md#dialog-windows).
 
 | Member | Type | Meaning |
 | --- | --- | --- |
-| `EnableProperty` / `Get/SetEnable` | `DependencyProperty` / `bool` | Set once on the app's main `Window`, and every modal route in the table works from then on - from a `RouterLink`, a `Push` in a ViewModel, a shortcut, in-app search or a deep link alike. Windows are resolved through `Setup.Resolve` (register them **transient**), owned to this window, and closed again when their record stops being matched - or when this window unloads. Closing one with its own `[X]` navigates back to the parent record, so the route and the screen can never disagree. Two records naming the same `Window` type share one window instance, swapping only its outlet. |
+| `EnableProperty` / `Get/SetEnable` | `DependencyProperty` / `bool` | Set once on the app's main `Window`, and every modal route in the table works from then on - from a `RouterLink`, a `Push` in a ViewModel, a shortcut, in-app search or a deep link alike. Windows are resolved through `Setup.Resolve` (register them **transient**), owned to this window, and closed again when their record stops being matched - or when this window unloads. Closing one with its own `[X]` (or `Close()`) becomes a navigation back to the parent record (by name, current params kept; `Back` if the parent is unnamed): the window goes once that navigation commits - at once when every guard answers synchronously - and stays open if a guard refuses it, throws, or a newer navigation supersedes it. What it throws is rethrown on the window's `Dispatcher`, as for a `RouterLink` click, so it reaches `Application.DispatcherUnhandledException`. The one exception is a `Back` with no earlier history entry (unnamed parent, app started on the modal route), a silent no-op: the window closes and the route stays on the modal record, so name the parent. A `Closing` handler of the app's that cancels is respected (no navigation) when it runs before `RouterWindows`' own - attached in XAML or the window's constructor, or an `OnClosing` override cancelling before the base call. An owner closing or application shutdown cannot be vetoed, so then the window closes regardless and the navigation away is attempted once. Two records naming the same `Window` type share one window instance, swapping only its outlet. |
 
 This is the only piece of the library that opens a `Window`, and it lives in the Xaml layer
 deliberately: `Router` itself never touches `Window`/`Application`, so the navigation pipeline stays
@@ -352,7 +362,7 @@ testable with no `Application` at all.
 
 | Member | Type | Meaning |
 | --- | --- | --- |
-| `RouterProperty` / `Get/SetRouter` | `DependencyProperty` (inherited) / `Router?` | The `Router` every `RouterView`/`RouterLink` beneath this element navigates. Set once on a dialog `Window` to give it a navigation stack genuinely of its own - property inheritance does not cross a `Window` boundary, so a dialog cannot accidentally inherit or drive the main window's. For a dialog that should be *part of* the app's own history instead, use `RouteRecord.Window` above. See [Dialog windows](README.md#dialog-windows). |
+| `RouterProperty` / `Get/SetRouter` | `DependencyProperty` (inherited) / `Router?` | The `Router` every `RouterView`/`RouterLink` beneath this element navigates. Set once on a dialog `Window` to give it a navigation stack genuinely of its own - property inheritance does not cross a `Window` boundary, so a dialog cannot accidentally inherit or drive the main window's. That second router needs its own `Start(...)`; until then its outlets render nothing. For a dialog that should be *part of* the app's own history instead, use `RouteRecord.Window` above. See [Dialog windows](README.md#dialog-windows). |
 
 ### `RouterLink` (static class - attached properties)
 

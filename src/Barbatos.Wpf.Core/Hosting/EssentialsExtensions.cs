@@ -26,11 +26,23 @@ public interface IEssentialsBuilder
     /// <summary>
     /// Adds an app action, shown on the Windows taskbar Jump List.
     /// </summary>
+    /// <remarks>
+    /// The actions added here are applied during <c>Build()</c>, which is also what lets a
+    /// relaunched process recognise a click on one of them: an action that exists only through a
+    /// later <see cref="AppActions.SetAsync(IEnumerable{AppAction})"/> call is not recognised
+    /// after a restart.
+    /// </remarks>
     IEssentialsBuilder AddAppAction(AppAction appAction);
 
     /// <summary>
     /// Registers a handler invoked whenever any app action is activated.
     /// </summary>
+    /// <remarks>
+    /// The handler runs during startup, from the <c>WpfLifecycle.OnStartup</c> event, before
+    /// any main window exists: record the action and act on it after the main window is shown.
+    /// Under <c>ConfigureSingleInstance</c>, a click while the app is already running is not
+    /// reported - see <see cref="IAppActions.AppActionActivated"/>.
+    /// </remarks>
     IEssentialsBuilder OnAppAction(Action<AppAction> action);
 
     /// <summary>
@@ -100,9 +112,12 @@ public static class EssentialsExtensions
         return builder;
     }
 
-    /// <summary>
-    /// Adds an app action, shown on the Windows taskbar Jump List.
-    /// </summary>
+    /// <inheritdoc cref="IEssentialsBuilder.AddAppAction(AppAction)" />
+    /// <param name="essentials">The Essentials builder.</param>
+    /// <param name="id">A unique identifier used to respond to the action tap.</param>
+    /// <param name="title">The visible title to display on the taskbar Jump List.</param>
+    /// <param name="subtitle">If supported, a sub-title to display under the title.</param>
+    /// <param name="icon">The path of an <c>.ico</c> file to show next to the title.</param>
     public static IEssentialsBuilder AddAppAction(this IEssentialsBuilder essentials, string id, string title, string? subtitle = null, string? icon = null) =>
         essentials.AddAppAction(new AppAction(id, title, subtitle, icon));
 

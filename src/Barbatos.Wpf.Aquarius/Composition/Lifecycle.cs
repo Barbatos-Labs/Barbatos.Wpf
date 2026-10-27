@@ -308,8 +308,11 @@ public static class Lifecycle
             WatchDataContext(_element.DataContext as INotifyPropertyChanged);
             _element.IsVisibleChanged += OnIsVisibleChanged;
 
-            if (Application.Current is { } app)
-                app.DispatcherUnhandledException += OnDispatcherUnhandledException;
+            // The element's own dispatcher, not Application.Current.DispatcherUnhandledException:
+            // for the main UI thread they are one and the same event, but subscribed from another
+            // UI thread the Application's handler read this element from the wrong thread and
+            // threw - see IOnErrorCaptured's remarks.
+            _element.Dispatcher.UnhandledException += OnDispatcherUnhandledException;
         }
 
         private void StopMountedTracking()
@@ -319,9 +322,7 @@ public static class Lifecycle
             _element.IsVisibleChanged -= OnIsVisibleChanged;
             _updateDirty = false;
             _updateScheduled = false;
-
-            if (Application.Current is { } app)
-                app.DispatcherUnhandledException -= OnDispatcherUnhandledException;
+            _element.Dispatcher.UnhandledException -= OnDispatcherUnhandledException;
         }
 
         private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e) =>
@@ -340,6 +341,23 @@ public static class Lifecycle
 
         private void OnDataContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
+            // A ViewModel may raise PropertyChanged from a worker thread (WPF bindings marshal
+            // that themselves). Handled there, the DataContext read below threw into the
+            // ViewModel's own setter, and the update batch never closed. Every piece of state
+            // here belongs to the element's thread, so the whole notification moves there.
+            if (!_element.Dispatcher.CheckAccess())
+            {
+                _element.Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+                {
+                    // A DataContext replaced (or unwatched by an unmount) while this was queued
+                    // must not open an update batch on whatever is watched now.
+                    if (sender is null || ReferenceEquals(sender, _watchedDataContext))
+                        OnDataContextPropertyChanged(sender, e);
+                });
+
+                return;
+            }
+
             if (!_mounted)
                 return;
 
@@ -353,7 +371,7 @@ public static class Lifecycle
                 return;
 
             _updateScheduled = true;
-            NextTick.Run(() =>
+            NextTick.RunOn(_element.Dispatcher, () =>
             {
                 _updateScheduled = false;
 

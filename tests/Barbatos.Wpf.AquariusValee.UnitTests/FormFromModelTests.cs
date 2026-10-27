@@ -1,3 +1,8 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 namespace Barbatos.Wpf.AquariusValee.UnitTests;
 
 public class FormFromModelTests
@@ -84,6 +89,81 @@ public class FormFromModelTests
         await form.ValidateAllAsync();
 
         Assert.Contains("You must accept the terms.", form.Fields["AcceptedTerms"].Errors);
+    }
+
+    [Fact]
+    public async Task AnEmptyRequiredFieldReportsItsMessageOnceAfterAWholeFormValidation()
+    {
+        // The model-level pass used Validator.TryValidateObject(..., validateAllProperties: false),
+        // which still checks every [Required] property and returns each failure under the
+        // property's name - appended on top of the identical message the field's own pass had
+        // just written, so every empty required field listed it twice after a submit.
+        var form = Form.FromModel(new SignupModel());
+
+        await form.ValidateAllAsync();
+
+        Assert.Single(form.Fields["Email"].Errors);
+        Assert.Single(form.Fields["Password"].Errors);
+        Assert.Single(form.Fields["ConfirmPassword"].Errors);
+    }
+
+    [Fact]
+    public async Task IValidatableObjectRunsEvenWhileARequiredFieldIsStillEmpty()
+    {
+        // TryValidateObject stops after a failing [Required], so Validate never ran until every
+        // required field was filled - the terms error appeared only on a second submit.
+        var form = Form.FromModel(new SignupModel());
+
+        await form.ValidateAllAsync();
+
+        Assert.NotEmpty(form.Fields["Email"].Errors);
+        Assert.Contains("You must accept the terms.", form.Fields["AcceptedTerms"].Errors);
+    }
+
+    // Public: CustomValidationAttribute refuses a validator type that is not visible.
+    [CustomValidation(typeof(ClassLevelRuleModel), nameof(ClassLevelRuleModel.ValidateRange))]
+    public sealed class ClassLevelRuleModel : IValidatableObject
+    {
+        private bool _validateWasCalled;
+
+        // Get-only, so FromModel (which takes every readable and writable property) leaves it out.
+        public bool ValidateWasCalled => _validateWasCalled;
+
+        public int Start { get; set; } = 10;
+
+        public int End { get; set; } = 5;
+
+        public static ValidationResult? ValidateRange(ClassLevelRuleModel model) =>
+            model.End < model.Start
+                ? new ValidationResult("End must not be before Start.", [nameof(End)])
+                : ValidationResult.Success;
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            _validateWasCalled = true;
+            yield break;
+        }
+    }
+
+    [Fact]
+    public async Task AClassLevelValidationAttributeIsStillAppliedBeforeIValidatableObject()
+    {
+        // The model-level pass is now done by hand rather than through TryValidateObject; this
+        // pins that it keeps the BCL's remaining steps and their order - class-level attributes
+        // first, and Validate only once they pass.
+        var model = new ClassLevelRuleModel();
+        var form = Form.FromModel(model);
+
+        await form.ValidateAllAsync();
+
+        Assert.Contains("End must not be before Start.", form.Fields["End"].Errors);
+        Assert.False(model.ValidateWasCalled);
+
+        form.SetFieldValue("End", 20);
+        await form.ValidateAllAsync();
+
+        Assert.Empty(form.Fields["End"].Errors);
+        Assert.True(model.ValidateWasCalled);
     }
 
     [Fact]

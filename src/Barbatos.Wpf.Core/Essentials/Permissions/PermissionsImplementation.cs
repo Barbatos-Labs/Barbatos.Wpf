@@ -33,6 +33,15 @@ public static partial class Permissions
     /// performed. See the README's "Contacts and Geolocation" note for how to register a real
     /// implementation.
     /// </para>
+    /// <para>
+    /// For every other permission, <see cref="PermissionStatus.Granted"/> means "not gated by
+    /// this platform and not checked", not "Windows allows it". The Windows privacy settings can
+    /// still block a desktop app's camera, and <see cref="PostNotifications"/> says nothing about
+    /// whether a toast will be shown - read <c>INotificationService.Availability</c> from
+    /// <c>ConfigureNotifications</c> for that. For a real check, derive from this class (or from
+    /// one of the nested permission types) and override <see cref="CheckStatusAsync"/>;
+    /// <see cref="RequestAsync"/> forwards to it.
+    /// </para>
     /// </remarks>
     public abstract partial class BasePlatformPermission : BasePermission
     {
@@ -44,6 +53,11 @@ public static partial class Permissions
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Returns <see cref="PermissionStatus.Granted"/> without consulting the operating
+        /// system: an unpackaged WPF app has no capability manifest to check against. Override it
+        /// in a derived type to perform a real check.
+        /// </remarks>
         public override Task<PermissionStatus> CheckStatusAsync() =>
             Task.FromResult(PermissionStatus.Granted);
 
@@ -78,6 +92,11 @@ public static partial class Permissions
     {
     }
 
+    /// <remarks>
+    /// Reports <see cref="PermissionStatus.Granted"/> without checking: the camera switches in
+    /// the Windows privacy settings are not read, so the camera can still be blocked when the
+    /// app opens it.
+    /// </remarks>
     public partial class Camera : BasePlatformPermission
     {
     }
@@ -163,6 +182,11 @@ public static partial class Permissions
     {
     }
 
+    /// <remarks>
+    /// Reports <see cref="PermissionStatus.Granted"/> even when the user or policy has turned
+    /// this app's notifications off. Read <c>INotificationService.Availability</c> (from
+    /// <c>ConfigureNotifications</c>) before relying on a toast being shown.
+    /// </remarks>
     public partial class PostNotifications : BasePlatformPermission
     {
     }

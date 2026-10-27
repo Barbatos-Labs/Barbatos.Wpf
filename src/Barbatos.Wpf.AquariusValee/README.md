@@ -1,6 +1,6 @@
 # Barbatos.Wpf.AquariusValee
 
-![Barbatos.Wpf.AquariusValee logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquariusvalee-logo.svg?raw=true)
+![Barbatos.Wpf.AquariusValee logo](https://raw.githubusercontent.com/Barbatos-Labs/Barbatos.Wpf/main/build/aquariusvalee-logo.svg)
 
 ### *A vee-validate-style form-validation system - for WPF*
 
@@ -22,20 +22,31 @@ primary schema mechanism, `INotifyDataErrorInfo`-native error display, and
   * [Introduction](#introduction)
   * [Quick Start](#quick-start)
 * **[Field](#field)**
+  * [`FieldMeta`](#fieldmeta)
 * **[Form](#form)**
   * [Schema mode: `Form.FromModel`](#schema-mode-formfrommodel)
   * [Ad-hoc mode: `Form.DefineField`](#ad-hoc-mode-formdefinefield)
+  * [`FormMeta`](#formmeta)
   * [`HandleSubmit`](#handlesubmit)
+  * [Focusing the first invalid field on submit](#focusing-the-first-invalid-field-on-submit)
 * **[Validation triggers](#validation-triggers)**
 * **[Cross-field validation](#cross-field-validation)**
+  * [The schema-mode equivalent: `PropertyRangeAttribute`](#the-schema-mode-equivalent-propertyrangeattribute-and-idependsonproperties)
 * **[Async rules and `Meta.Pending`](#async-rules-and-metapending)**
 * **[XAML integration](#xaml-integration)**
   * [`Valee.Field` / `Valee.PasswordField`](#valeefield--valeepasswordfield)
   * [`Valee.Form` / `Valee.For`](#valeeform--valeefor)
+  * [`Valee.Mask` - guiding what gets typed](#valeemask---guiding-what-gets-typed)
+  * [`Valee.Numeric` - number-only boxes](#valeenumeric---number-only-boxes-and-snapping-back-into-range)
+  * [`FieldTemplateSelector` - auto-selecting a control per field](#fieldtemplateselector---auto-selecting-a-control-per-field)
   * [Already native: error display](#already-native-error-display)
+  * [`SafeMessageConverter` - localization](#safemessageconverter---localization-without-becoming-dependent-on-a-localizer)
 * **[Rules](#rules)**
+  * [`PatternAttribute`](#patternattribute---regex-and-why-regularexpression-isnt-always-enough)
+  * [A full review of `System.ComponentModel.DataAnnotations`](#a-full-review-of-systemcomponentmodeldataannotations---whats-native-whats-custom-what-doesnt-apply)
 * **[Deliberately Out of Scope](#deliberately-out-of-scope)**
 * **[Ecosystem](#ecosystem)**
+  * [Repository layout](#repository-layout)
 * **[API Reference](#api-reference)**
 * **[Community](#community)**
 
@@ -117,6 +128,18 @@ into English and Vietnamese via [Barbatos.i18n](https://www.nuget.org/packages/B
 purely a sample-level demonstration of the two packages working together side by side, not a
 dependency AquariusValee itself takes on.
 
+**Scaffolding a form**: the `aqv-form` `dotnet new` item template (see
+[`templates/`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md#aqv-form---valee-form-view--viewmodel-item-template)
+in the repo) generates a schema-mode `XyzView.xaml` (`aqv:Valee.Form` on the container, a bound
+control and an error `TextBlock` per field, a submit button) / `XyzView.xaml.cs` /
+`XyzViewModel.cs` (the `Form`, its typed `Field<T>`s, the `HandleSubmit` command and the
+attribute-carrying model class) in one step:
+
+```powershell
+dotnet new install ./templates/Barbatos.Wpf.AquariusValee/item-templates/valee-form   # once
+dotnet new aqv-form -n Checkout --namespace MyApp.Features.Checkout
+```
+
 ---
 
 ## Field
@@ -137,7 +160,9 @@ public Field<string> Email { get; } = new("Email", "", new RequiredAttribute(), 
   if `value` equals the current value.
 - **`HandleBlur()`** - always sets `Meta.Touched = true`, regardless of trigger configuration;
   additionally validates if [`Triggers`](#validation-triggers) includes `OnBlur`.
-- **`ValidateAsync()`** - an explicit, always-visible validation pass.
+- **`ValidateAsync()`** - an explicit, always-visible validation pass. An exception a rule
+  throws comes out of the returned task - see
+  [When a rule throws](#when-a-rule-throws).
 - **`SetError(string? message)`** - a manual, server-driven error (e.g. "email already taken")
   that bypasses rule execution entirely; a subsequent real validation pass supersedes it.
 - **`AppendError(string message)`** - adds an error without clearing existing ones.
@@ -155,7 +180,7 @@ public Field<string> Email { get; } = new("Email", "", new RequiredAttribute(), 
 | `Dirty` | A **live** comparison of the current value against the initial value, computed fresh on every read - not a flag latched the first time the value changes. Typing a value and then retyping the original value un-dirties the field again. |
 | `Valid` | Defaults to `true` - "no errors yet" is not the same as "confirmed valid." Updated on *every* validation pass regardless of mode, so it stays accurate even while `Errors` itself is being withheld (see the next row). Combine with `Dirty`/`Touched` before showing any "this looks good" UI. |
 | `Validated` | Whether a real (non-silent) validation pass has run at least once - **independent of `Touched`**, and what actually gates whether a background pass may *write* visible `Errors`. A field validated only via `ValidateAsync()` reports `Validated=true, Touched=false`; a blurred field with change-triggered validation off reports `Touched=true, Validated=false`. |
-| `Pending` | `true` while an asynchronous rule is in flight - see [Async rules](#async-rules-and-metapending). |
+| `Pending` | `true` while an asynchronous rule is in flight, and lowered when that pass ends - with a result or with an exception - see [Async rules](#async-rules-and-metapending). |
 
 This split (`Valid` always fresh, `Errors`/`Validated` gated) is what lets a freshly-constructed
 field report accurate validity immediately without ever flashing a red error before the user has
@@ -192,9 +217,26 @@ var form = Form.FromModel(new SignupModel());
 ```
 
 `IValidatableObject` on the model (DataAnnotations' own native cross-field mechanism) is honored
-too - checked once per `HandleSubmit`/explicit `ValidateAllAsync()`, and any resulting message is
-layered onto every field named in `ValidationResult.MemberNames`, on top of that field's own rule
-errors.
+too, as is any `ValidationAttribute` on the model class itself - checked once per
+`HandleSubmit`/explicit `ValidateAllAsync()`, and any resulting message is layered onto every
+field named in `ValidationResult.MemberNames`, on top of that field's own rule errors. It runs
+whether or not the properties' own attributes pass, so a submit with required fields still empty
+shows the model-level errors alongside them rather than one round later.
+
+That last point is a deliberate departure from calling `Validator.TryValidateObject`, which
+`Form` used to do. Its `validateAllProperties: false` mode reads as "skip the property
+attributes" but does not: confirmed against the BCL, it still checks every property's
+`[Required]`, reports each failure under the property's name, and then stops before the
+class-level attributes and `IValidatableObject.Validate`. Every field had already reported that
+same Required message itself, so it showed twice, and the cross-field rule never ran. The
+model-level pass now runs only the two steps the fields do not - class-level attributes, then
+`Validate` once those pass, in the BCL's own order.
+
+The flip side: `Validate` is no longer shielded from property values that fail their own
+attributes, as it is under `TryValidateObject`. Write it to tolerate an empty, `null` or
+out-of-range property - skip a comparison whose operand is missing rather than dereference it -
+since an exception from `Validate` ends the submit the way a throwing rule does (see
+[When a rule throws](#when-a-rule-throws)).
 
 **`CompareAttribute` (and anything else that reflects into a sibling property) only works this
 way** - against a real model instance. `Validator.TryValidateProperty` resolves the "other
@@ -247,6 +289,11 @@ to `Button.Command`. Mirrors vee-validate's own `handleSubmit` stage order exact
    values/errors.
 5. `IsSubmitting = false`, in a `finally`.
 
+If a rule throws during step 3, neither callback runs: the submit ends with that exception
+(after step 5), which faults the command's `ExecuteAsync` task and - for a command a `Button`
+invoked - is rethrown on the UI thread by `AsyncRelayCommand`, the same route an exception from
+`onValid` takes.
+
 **`CanExecute` is gated only on `!IsSubmitting`, never on `Meta.Valid`.** Clicking Submit on an
 invalid, untouched form is exactly what's supposed to force every field's `Touched` to `true` and
 surface its errors - that's the whole point of a submit attempt, matching vee-validate's own real
@@ -276,6 +323,12 @@ in the visual tree**, no extra code needed in the ViewModel or the View:
 A form with no `Valee.Form` anywhere in its tree simply doesn't get this behavior - subscribe to
 `Form.SubmitInvalid` yourself (it is a plain, headless C# event) if you need the same behavior
 without using `Valee.Form`.
+
+To find that control, `Valee` remembers the last control bound to each field - through a weak
+reference, so a `Form` that outlives its View (one owned by a singleton ViewModel, say) does not
+keep the closed View alive. A `ConditionalWeakTable` keyed by the field alone is not enough for
+that: it keeps each value alive for as long as its key is, which is how an earlier version pinned
+the last bound control, and its whole visual tree, to the form.
 
 ---
 
@@ -349,8 +402,9 @@ the one that matches your form**:
 ### The schema-mode equivalent: `PropertyRangeAttribute` and `IDependsOnProperties`
 
 For a `Form.FromModel` field, the declarative equivalent is
-[`PropertyRangeAttribute`](API-REFERENCE.md#rules), which reflects two named sibling properties'
-*current* values the same way `[Compare]` reflects one:
+[`PropertyRangeAttribute`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md#propertyrangeattribute-sealed-class--validationattribute-idependsonproperties),
+which reflects two named sibling properties' *current* values the same way `[Compare]` reflects
+one:
 
 ```csharp
 public int MinPrice { get; set; } = 10;
@@ -370,16 +424,21 @@ Two things this attribute-based form gives up, both because a `ValidationAttribu
 reflected metadata with no dependency-injection access, unlike a hand-written rule closure:
 
 - **It only works in `Form.FromModel` mode.** It reflects `ValidationContext.ObjectInstance` - the
-  real model - which an ad-hoc `Field<T>` never has (see [`Field.AddRule(ValidationAttribute)`](API-REFERENCE.md#field)'s
-  own remarks).
-- **Its message cannot resolve an i18n key.** `ErrorMessage` is a plain
-  `string.Format`-style template (`{0}` = display name, `{1}`/`{2}` = the live min/max), not a
-  localizer lookup - there is no service container reachable from inside an attribute. The
-  sample's Showcase tab uses this attribute and explicitly does *not* translate this one message,
-  contrasting with "Custom rules"' fully-localized ad-hoc version of the identical Price/MinPrice/MaxPrice idea.
+  real model - which an ad-hoc `Field<T>` never has (see
+  [`Field<T>.AddRule(ValidationAttribute)`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md#fieldt-sealed-class--observableobject-ifield-idisposable)'s
+  notes).
+- **Its message cannot reach a DI localizer.** `ErrorMessage` is a plain `string.Format`-style
+  template (`{0}` = display name, `{1}`/`{2}` = the live min/max) formatted when the rule runs -
+  there is no service container reachable from inside an attribute, and a lookup key stored there
+  for a display-time converter loses the live bounds. What does work is DataAnnotations' own resx
+  route: `ErrorMessageResourceType`/`ErrorMessageResourceName` name a resource string that is
+  itself the template, so it is localized *and* keeps `{1}`/`{2}`. The sample's Showcase tab uses
+  this attribute and deliberately leaves this one message in plain English, contrasting with
+  "Custom rules"' fully-localized ad-hoc version of the identical Price/MinPrice/MaxPrice idea.
 
-Pick ad-hoc `DependsOn` when the message needs full i18n/DI; pick `PropertyRangeAttribute` when
-the field already lives on a `FromModel` model and a plain-text message is acceptable.
+Pick ad-hoc `DependsOn` when the message needs an app localizer or DI; pick
+`PropertyRangeAttribute` when the field already lives on a `FromModel` model and a plain-text or
+resx message is acceptable.
 
 ---
 
@@ -402,6 +461,52 @@ Username.AddRule(async (value, cancellationToken) =>
 {
     var available = await availabilityService.IsAvailableAsync(value, cancellationToken);
     return available ? null : "That username is already taken.";
+});
+```
+
+#### When a rule throws
+
+A rule of any shape may throw - a network failure, a timeout, a bug - and the field stays
+consistent:
+
+- **`Meta.Pending` is lowered** whichever way the pass ends, so neither the field nor its form is
+  left "checking..." for good.
+- **Nothing is written.** `Errors`, `Meta.Valid` and `Meta.Validated` keep what the previous pass
+  wrote; a half-finished pass (the sync rules passed, the async one never answered) is not
+  presented as a verdict.
+- **The exception reaches whoever awaits the pass** - `ValidateAsync()`, `ValidateAllAsync()`,
+  `RevalidateValidatedAsync()`, or the `HandleSubmit` command. A pass nobody awaits (typing, blur,
+  a `DependsOn` source changing, the silent pass a constructor or `Reset` runs) rethrows it on the
+  `Dispatcher` of the UI thread that started the pass, so it reaches
+  `Application.DispatcherUnhandledException` like any other UI-thread failure instead of
+  disappearing with a discarded `Task` - the same "observe the fault, rethrow through the
+  Dispatcher" route Aquarius's async lifecycle hooks take. A pass started off a UI thread - on a
+  thread-pool thread (a value set after `ConfigureAwait(false)`, say), or on a worker that is
+  neither STA nor running a dispatcher operation - has no pumping dispatcher to go to, even if it
+  owns one, so there the exception stays on the task, for `TaskScheduler.UnobservedTaskException`.
+  That is the same test Aquarius's `NextTick` uses to decide whether the calling thread is a UI
+  thread.
+- **Only Valee's own cancellation is swallowed.** A pass superseded by a newer one ends quietly
+  whatever its rule then throws, since its result would be discarded anyway (and not every client
+  library reports cancellation as an `OperationCanceledException`). An
+  `OperationCanceledException` from anywhere else is a real failure: `HttpClient` reports its own
+  `Timeout` as a `TaskCanceledException`, and that is not mistaken for supersession.
+
+So throwing is safe, but it is not a message. When a failed check should read as an error under
+the field rather than an unhandled exception, catch it inside the rule and return that message:
+
+```csharp
+Username.AddRule(async (value, cancellationToken) =>
+{
+    try
+    {
+        var available = await availabilityService.IsAvailableAsync(value, cancellationToken);
+        return available ? null : "That username is already taken.";
+    }
+    catch (HttpRequestException)
+    {
+        return "Could not check the username right now.";
+    }
 });
 ```
 
@@ -679,7 +784,7 @@ A message stored as a lookup key and resolved by a converter updates for free wh
 re-reads. A rule that resolves its text **eagerly** - unavoidable when the message interpolates a
 runtime value, e.g. `$"Must be at least {MinPrice.Value}."` - captured the old language at the
 moment it ran, and no later culture switch re-runs it. Call
-[`Form.RevalidateValidatedAsync()`](API-REFERENCE.md#form-sealed-class--observableobject-inotifydataerrorinfo-idisposable)
+[`Form.RevalidateValidatedAsync()`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusValee/API-REFERENCE.md#form-sealed-class--observableobject-inotifydataerrorinfo-idisposable)
 after switching:
 
 ```csharp
@@ -709,8 +814,29 @@ to have no `System.ComponentModel.DataAnnotations` equivalent:
 | `NumericStringAttribute` / `IntegerStringAttribute` | "Does this raw string look like a number/integer" - for input not yet parsed into a numeric type. |
 | `PatternAttribute` | Regex matching **with a real `RegexOptions` property** - see below. |
 
-All of them treat a `null`/empty value as valid (pair with `[Required]` if emptiness itself should
-fail) - matching the `isEmpty`-short-circuit convention vee-validate's own equivalent rules use.
+All of them treat a `null` value as valid (pair with `[Required]` if emptiness itself should
+fail) - matching the `isEmpty`-short-circuit convention vee-validate's own equivalent rules use -
+and all but one treat an empty string as valid too. Two differences are worth knowing:
+
+- **`OneOfAttribute` rejects `""`** unless `""` is one of the allowed values: an empty string is
+  a value like any other there, not "nothing entered". (`NotOneOfAttribute` accepts it unless it
+  is listed.)
+- **The character-class and digit attributes check strings only.** `Alpha`, `AlphaNumeric`,
+  `AlphaDash`, `AlphaSpaces`, `Digits`, `NumericString` and `IntegerString` pass *any* non-string
+  value, so `[Digits(6)]` on an `int` property accepts everything - keep that input as a `string`,
+  or use `[Range]` on the number. `PatternAttribute` instead matches a non-string value's
+  `ToString()`.
+
+Every one of them, `PropertyRangeAttribute` included, supplies its default message the way
+`[Required]`, `[Range]` and `[Compare]` do - through the protected `ValidationAttribute`
+constructor - so a named `ErrorMessage` replaces it, and
+`ErrorMessageResourceType`/`ErrorMessageResourceName` work for resx-based localization (setting
+`ErrorMessage` *and* a resource name is rejected, as on any BCL attribute). `ErrorMessage` itself
+therefore reads `null` until you set it, exactly as `new RequiredAttribute().ErrorMessage` does
+(verified on .NET 8 and .NET 10). `[EmailAddress]`, `[Phone]` and `[Url]` do read their default
+back through `ErrorMessage`, but only through an internal setter a third-party attribute cannot
+use.
+
 `PropertyRangeAttribute` (documented under
 [Cross-field validation](#the-schema-mode-equivalent-propertyrangeattribute-and-idependsonproperties))
 lives in this namespace too, but is a different shape - property-only and `ValidationContext`-aware.
@@ -803,10 +929,15 @@ than forced into this package's scope.
   is complex specifically because it addresses fields by a string path that shifts identity on
   every insert/remove/reorder - a problem that doesn't exist here, since each row can just be a
   real C# object with real identity.
-- **A `generateMessage`-style global message hook** - `ValidationAttribute` already has
-  `ErrorMessageResourceType`/`ErrorMessageResourceName` for resx-based localization, and the
-  BCL's own built-in attributes already localize their default text via `CurrentUICulture` with
-  zero code. "Bulk-localize the whole app" is already solved beneath this package.
+- **A `generateMessage`-style global message hook** - DataAnnotations already gives every
+  attribute two localization routes: a lookup key in `ErrorMessage` resolved at display time (see
+  [`SafeMessageConverter`](#safemessageconverter---localization-without-becoming-dependent-on-a-localizer)),
+  and `ErrorMessageResourceType`/`ErrorMessageResourceName` for resx - which Valee's own `Rules`
+  attributes support too. What it does **not** give you is localized *default* text: the shared
+  framework that contains `System.ComponentModel.Annotations` ships no satellite resource
+  assemblies, so `[Required]`'s "The {0} field is required." stays English whatever
+  `CurrentUICulture` is (checked on .NET 8 and .NET 10 under `fr-FR`, `de-DE`, `vi-VN` and
+  `ja-JP`). Give every attribute whose message a user can see an explicit key or resource.
 
 ---
 
@@ -821,6 +952,7 @@ nothing else to install beyond Aquarius itself.
 - `samples/Barbatos.Wpf.AquariusValee.Sample` - a complete sample application exercising every
   feature area above, localized into English/Vietnamese via `Barbatos.i18n` (see its own
   `WpfProgram.cs`/`App.xaml.cs` for the DI + startup-culture wiring).
+- `templates/Barbatos.Wpf.AquariusValee/item-templates/valee-form` - the `aqv-form` item template.
 - `tests/Barbatos.Wpf.AquariusValee.UnitTests` - the unit test suite.
 
 ---

@@ -33,8 +33,9 @@ public sealed class ApsuTimingWarningInterceptor : IStoreActionInterceptor
 
         if (stopwatch.Elapsed > _warnThreshold)
         {
+            // BaseType: context.Store is the generated proxy subclass, not the store's own type.
             _activityLog.Log(
-                $"[Global interceptor #2 - timing] {context.Store.GetType().Name}.{context.ActionName}() took " +
+                $"[Global interceptor #2 - timing] {context.Store.GetType().BaseType!.Name}.{context.ActionName}() took " +
                 $"{stopwatch.Elapsed.TotalMilliseconds:0}ms (over the {_warnThreshold.TotalMilliseconds:0}ms warning threshold)");
         }
 

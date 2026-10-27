@@ -19,8 +19,8 @@ Contents:
 | --- | --- |
 | `Touched` | set only by `HandleBlur()` or a submit's touch-all step, never by a value change |
 | `Validated` | a pass that writes errors has run at least once (blur with `OnBlur`, `ValidateAsync`, submit, or `SetError`/`AppendError`) - a change-triggered pass on a pristine field does not set it; independent of `Touched` (`FieldMetaTests`) |
-| `Valid` | written by every pass, silent ones included; defaults `true` - "no errors seen yet", also while an async silent pass is still running |
-| `Pending` | an async rule is in flight in a non-silent pass; never raised by sync-only fields or the silent pass |
+| `Valid` | written by every pass that completes, silent ones included (a pass whose rule throws writes nothing); defaults `true` - "no errors seen yet", also while an async silent pass is still running |
+| `Pending` | an async rule is in flight in a non-silent pass; never raised by sync-only fields or the silent pass; lowered when that pass ends, also when a rule threw, but left to the newer pass when superseded (`FieldRuleExceptionTests`) |
 | `Dirty` | computed on every read against the initial value, never latched |
 
 - `HandleChange` (and the `Value` setter) with a value equal to the current one is a no-op,
@@ -70,11 +70,20 @@ BCL behaviour that bites:
   `public static ValidationResult? ValidateUsername(string username, ValidationContext context)`;
   return `new ValidationResult(message, [context.MemberName!])` or `ValidationResult.Success`.
 - `[DisplayFormat]` is presentation only and not reflected.
+- Default messages are English only - `System.ComponentModel.Annotations` ships no satellite
+  resources - whatever `CurrentUICulture` is; localize with a key or a resx resource.
+- `Validator.TryValidateObject(..., validateAllProperties: false)` still checks every
+  `[Required]` property and stops before `IValidatableObject`; `Form` deliberately does not use
+  it for its model-level pass.
 
 ### Valee `Rules` attributes
 
-Namespace `Barbatos.Wpf.AquariusValee.Rules`. Each constructor sets a default `ErrorMessage`
-(`{0}` = display name), which a named `ErrorMessage = "..."` replaces.
+Namespace `Barbatos.Wpf.AquariusValee.Rules`. Each constructor passes a default message
+(`{0}` = display name) to the base `ValidationAttribute(string)` constructor, as `[Required]` and
+`[Range]` do: a named `ErrorMessage = "..."` replaces it, `ErrorMessageResourceType`/`ErrorMessageResourceName`
+replace it with a resx string (not both - the BCL throws), and `ErrorMessage` reads `null` until
+set, on .NET 8 and 10 alike (`RulesTests`) - unlike `[EmailAddress]`/`[Phone]`/`[Url]`, which use an
+internal BCL setter.
 
 | Attribute | Construction | Passes when | `null` / `""` | Non-string value |
 | --- | --- | --- | --- | --- |
@@ -109,7 +118,8 @@ Namespace `Barbatos.Wpf.AquariusValee.Rules`. Each constructor sets a default `E
 | `[Editable(false)]` | `IsReadOnly = true` - a hint your template must honour; nothing enforces it |
 | `[Range]` with a numeric operand type | `Minimum`/`Maximum` for `Valee.Numeric`; `null` for a non-numeric operand type such as `DateTime` |
 | an attribute implementing `IDependsOnProperties` | `DependsOn` wired to every named sibling |
-| `IValidatableObject` on the class | run by `ValidateAllAsync`, submit and `RevalidateValidatedAsync` |
+| `ValidationAttribute`s on the class itself (`[CustomValidation]`) | run by `ValidateAllAsync`, submit and `RevalidateValidatedAsync`, before `IValidatableObject` |
+| `IValidatableObject` on the class | run by the same three once class-level attributes pass, even while property attributes fail |
 
 A change writes back to the model **before** dependents re-validate, so a `[PropertyRange]` or
 `[Compare]` on another property sees the new value (`FormFromModelTests`); `Reset` writes back too.

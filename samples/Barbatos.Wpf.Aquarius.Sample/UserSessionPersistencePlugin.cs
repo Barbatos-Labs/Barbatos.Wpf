@@ -19,6 +19,12 @@ namespace Barbatos.Wpf.Aquarius.Sample;
 /// Deliberately narrow (only persists <see cref="UserStore.SelectedUserId"/>) rather than a
 /// generic "persist any store" framework feature, which nothing here asked for - a real generic
 /// version would need per-store (de)serialization logic that this single demo key sidesteps.
+/// <para>
+/// <see cref="Apply"/> runs inside <see cref="UserStore"/>'s own resolution, so the restored
+/// selection is set before any other store or ViewModel can have subscribed to it - its change
+/// notification reaches nobody. Whatever reacts to <see cref="UserStore.SelectedUserId"/> has to
+/// read the current value when it subscribes, as <see cref="OrderStore"/>'s constructor does.
+/// </para>
 /// </remarks>
 public sealed class UserSessionPersistencePlugin : IStorePlugin
 {

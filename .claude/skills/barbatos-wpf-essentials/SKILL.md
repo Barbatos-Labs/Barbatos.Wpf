@@ -57,16 +57,14 @@ and the AI key / MCP token stores that sit on `SecureStorage` (`barbatos-mcp-ai`
 ## App identity: AppInfo and PublisherInfo
 
 Configure from the **exe** project's csproj (values are read from `Assembly.GetEntryAssembly()`).
-Adapted from the sample and template csproj files:
+For a standalone app:
 
 ```xml
 <PropertyGroup>
   <Product>My App</Product>                      <!-- AppInfo.Name -->
   <Company>Contoso</Company>                     <!-- PublisherInfo.Name, part of the data path -->
   <Copyright>Copyright (c) Contoso</Copyright>   <!-- PublisherInfo.Copyright -->
-  <Version>1.2.0</Version>
-  <AssemblyVersion>$(Version)</AssemblyVersion>  <!-- what AppInfo.Version reads -->
-  <FileVersion>$(Version)</FileVersion>          <!-- what Explorer and installers read -->
+  <Version>1.2.0</Version>                       <!-- AssemblyVersion and FileVersion derive from it -->
 </PropertyGroup>
 <ItemGroup>
   <AssemblyMetadata Include="Barbatos.Wpf.ApplicationModel.AppInfo.AppId" Value="Contoso.MyApp" />
@@ -89,15 +87,21 @@ Adapted from the sample and template csproj files:
   (`AppInfoTests.ObsoleteAppGuidStillForwardsToAppId`). Rename call
   sites to `AppId`; do not delete the alias (CLAUDE.md obsoletion rule).
 - `Website`/`SupportUrl`/`SupportEmail` have no MSBuild property: metadata only, else `null`.
-- `AppInfo.Version` is the four-part assembly version: `VersionString` reads `"1.2.0.0"`. Show
-  `AppInfo.Version.ToString(3)`. `BuildString` is `Version.Revision`, normally `"0"`.
+- `AppInfo.Version` reads the entry assembly's `AssemblyName.Version`, which always has four
+  parts: `VersionString` reads `"1.2.0.0"`. Show `AppInfo.Version.ToString(3)`. `BuildString`
+  is `Version.Revision`, normally `"0"`.
+- The SDK derives `AssemblyVersion` from `<Version>` with any prerelease suffix stripped
+  (`<Version>1.3.0-beta.1</Version>` gives `1.3.0.0`, verified with a probe project), and
+  `FileVersion` defaults to it, so `<Version>` alone is right even for a prerelease. Writing
+  `<AssemblyVersion>$(Version)</AssemblyVersion>` with a prerelease `<Version>` fails the build
+  with `CS7034`: set `<AssemblyVersion>`/`<FileVersion>` only to a numeric value, and only when
+  something else already set them.
 - The `...AppInfo.Version` metadata override goes through `Version.Parse`: a prerelease value
-  such as `1.2.0-beta` throws `FormatException` on every read. `AssemblyVersion`/`FileVersion`
-  likewise take numeric parts only - for a prerelease set them to the bare `1.2.0` (template note).
+  such as `1.2.0-beta` throws `FormatException` on every read.
 - **Inside this repo** `Directory.Build.props` sets `<Product>`, `<Copyright>`, `<Version>` and
-  `<AssemblyVersion>` for every project: a new sample overrides all of them and sets
-  `<FileVersion>`, as the Core sample does, or Explorer and `AppInfo.Version` report the
-  library's version.
+  `<AssemblyVersion>` for every project: a new sample overrides all four, `<AssemblyVersion>`
+  with a numeric value (`FileVersion` follows it unless set), as the Core sample does, or
+  Explorer and `AppInfo.Version` report the library's version.
 
 ## Choosing where to persist
 
@@ -203,11 +207,13 @@ else if (_versionTracking.IsFirstLaunchForCurrentVersion)
   units are `Width / Density`. `MainDisplayInfoChanged` fires on
   `SystemEvents.DisplaySettingsChanged` (a display-settings change such as resolution), not when
   a window moves to another monitor.
-- `KeepScreenOn` calls `SetThreadExecutionState(ES_CONTINUOUS | ...)` on the **calling thread**,
-  and `IKeepAwakeService` uses the same per-thread state on the UI thread: each call replaces
-  the previous one, so switching one off cancels the other. Use one mechanism - for a persisted
-  toggle, `ConfigureKeepAwake` with `KeepAwakeOptions.KeepDisplayOn` (`barbatos-wpf-host`); for
-  a temporary "while presenting", `DeviceDisplay.KeepScreenOn` set and cleared on the UI thread.
+- `KeepScreenOn` holds `SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)` on a
+  background thread of its own while `true`, never on the caller's thread. Execution state is
+  per thread and Windows combines all threads, so it stacks with `IKeepAwakeService` (which
+  holds `ES_SYSTEM_REQUIRED` on the UI thread) and with the app's own calls; turning either off
+  leaves the other in force, and it may be set and cleared from any thread. For a persisted
+  toggle prefer `ConfigureKeepAwake` with `KeepAwakeOptions.KeepDisplayOn` (`barbatos-wpf-host`);
+  for a temporary "while presenting", `DeviceDisplay.KeepScreenOn`.
 - `DeviceInfo.Version` is the OS version: Windows 11 still reports major version 10 (build
   22000+). `Platform` is always `DevicePlatform.WPF`; `Idiom` and `DeviceType` are heuristics.
 
@@ -223,15 +229,19 @@ var fingerprint = await _deviceIdentity.GetHardwareFingerprintAsync();
 | `GetInstanceIdAsync()` | Random GUID created on first use, kept in `SecureStorage` | `securestorage.dat` is lost (data cleared, new Windows user or machine), `SecureStorage.RemoveAll()`, `AppId`/`<Company>` change |
 | `GetHardwareFingerprintAsync()` | 64-char uppercase hex SHA-256 of `AppId` + board/BIOS serials + CPU id via WMI | Hardware swap, `AppId` change; falls back to `Environment.MachineName` when WMI is locked down |
 
-- Use the instance id alone when an activation may reset with the data; add the fingerprint
-  when reinstalling must not reset a per-machine activation count.
+- An ordinary uninstall/reinstall leaves `%LocalAppData%` - and the instance id - in place; do
+  not describe it as "resets on reinstall". Use it alone when an activation may reset with the
+  app's data; add the fingerprint when deleting that data or switching Windows user must not
+  reset a per-machine activation count. To reset it deliberately, remove the
+  `Barbatos.Wpf.DeviceIdentity.InstanceId` key from `ISecureStorage`.
 - Raw serials are never stored or returned and the `AppId` salt makes fingerprints incomparable
   across apps - keep both properties. Both values are still personal data once a server links
   them to a customer (README privacy note). No client-side IP lookup: the licence server already
   sees the caller's address, and IP is a soft signal (NAT, VPN).
 - The fingerprint does WMI work once per process on the thread pool: load it on demand, as
-  `GreetingService.GetDeviceIdentityDescriptionAsync` does. Resolve the instance id once and
-  cache it - the first-use check-then-write is unlocked, so concurrent first calls can mint two ids.
+  `GreetingService.GetDeviceIdentityDescriptionAsync` does. `GetInstanceIdAsync` serializes its
+  read-or-create, so concurrent first calls in one process get the same id; two processes
+  starting at once can still each create one (last write wins on disk).
 
 ## Launcher and Email
 
@@ -243,18 +253,33 @@ await Email.ComposeAsync("Bug report", body, PublisherInfo.SupportEmail!);
 
 - `Launcher` is `Process.Start` with `UseShellExecute = true`. The `string` overloads build a
   `Uri`, so a relative path throws `UriFormatException` - open files and folders with
-  `OpenFileRequest`. The result is `true` only when a `Process` object came back and `false` on
-  any exception; a hand-off to an already-running or protocol-activated app can open fine and
-  still return `false`, so do not show an error on `false` alone.
+  `OpenFileRequest`. The result is `true` whenever `Process.Start` did not throw - including a
+  hand-off to an already-running or COM-activated app, where no `Process` comes back - and
+  `false` when the shell refused the target (no handler, a missing file). `false` is a real
+  failure worth reporting.
 - `CanOpenAsync` checks `HKEY_CLASSES_ROOT\<scheme>` for a handler; `TryOpenAsync` is
   `CanOpenAsync` then open.
-- `Email` is Simple MAPI: it opens the default desktop mail client's compose window.
-  `IsComposeSupported` is always `true` and the `MAPISendMail` return code is discarded, so with
-  no MAPI client installed the call completes without reporting any failure. Offer a `mailto:`
-  link through `Launcher` as the fallback.
-- MAPI is marshalled as ANSI: subject/body characters outside the system code page (Vietnamese
-  diacritics on an English-locale machine) can arrive as `?`. `EmailBodyFormat.Html` throws
-  `FeatureNotSupportedException`. Attachments are `EmailAttachment(fullPath)`.
+- `Email` is Simple MAPI through its Unicode entry point `MAPISendMailW`: it opens the default
+  desktop mail client's compose window, and Vietnamese or other non-code-page text survives
+  (a client implementing only the ANSI call gets the stub's conversion, the one case where
+  `?` can still appear). `IsComposeSupported` is always `true`; whether a client answers is
+  only known by calling. With no usable client `ComposeAsync` throws
+  `FeatureNotSupportedException` - catch it and offer a `mailto:` link through `Launcher`. A
+  user cancelling the compose window is a normal completion.
+- `EmailBodyFormat.Html` throws `FeatureNotSupportedException`. Attachments are
+  `EmailAttachment(fullPath)`; one that does not exist throws `FileNotFoundException` before any
+  client starts. Any other MAPI error is an `InvalidOperationException` naming the code.
+
+```csharp
+try
+{
+    await _email.ComposeAsync("Bug report", body, supportAddress);
+}
+catch (FeatureNotSupportedException)
+{
+    await _launcher.OpenAsync($"mailto:{supportAddress}?subject={Uri.EscapeDataString("Bug report")}");
+}
+```
 
 ## AppActions: the taskbar Jump List
 
@@ -270,10 +295,12 @@ builder.ConfigureEssentials(essentials => essentials
   `UseEssentials()` matches it in the `WpfLifecycle.OnStartup` event against the actions set in
   *that* process, which `ConfigureEssentials` applies during `Build()`. Actions added later with
   `AppActions.SetAsync` are not recognised on relaunch unless they are declared again at startup.
-- Handle activations with `.OnAppAction(...)` in `ConfigureEssentials`. The lifecycle event fires
-  inside `base.OnStartup(e)`, so an `AppActions.OnAppAction +=` placed after it in `App.OnStartup`
-  never sees the activation. The handler runs before the main window exists: record the action
-  id and act on it after `MainWindow.Show()`.
+- Handle activations with `.OnAppAction(...)` in `ConfigureEssentials`, or with
+  `AppActions.OnAppAction +=` placed **before** `base.OnStartup(e)` (the sample's `App.xaml.cs`
+  does). The lifecycle event fires inside `base.OnStartup(e)`, so a subscription after it never
+  sees the activation. The handler runs before the main window exists - showing or activating
+  `Application.Current.MainWindow` from it finds no window on a cold start: record the action id
+  and act on it after `MainWindow.Show()`, as `App.OnStartup` in the sample does.
 - With `ConfigureSingleInstance()` and the app already running, the new process exits inside
   `Build()` before `OnStartup`: the action is lost and the running instance only receives
   `SecondInstanceLaunched` (no arguments). Only cold-start activations work in that combination.
@@ -331,10 +358,10 @@ verbatim; both are `null` (never an exception) when not installed - normal under
 | Online indicator says Internet but requests fail | Gateway heuristic, no probe | Trust the request result |
 | ViewModel never collected after its window closes | Handler left on a facade event (`ConnectivityChanged`, `MainDisplayInfoChanged`, `OnAppAction`) | Unsubscribe on close |
 | `MainDisplayInfo` is all zeros | No window handle yet | Read it in `Loaded` |
-| Keep-awake stops after turning `KeepScreenOn` off | Shared per-thread `SetThreadExecutionState` | Use one mechanism |
-| Jump List click does nothing | Handler subscribed after `base.OnStartup`; action not declared in `ConfigureEssentials`; or app already running under single instance | `OnAppAction` in `ConfigureEssentials`; declare at startup; accept the single-instance limit |
-| `Email.ComposeAsync` does nothing | No Simple MAPI client; result is ignored | Offer a `mailto:` link via `Launcher` |
-| Accented text in the email shows `?` | ANSI Simple MAPI | Keep MAPI text ASCII or use `mailto:` |
+| Jump List click does nothing | Handler subscribed after `base.OnStartup`; action not declared in `ConfigureEssentials`; or app already running under single instance | `OnAppAction` in `ConfigureEssentials` (or subscribe before `base.OnStartup`); declare at startup; accept the single-instance limit |
+| Jump List handler runs but the window does not come forward | Handler acted on `MainWindow` during startup, before it exists | Record the id; act after `MainWindow.Show()` |
+| `Email.ComposeAsync` throws `FeatureNotSupportedException` | No Simple MAPI client answered (none installed or default), or an HTML body | Catch it and offer a `mailto:` link via `Launcher` |
+| `Launcher.OpenAsync` returns `false` | The shell refused the target: no handler, missing file | Report it - a hand-off to a running app already returns `true` |
 | Replacement service ignored (`Contacts.PickContactAsync()` still throws, own `IPreferences` unused) | Facades ignore DI; an app-side `TryAdd*` loses to `UseEssentials()` in `CreateBuilder()` | Inject the interface; register with `AddSingleton` |
 
 ## Adding or changing an Essentials module (library work)

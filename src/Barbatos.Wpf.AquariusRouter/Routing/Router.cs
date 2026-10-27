@@ -51,9 +51,10 @@ namespace Barbatos.Wpf.AquariusRouter.Routing;
 /// </remarks>
 public sealed class Router
 {
-    // How many chained guard redirects one navigation may follow before it is treated as an
-    // infinite loop - the same limit Vue Router's own redirect-loop detection uses.
-    private const int MaxGuardRedirects = 30;
+    // How many chained redirects one navigation may follow before it is treated as an infinite
+    // loop - static RouteRecord.Redirect hops and guard redirects counted together. 30 is the limit
+    // Vue Router's own guard-redirect loop detection uses.
+    private const int MaxRedirects = 30;
 
     private static readonly IReadOnlyDictionary<string, string?> EmptyQuery = new Dictionary<string, string?>();
 
@@ -114,6 +115,16 @@ public sealed class Router
     /// its own remarks for why no special-casing is needed.
     /// </summary>
     /// <returns><see langword="null"/> on success, otherwise why the navigation didn't happen.</returns>
+    /// <remarks>
+    /// <b>Refusals are values, errors are exceptions.</b> A guard's <c>Cancel</c> or
+    /// <c>Redirect</c>, a newer navigation superseding this one, and a duplicate come back as a
+    /// <see cref="NavigationFailure"/>. A target that matches no route, more than 30 chained
+    /// redirects (static <see cref="RouteRecord.Redirect"/> hops and guard redirects counted
+    /// together), and anything a guard, data hook or View constructor throws leave as an exception
+    /// instead - <see cref="InvalidOperationException"/> for the first two. Either way nothing is
+    /// committed, and any View this navigation had already constructed is released, so a retry
+    /// builds a fresh one rather than reusing the failed attempt's.
+    /// </remarks>
     public Task<NavigationFailure?> Push(RouteLocationRaw to)
     {
         ArgumentNullException.ThrowIfNull(to);
@@ -231,11 +242,17 @@ public sealed class Router
 
         // A static RouteRecord.Redirect on the resolved leaf is handled before any guard runs
         // (and before the duplicate check) - only the eventual real target's guards ever run, its
-        // own redirecting record's never do. No cycle counter here, unlike the guard-redirect
-        // case below - matches Vue Router's own real asymmetry between the two redirect sources.
+        // own redirecting record's never do. Its hops count against the same limit as guard
+        // redirects. Vue Router puts no counter on this path, but there a cycle ends in a
+        // catchable RangeError; here the recursion is synchronous (nothing awaits between hops),
+        // and a .NET stack overflow cannot be caught - it ends the process.
         var leafRedirect = to.Matched.Count > 0 ? to.Matched[^1].Redirect : null;
         if (leafRedirect is not null)
-            return await NavigateWithRedirect(leafRedirect(to), redirectedFrom ?? to, redirectDepth).ConfigureAwait(true);
+        {
+            if (redirectDepth >= MaxRedirects)
+                throw new InvalidOperationException($"Infinite redirect loop detected in a RouteRecord.Redirect while navigating to \"{to.FullPath}\".");
+            return await NavigateWithRedirect(leafRedirect(to), redirectedFrom ?? to, redirectDepth + 1).ConfigureAwait(true);
+        }
 
         if (!rawTo.Force && from.IsSameLocation(to))
         {
@@ -250,7 +267,7 @@ public sealed class Router
 
         if (outcome.Result == GuardPipelineOutcome.Kind.Redirect)
         {
-            if (redirectDepth >= MaxGuardRedirects)
+            if (redirectDepth >= MaxRedirects)
                 throw new InvalidOperationException($"Infinite redirect loop detected in a navigation guard while navigating to \"{to.FullPath}\".");
             return await NavigateWithRedirect(outcome.RedirectTo!, redirectedFrom ?? to, redirectDepth + 1).ConfigureAwait(true);
         }
@@ -309,22 +326,33 @@ public sealed class Router
         if (await RunStage(beforeEnterGuards, to, from).ConfigureAwait(true) is { } beforeEnterResult)
             return beforeEnterResult;
 
-        // From here on the entering Views really exist, so every remaining early-return has to
+        // From here on the entering Views really exist, so every way out short of success has to
         // undo them (see ReleaseConstructedViews) - Vue Router never creates the component at all
-        // when a guard rejects, and a leftover instance here would be silently reused by the next
-        // attempt instead of being constructed fresh.
-        var constructed = ConstructEnteringViews(entering);
-        InvokeDataHooks<IOnRouteEnter>(entering, static (hook, t, f) => hook.OnRouteEnter(t, f), to, from);
-        if (await RunStage(EnterGuardsFor(entering), to, from).ConfigureAwait(true) is { } enterResult)
+        // when a navigation fails, and a leftover instance here would be silently reused by the
+        // next attempt instead of being constructed fresh. That includes a throw: a View
+        // constructor, a data hook or a guard that throws is not a NavigationFailure (the
+        // exception leaves Push as-is), but it is just as much a navigation that never committed.
+        var constructed = new List<(RouteRecord Record, string OutletName)>();
+        try
         {
-            ReleaseConstructedViews(constructed);
-            return enterResult;
-        }
+            ConstructEnteringViews(entering, constructed);
+            InvokeDataHooks<IOnRouteEnter>(entering, static (hook, t, f) => hook.OnRouteEnter(t, f), to, from);
+            if (await RunStage(EnterGuardsFor(entering), to, from).ConfigureAwait(true) is { } enterResult)
+            {
+                ReleaseConstructedViews(constructed);
+                return enterResult;
+            }
 
-        if (await RunStage(_beforeResolveGuards, to, from).ConfigureAwait(true) is { } beforeResolveResult)
+            if (await RunStage(_beforeResolveGuards, to, from).ConfigureAwait(true) is { } beforeResolveResult)
+            {
+                ReleaseConstructedViews(constructed);
+                return beforeResolveResult;
+            }
+        }
+        catch
         {
             ReleaseConstructedViews(constructed);
-            return beforeResolveResult;
+            throw;
         }
 
         // Every guard passed, and the commit below is unconditional from here - safe to release
@@ -355,14 +383,14 @@ public sealed class Router
     }
 
     /// <summary>
-    /// Builds every not-yet-constructed View for <paramref name="entering"/>, returning exactly
-    /// the ones this call created so a later-rejecting guard can undo precisely those (and not
-    /// some pre-existing instance it didn't build) via <see cref="ReleaseConstructedViews"/>.
+    /// Builds every not-yet-constructed View for <paramref name="entering"/>, recording into
+    /// <paramref name="constructed"/> exactly the ones this call created, so a later-rejecting
+    /// guard can undo precisely those (and not some pre-existing instance it didn't build) via
+    /// <see cref="ReleaseConstructedViews"/>. Filled as it goes rather than returned, so a View
+    /// constructor that throws part-way still leaves the caller a list of what to undo.
     /// </summary>
-    private static List<(RouteRecord Record, string OutletName)> ConstructEnteringViews(IEnumerable<RouteRecord> entering)
+    private static void ConstructEnteringViews(IEnumerable<RouteRecord> entering, List<(RouteRecord Record, string OutletName)> constructed)
     {
-        var constructed = new List<(RouteRecord, string)>();
-
         foreach (var record in entering)
         {
             var views = record.ResolvedViews;
@@ -390,8 +418,6 @@ public sealed class Router
                 constructed.Add((record, outletName));
             }
         }
-
-        return constructed;
     }
 
     /// <summary>
@@ -404,7 +430,7 @@ public sealed class Router
 
     /// <summary>
     /// Discards the Views <see cref="ConstructEnteringViews"/> just built, for a navigation that
-    /// then got cancelled/redirected/superseded. Nothing was ever mounted (no
+    /// then got cancelled/redirected/superseded or threw. Nothing was ever mounted (no
     /// <see cref="Xaml.RouterView"/> reads a record until <see cref="CurrentRoute"/> commits), so
     /// dropping the reference is the whole of the cleanup.
     /// </summary>

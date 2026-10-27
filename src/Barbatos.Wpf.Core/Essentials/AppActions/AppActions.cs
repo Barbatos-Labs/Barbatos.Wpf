@@ -27,11 +27,31 @@ public interface IAppActions
     /// </summary>
     /// <param name="actions">A collection of <see cref="AppAction"/> that is to be set for this app.</param>
     /// <returns>A <see cref="Task"/> object with the current status of the asynchronous operation.</returns>
+    /// <remarks>
+    /// The Jump List itself outlives the process, but recognising a click does not: the
+    /// relaunched process matches the clicked id only against the actions set <i>in that
+    /// process</i> before its startup lifecycle event. An action set only here, at runtime,
+    /// is shown in the Jump List yet raises nothing when clicked after a restart - declare every
+    /// action at startup (<c>ConfigureEssentials(e =&gt; e.AddAppAction(...))</c>), and call
+    /// this only to replace the list with one that is declared the same way on the next launch.
+    /// </remarks>
     Task SetAsync(IEnumerable<AppAction> actions);
 
     /// <summary>
     /// Event triggered when an app action is activated.
     /// </summary>
+    /// <remarks>
+    /// On Windows a Jump List click starts a new process, and this event is raised once, from
+    /// that process's <c>WpfLifecycle.OnStartup</c> event - inside
+    /// <c>WpfApplication.OnStartup</c>, before an <c>App.OnStartup</c> override's code after
+    /// <c>base.OnStartup(e)</c> runs and before any main window exists. Subscribe through
+    /// <c>ConfigureEssentials(e =&gt; e.OnAppAction(...))</c> (or before <c>base.OnStartup</c>),
+    /// record the action, and act on it once the main window is shown. With
+    /// <c>ConfigureSingleInstance</c> and an instance already running, the new process exits
+    /// inside <c>Build()</c>, before that event: the running instance only receives
+    /// <c>ISingleInstanceService.SecondInstanceLaunched</c>, which carries no arguments, so the
+    /// action is lost and only cold-start activations are reported.
+    /// </remarks>
     event EventHandler<AppActionEventArgs>? AppActionActivated;
 }
 
@@ -43,7 +63,11 @@ public interface IAppActions
 /// implemented with the taskbar Jump List (<see cref="System.Windows.Shell.JumpList"/>) — the
 /// menu shown when a user right-clicks (or long-presses) the app's taskbar icon. This mirrors
 /// .NET MAUI's own Windows implementation, which is also backed by a Jump List
-/// (<c>Windows.UI.StartScreen.JumpList</c>).
+/// (<c>Windows.UI.StartScreen.JumpList</c>). Two limits follow from a click relaunching the
+/// executable: an activation is not reported while the app is already running under
+/// <c>ConfigureSingleInstance</c>, and an action added only at runtime with
+/// <see cref="SetAsync(IEnumerable{AppAction})"/> is not recognised after a restart - see
+/// <see cref="IAppActions.AppActionActivated"/> and <see cref="IAppActions.SetAsync"/>.
 /// </remarks>
 public static class AppActions
 {

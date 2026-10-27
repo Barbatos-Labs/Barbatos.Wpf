@@ -3,8 +3,10 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Barbatos.Wpf.Aquarius.Reactivity;
 using Barbatos.Wpf.AquariusRouter.Routing;
 
@@ -35,9 +37,45 @@ using RoutingRouter = Routing.Router;
 /// </para>
 /// <para>
 /// <b>Closing is symmetric with navigating.</b> Navigating away from a modal record closes its
-/// window; closing the window with its own [X] navigates away, to the parent record if it has a
-/// <see cref="RouteRecord.Name"/> and otherwise via <see cref="Routing.Router.Back"/>. Without
-/// that second half the route would go on claiming a window that is no longer there.
+/// window; closing the window with its own [X] (or Alt+F4, or a <see cref="Window.Close"/> of
+/// the app's own) is a request to navigate away - to the parent record if it has a
+/// <see cref="RouteRecord.Name"/>, otherwise via <see cref="Routing.Router.Back"/> - and the
+/// window goes only once the route has actually left it. A leave guard that refuses (an
+/// unsaved-changes prompt answered "no"), a guard that throws, or a newer navigation that
+/// supersedes this one keeps the window open, because the route still claims it; a guard that
+/// is still awaiting something keeps it open until the navigation commits, which then closes it
+/// like any other navigation away. Closing the window unconditionally and navigating afterwards -
+/// the first design - left a refused navigation on a modal record with no window, where pushing
+/// the same route again returned <see cref="NavigationFailureType.Duplicated"/> and nothing could
+/// reopen it.
+/// </para>
+/// <para>
+/// Whatever that navigation throws is rethrown on the window's
+/// <see cref="System.Windows.Threading.Dispatcher"/>, as it is for a <see cref="RouterLink"/>
+/// click, so it reaches <see cref="Application.DispatcherUnhandledException"/>. Nothing else
+/// awaits it, and without that the exception would vanish, leaving a window that will not close
+/// and no trace of why.
+/// </para>
+/// <para>
+/// Two consequences for code of your own on such a window: a <see cref="Window.Closing"/>
+/// handler of yours sees every attempt, including one that is then kept open, and runs again
+/// when a navigation that committed later closes the window - do once-only work in
+/// <see cref="Window.Closed"/>. And a <see cref="Window.Closing"/> handler of yours that cancels
+/// is respected - no navigation is started - provided it runs first: one attached in XAML or in
+/// the window's constructor, or an <see cref="Window.OnClosing"/> override that cancels before
+/// calling the base. <see cref="RouterWindows"/> subscribes once the window has been constructed,
+/// so a handler attached later than that runs after the navigation has already started. When the
+/// main window or the application itself is closing, WPF ignores a cancelled close, so the window
+/// goes regardless and the navigation away is attempted only once.
+/// </para>
+/// <para>
+/// <b>Name the parent record.</b> With no name to push, the [X] falls back to
+/// <see cref="Routing.Router.Back"/>, and where there is nothing to go back to - the app started
+/// on the modal route itself - <see cref="Routing.Router.Back"/> is a silent no-op. The window
+/// still closes then, because refusing would leave a window nothing can close, but the route stays
+/// on the modal record: pushing it again returns <see cref="NavigationFailureType.Duplicated"/>
+/// until something navigates elsewhere first. A named parent is always reachable, so this never
+/// arises.
 /// </para>
 /// </remarks>
 public static class RouterWindows
@@ -119,6 +157,21 @@ public static class RouterWindows
         /// window's position, size and focus on every step of a navigation that never left it.
         /// </remarks>
         private readonly Dictionary<Type, (Window Window, RouteRecord Record)> _open = [];
+
+        /// <summary>
+        /// Windows whose own close already started the navigation away, so the <c>Closed</c> that
+        /// follows when WPF ignores the cancel (see <see cref="OnWindowClosed"/>) does not start a
+        /// second one - which would run the leave guards, and any prompt in them, twice.
+        /// </summary>
+        private readonly HashSet<Window> _closeNavigationStarted = [];
+
+        /// <summary>
+        /// Windows whose own <c>Closing</c> is being handled right now - see <see cref="CloseWindow"/>.
+        /// A set rather than one field because a guard's prompt runs a nested message loop, in
+        /// which another dialog can be closed before the first close has been decided.
+        /// </summary>
+        private readonly HashSet<Window> _raisingClosing = [];
+
         private IDisposable? _watchHandle;
         private RoutingRouter? _router;
         private bool _closing;
@@ -215,6 +268,7 @@ public static class RouterWindows
             if (Window.GetWindow(host) is { } owner && !ReferenceEquals(owner, window))
                 window.Owner = owner;
 
+            window.Closing += (_, e) => OnWindowClosing(router, windowType, window, e);
             window.Closed += (_, _) => OnWindowClosed(router, windowType, window);
 
             // Pinned and tracked before Show(), because Show() is what raises Loaded on the
@@ -247,6 +301,13 @@ public static class RouterWindows
                 return;
 
             var window = open.Window;
+            _closeNavigationStarted.Remove(window);
+
+            // The window's own close, whose navigation away just committed synchronously from
+            // inside its Closing handler: forgetting it is enough, since OnWindowClosing then lets
+            // that close go ahead - and WPF throws on a Close() while a window is raising Closing.
+            if (_raisingClosing.Contains(window))
+                return;
 
             // Suppresses OnWindowClosed's navigation: the route already moved on, and navigating
             // again here would fight whatever navigation caused this close in the first place.
@@ -262,35 +323,128 @@ public static class RouterWindows
         }
 
         /// <summary>
-        /// The user closed the window themselves - navigate away so the route stops claiming a
-        /// window that no longer exists.
+        /// The user (or the app's own <see cref="Window.Close"/>) is closing the window - turn that
+        /// into the navigation away it stands for, and let the window go only if the route has left it.
+        /// </summary>
+        private void OnWindowClosing(RoutingRouter router, Type windowType, Window window, CancelEventArgs e)
+        {
+            // Our own navigation-driven close, an app handler that already said no, or a window
+            // this state no longer tracks (OnWindowClosed sorts that out).
+            if (_closing || e.Cancel || !IsOpen(windowType, window, out var open))
+                return;
+
+            var before = router.CurrentRoute.Value;
+            Task<NavigationFailure?>? navigation;
+            _raisingClosing.Add(window);
+            try
+            {
+                navigation = StartNavigationAway(router, open.Record, window.Dispatcher);
+            }
+            finally
+            {
+                _raisingClosing.Remove(window);
+            }
+
+            // A navigation whose guards all answer synchronously has committed or failed by now,
+            // and a committed one has already run Sync through the CurrentRoute watch, so whether
+            // the route still claims this window is the whole answer. Still claimed means refused,
+            // threw, superseded, still awaiting an async guard (whose commit will close it through
+            // Sync like any other navigation away), or moved to a record that shares this window.
+            if (navigation is null || !IsOpen(windowType, window, out _))
+                return;
+
+            _closeNavigationStarted.Add(window);
+
+            // ...or it means there was nowhere to go: Back with no earlier entry (an unnamed parent
+            // on a route the app started on) completes at once, successfully, without touching the
+            // route - the only navigation that does. Refusing the close then would leave a window
+            // no [X] can ever close, so it goes, and the route stays on the modal record - see the
+            // type's remarks.
+            if (navigation.IsCompletedSuccessfully && navigation.Result is null && ReferenceEquals(router.CurrentRoute.Value, before))
+                return;
+
+            e.Cancel = true;
+        }
+
+        /// <summary>
+        /// The window is gone. Normally <see cref="OnWindowClosing"/> or <see cref="CloseWindow"/>
+        /// already dealt with it; this covers a close whose cancel WPF ignored - every owned window
+        /// when its owner closes, every window on application shutdown, neither of which can be
+        /// vetoed - and a destroy that raised no <c>Closing</c> at all.
         /// </summary>
         private void OnWindowClosed(RoutingRouter router, Type windowType, Window window)
         {
+            var navigationStarted = _closeNavigationStarted.Remove(window);
+
             // The identity check matters once windows are reused: a Rebind swaps the record a
             // window shows, and a close-and-reopen of the same type would otherwise let a stale
             // handler evict the window that replaced it.
-            if (_closing || !_open.TryGetValue(windowType, out var open) || !ReferenceEquals(open.Window, window))
+            if (_closing || !IsOpen(windowType, window, out var open))
                 return;
 
             _open.Remove(windowType);
 
+            // The route would otherwise go on claiming a window that no longer exists.
+            if (!navigationStarted)
+                _ = StartNavigationAway(router, open.Record, window.Dispatcher);
+        }
+
+        /// <summary>
+        /// Starts the navigation that closing <paramref name="record"/>'s window stands for;
+        /// <see langword="null"/> when the record is no longer matched and there is nothing to
+        /// leave.
+        /// </summary>
+        private static Task<NavigationFailure?>? StartNavigationAway(RoutingRouter router, RouteRecord record, Dispatcher dispatcher)
+        {
             var matched = router.CurrentRoute.Value.Matched;
-            var index = IndexOfReference(matched, open.Record);
+            var index = IndexOfReference(matched, record);
             if (index < 0)
-                return;
+                return null;
 
             // The parent record is where "closing this dialog" naturally lands, and navigating to
             // it by name carries the current params along (a modal route is usually a child of a
             // parameterised one). An unnamed parent has no addressable target, so fall back to
             // Back - which is the same thing in every ordinary case, since arriving here is what
-            // put the dialog on the history stack.
+            // put the dialog on the history stack. Not awaited: OnWindowClosing reads the outcome
+            // from the route itself, which also covers a navigation that has not finished yet, and
+            // looks at the task only to tell a Back that went nowhere from a refusal.
             var parent = index > 0 ? matched[index - 1] : null;
 
-            _ = parent?.Name is { } parentName
+            var navigation = parent?.Name is { } parentName
                 ? router.Push(new RouteLocationRaw { Name = parentName, Params = router.CurrentRoute.Value.Params })
                 : router.Back();
+
+            ObserveFault(navigation, dispatcher);
+            return navigation;
         }
+
+        /// <summary>
+        /// Rethrows a navigation's exception on <paramref name="dispatcher"/> - the treatment
+        /// <see cref="RouterLink"/> gives a click's navigation, and for the reason in this type's
+        /// remarks. A <see cref="NavigationFailure"/> is an ordinary outcome and stays silent.
+        /// </summary>
+        private static void ObserveFault(Task navigation, Dispatcher dispatcher)
+        {
+            if (navigation.IsCompleted)
+            {
+                Rethrow(navigation, dispatcher);
+                return;
+            }
+
+            navigation.ContinueWith(task => Rethrow(task, dispatcher), TaskScheduler.Default);
+        }
+
+        private static void Rethrow(Task navigation, Dispatcher dispatcher)
+        {
+            if (navigation.Exception is not { } aggregate)
+                return;
+
+            var exception = aggregate.Flatten().InnerException ?? aggregate;
+            dispatcher.BeginInvoke((Action)(() => throw exception));
+        }
+
+        private bool IsOpen(Type windowType, Window window, out (Window Window, RouteRecord Record) open) =>
+            _open.TryGetValue(windowType, out open) && ReferenceEquals(open.Window, window);
 
         /// <summary>Tells every <see cref="RouterView"/> in a re-pinned window to re-read the route.</summary>
         private static void RefreshOutlets(DependencyObject root)

@@ -3,13 +3,22 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Linq;
 using Barbatos.Wpf.ApplicationModel;
+using Barbatos.Wpf.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Barbatos.Wpf.Core.UnitTests;
 
+// Shares a collection with SecureStorageTests: its RemoveAll test wipes the stored instance id,
+// which would race the id assertions here if the two classes ran in parallel.
+[Collection(SecureStorageTests.CollectionName)]
 public class DeviceIdentityTests
 {
+    // Documented in IDeviceIdentity.GetInstanceIdAsync, so a test may remove it to force a
+    // first call.
+    const string InstanceIdKey = "Barbatos.Wpf.DeviceIdentity.InstanceId";
+
     [Fact]
     public void DefaultIsCached()
     {
@@ -32,6 +41,49 @@ public class DeviceIdentityTests
         var second = await DeviceIdentity.GetInstanceIdAsync();
 
         Assert.Equal(first, second);
+    }
+
+    // GetInstanceIdAsync used to read and then write without a lock, so two first calls racing
+    // (a startup licence check plus a background job) could each mint a different id, and a
+    // licence server could be handed one that is never seen again. Each round removes the
+    // stored id (the documented key) and releases eight dedicated threads at once through a
+    // Barrier; the DPAPI encryption inside SetAsync sits in the old read-to-write window, so
+    // across ten rounds the unguarded code mints a second id instead of all callers agreeing.
+    [Fact]
+    public async Task ConcurrentFirstCallsAllReceiveTheSameInstanceId()
+    {
+        const int callers = 8;
+
+        for (var round = 0; round < 10; round++)
+        {
+            SecureStorage.Default.Remove(InstanceIdKey);
+
+            var ids = new string?[callers];
+            var failures = new Exception?[callers];
+            using var start = new Barrier(callers);
+
+            var threads = Enumerable.Range(0, callers).Select(index => new Thread(() =>
+            {
+                try
+                {
+                    start.SignalAndWait();
+                    ids[index] = DeviceIdentity.GetInstanceIdAsync().GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    failures[index] = ex;
+                }
+            }) { IsBackground = true }).ToArray();
+
+            foreach (var thread in threads)
+                thread.Start();
+            foreach (var thread in threads)
+                Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "A caller did not finish.");
+
+            Assert.All(failures, failure => Assert.Null(failure));
+            Assert.Single(ids.Distinct());
+            Assert.Equal(ids[0], await SecureStorage.Default.GetAsync(InstanceIdKey));
+        }
     }
 
     [Fact]

@@ -70,9 +70,12 @@ public interface IGeolocation
 /// therefore throws <see cref="FeatureNotSupportedException"/> on this platform; the type
 /// surface (this interface, <see cref="Location"/>, <see cref="GeolocationRequest"/>,
 /// <see cref="GeolocationListeningRequest"/>, ...) is kept identical so code written against
-/// it compiles and can be swapped for a real implementation via <c>Geolocation.SetDefault</c>
-/// — for example one backed by the classic Win32 Location API (<c>ILocation</c>) or an IP
-/// geolocation service.
+/// it compiles unchanged. To use a real implementation — for example one backed by the
+/// classic Win32 Location API (<c>ILocation</c>) or an IP geolocation service — register it
+/// with <c>builder.Services.AddSingleton&lt;IGeolocation, ...&gt;()</c> and inject
+/// <see cref="IGeolocation"/>: that registration replaces the one <c>UseEssentials()</c> made,
+/// but this static facade cannot be redirected and keeps the built-in, throwing
+/// implementation.
 /// </remarks>
 public static partial class Geolocation
 {

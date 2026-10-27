@@ -29,6 +29,10 @@ public sealed partial class LoginViewModel(AuthState authState, Router router) :
     private async Task LogIn()
     {
         authState.IsLoggedIn = true;
-        await router.Push(_redirectTarget);
+
+        // The stored target is a FullPath, which can carry "?query#hash" - Parse splits it back
+        // into its parts. Pushed as a plain string it would be matched as one literal path: the
+        // user would land on the catch-all 404 page, or with the query swallowed into a param.
+        await router.Push(RouteLocationRaw.Parse(_redirectTarget));
     }
 }

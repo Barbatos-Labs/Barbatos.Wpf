@@ -3,6 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.IO;
 using Barbatos.Wpf.ApplicationModel;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -55,6 +56,21 @@ public class LauncherTests
         var canOpen = await Launcher.CanOpenAsync("barbatos-wpf-launcher-tests-unregistered-scheme://ping");
 
         Assert.False(canOpen);
+    }
+
+    // OpenAsync now reports success whenever the shell accepts the request, because a hand-off
+    // to an already-running or COM-activated handler starts no new process. That hand-off needs
+    // a live desktop and a handler that would open a visible window, so it is not driven here;
+    // this pins the other half of the contract - a target the shell refuses still yields false
+    // instead of throwing. Process.Start passes SEE_MASK_FLAG_NO_UI, so no error dialog appears.
+    [Fact]
+    public async Task OpenAsyncReturnsFalseForAFileThatDoesNotExist()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), $"Barbatos.Wpf.LauncherTests.{Guid.NewGuid():N}.txt");
+
+        var opened = await Launcher.OpenAsync(new OpenFileRequest("Missing", missingPath));
+
+        Assert.False(opened);
     }
 
     [Fact]

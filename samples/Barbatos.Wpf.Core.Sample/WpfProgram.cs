@@ -10,6 +10,7 @@ using Barbatos.Wpf.Mcp;
 using Barbatos.Wpf.Tray;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Barbatos.Wpf.Core.Sample;
 
@@ -30,6 +31,11 @@ public static class WpfProgram
         });
         builder.Configuration.AddJsonFile("appsettings.json", optional: true);
         builder.Configuration.AddJsonFile(SettingsStore.FilePath, optional: true);
+
+        // Core reports a refused global hotkey, a failed periodic run or a push connection error
+        // only through ILogger, and registers no logging provider of its own - without one, every
+        // such failure is silent. The Debug provider writes them to the debugger's Output window.
+        builder.Logging.AddDebug();
 
         builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
             .OnStartup((app, args) => LogLifecycleEvent("Application.OnStartup"))
@@ -63,8 +69,18 @@ public static class WpfProgram
             {
                 LogLifecycleEvent($"Window.Closing ({window.Title})");
 
-                // "Keep running in the system tray": closing the window hides it instead
-                // of exiting while the tray icon is visible.
+                // "Keep running in the system tray": closing the main window hides it instead
+                // of exiting while the tray icon is visible. Window events fire for every
+                // window - the splash screen, AboutWindow, DetailsWindow, the push fallback
+                // popups - and cancelling those would leave them hidden but alive (and still
+                // tracked as open by IDialogService), so only the main window qualifies.
+                // Matched by type rather than against Application.MainWindow: WPF makes the
+                // first window created - the splash screen - Application.MainWindow until it
+                // closes (Window.cs in dotnet/wpf), so a reference check would cancel the
+                // splash's own close whenever the tray icon is already visible at startup.
+                if (window is not MainWindow)
+                    return;
+
                 var trayIcon = IWpfPlatformApplication.Current?.Services.GetService<ITrayIconService>();
                 if (trayIcon?.IsVisible == true && !App.IsExiting)
                 {
@@ -182,10 +198,12 @@ public static class WpfProgram
         // hook above both report into - DI-constructed (it has no dependencies of its own).
         builder.Services.AddSingleton<SampleActivityLog>();
 
-        // Registered before AddStore<CounterStore>() so every [Action]-marked method on every
-        // store gets logged automatically, with zero per-store wiring - see CounterStore.Increment.
-        // DI-constructed - no `new` needed, since SampleActionLoggingInterceptor's own constructor
-        // needs nothing but the SampleActivityLog registered just above.
+        // A global interceptor: every [Action]-marked method on every store gets logged
+        // automatically, with zero per-store wiring - see CounterStore.Increment. A store reads its
+        // interceptors when it is first resolved, not when AddStore<T>() runs, so this could just
+        // as well be registered after AddStore<CounterStore>(). DI-constructed - no `new` needed,
+        // since SampleActionLoggingInterceptor's own constructor needs nothing but the
+        // SampleActivityLog registered just above.
         builder.Services.AddSingleton<IStoreActionInterceptor, SampleActionLoggingInterceptor>();
         builder.Services.AddStore<CounterStore>();
         builder.Services.AddSingleton<SettingsStore>();

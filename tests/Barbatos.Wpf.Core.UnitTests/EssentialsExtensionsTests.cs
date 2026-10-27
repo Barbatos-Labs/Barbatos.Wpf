@@ -22,6 +22,7 @@ public class EssentialsExtensionsTests
 
         Assert.NotNull(wpfApp.Services.GetService<IAppInfo>());
         Assert.NotNull(wpfApp.Services.GetService<IPublisherInfo>());
+        Assert.NotNull(wpfApp.Services.GetService<IDeviceIdentity>());
         Assert.NotNull(wpfApp.Services.GetService<IDeviceInfo>());
         Assert.NotNull(wpfApp.Services.GetService<IFileSystem>());
         Assert.NotNull(wpfApp.Services.GetService<IPreferences>());
@@ -53,6 +54,7 @@ public class EssentialsExtensionsTests
 
         Assert.Same(AppInfo.Current, wpfApp.Services.GetService<IAppInfo>());
         Assert.Same(PublisherInfo.Current, wpfApp.Services.GetService<IPublisherInfo>());
+        Assert.Same(DeviceIdentity.Default, wpfApp.Services.GetService<IDeviceIdentity>());
         Assert.Same(DeviceInfo.Current, wpfApp.Services.GetService<IDeviceInfo>());
         Assert.Same(FileSystem.Current, wpfApp.Services.GetService<IFileSystem>());
         Assert.Same(Preferences.Default, wpfApp.Services.GetService<IPreferences>());

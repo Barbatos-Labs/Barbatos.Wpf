@@ -12,12 +12,25 @@ namespace Barbatos.Wpf.Mcp;
 /// configuration files using <see cref="SectionName"/> (file values override code values).
 /// </summary>
 /// <remarks>
+/// <para>
 /// This is the "what kind of assistant is it" layer, deliberately separate from
 /// <see cref="AiProviderOptions"/>'s "which model answers" layer: swapping the end user's
 /// provider from OpenAI to Anthropic should not disturb the agent's instructions, and rewording
-/// the instructions should not invalidate a stored API key. Both are rebuilt on demand, so
-/// changing either at runtime takes effect on the next
-/// <see cref="IAiAgentFactory.GetAgentAsync"/> call.
+/// the instructions should not invalidate a stored API key.
+/// </para>
+/// <para>
+/// These values are read when the default agent is <i>built</i>, and
+/// <see cref="IAiAgentFactory.GetAgentAsync"/> caches that agent until
+/// <see cref="IAiChatClientFactory.ConfigurationChanged"/> or
+/// <see cref="IMcpServerRegistry.Changed"/> fires, or the chat client factory hands back a
+/// different client instance. Changing a property of this options object at runtime therefore
+/// does not by itself change the agent <see cref="IAiAgentFactory.GetAgentAsync"/> returns - it
+/// shows up at the next rebuild, whenever that happens. The options are also bound from
+/// configuration once, so a reloaded configuration file does not reach them either. For
+/// different instructions or tools at runtime, build an agent with
+/// <see cref="IAiAgentFactory.CreateAgentAsync"/> and an <see cref="AiAgentDescriptor"/>, or pass
+/// per-run instructions in the run options of each <c>RunAsync</c> call.
+/// </para>
 /// </remarks>
 public class AiAgentOptions
 {

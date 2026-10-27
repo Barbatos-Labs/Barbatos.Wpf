@@ -1,0 +1,99 @@
+name: barbatos-wpf-ci
+
+# Builds every project and runs every test suite on pull requests and on main. The release
+# workflow (barbatos-wpf-cd-nuget.yml) strips samples/ and tests/ from the solution and runs no
+# tests, so this is the only place a test failure is ever seen before a release.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The 10.x SDK builds every target framework; the 8.x runtime is what the net8.0 test runs
+      # execute on.
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore Barbatos.Wpf.slnx
+
+      - name: Build
+        run: dotnet build Barbatos.Wpf.slnx -c Debug --no-restore
+
+      # One test project and one target framework per step, never a bare `dotnet test` (see
+      # CLAUDE.md): both TFMs of a project share one real per-user store and one process-wide
+      # Application.Current, so running them together produces failures that are artifacts of the
+      # run. `!cancelled()` keeps later suites running after one fails, so a single run reports
+      # every failing suite. Each step has its own timeout and a blame hang/crash collector: a
+      # WPF test that deadlocks the dispatcher otherwise hangs the host until the job is killed,
+      # with nothing saying which test it was.
+      - name: Test Barbatos.Wpf.Core (net8.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.Core.UnitTests -c Debug --no-build -f net8.0-windows10.0.17763.0 --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/core-net8.0
+
+      - name: Test Barbatos.Wpf.Core (net10.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.Core.UnitTests -c Debug --no-build -f net10.0-windows10.0.17763.0 --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/core-net10.0
+
+      - name: Test Barbatos.Wpf.Aquarius (net8.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -c Debug --no-build -f net8.0-windows --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/aquarius-net8.0
+
+      - name: Test Barbatos.Wpf.Aquarius (net10.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -c Debug --no-build -f net10.0-windows --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/aquarius-net10.0
+
+      - name: Test Barbatos.Wpf.AquariusRouter (net8.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.AquariusRouter.UnitTests -c Debug --no-build -f net8.0-windows --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/aquariusrouter-net8.0
+
+      - name: Test Barbatos.Wpf.AquariusRouter (net10.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.AquariusRouter.UnitTests -c Debug --no-build -f net10.0-windows --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/aquariusrouter-net10.0
+
+      - name: Test Barbatos.Wpf.AquariusValee (net8.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.AquariusValee.UnitTests -c Debug --no-build -f net8.0-windows --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/aquariusvalee-net8.0
+
+      - name: Test Barbatos.Wpf.AquariusValee (net10.0)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: dotnet test tests/Barbatos.Wpf.AquariusValee.UnitTests -c Debug --no-build -f net10.0-windows --logger "console;verbosity=detailed" --blame-crash --blame-hang-timeout 8m --blame-hang-dump-type mini --results-directory TestResults/aquariusvalee-net10.0
+
+      - name: Upload test results (hang dumps, blame sequences)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/
+          retention-days: 7

@@ -37,6 +37,26 @@ public static class StoreServiceCollectionExtensions
     /// interceptors (the default) - a store that only needs global interceptors, or none at all,
     /// never has to mention interceptors here.
     /// </param>
+    /// <remarks>
+    /// <para>
+    /// Interceptors and plugins are read when <typeparamref name="TStore"/> is first resolved, not
+    /// when this method runs, so they may be registered before or after it; from then on that
+    /// store's chain is fixed (an <see cref="InterceptorHandle"/> can still eject one link).
+    /// </para>
+    /// <para>
+    /// With no interceptor applying, the store is built by <see cref="ActivatorUtilities"/>. As
+    /// soon as one does - a <b>global</b> interceptor applies to every store, so adding one can
+    /// change a store that has none of its own - it is built as a Castle DynamicProxy subclass
+    /// instead, which demands more of <typeparamref name="TStore"/>: it must be non-sealed
+    /// (<see cref="InvalidOperationException"/> otherwise), <see langword="public"/> along with
+    /// every enclosing type (Castle's generated assembly cannot subclass anything less visible and
+    /// throws <see cref="ArgumentException"/>), and have exactly one public constructor
+    /// (<see cref="InvalidOperationException"/> otherwise). Each parameter of that constructor is
+    /// resolved with <c>GetRequiredService</c>: unlike <see cref="ActivatorUtilities"/>, an
+    /// optional parameter's default value is not used, so a parameter whose type is not
+    /// registered throws <see cref="InvalidOperationException"/> even when it has a default.
+    /// </para>
+    /// </remarks>
     public static IServiceCollection AddStore<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TStore>(
         this IServiceCollection services, Action<StoreInterceptorBuilder<TStore>>? configureInterceptors = null)
         where TStore : StoreBase

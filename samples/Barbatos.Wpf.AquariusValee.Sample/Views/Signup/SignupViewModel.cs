@@ -43,6 +43,11 @@ public sealed partial class SignupViewModel : ObservableObject
         SchemaEmail = (Field<string>)SchemaForm.Fields["Email"];
         SchemaPassword = (Field<string>)SchemaForm.Fields["Password"];
         SchemaConfirmPassword = (Field<string>)SchemaForm.Fields["ConfirmPassword"];
+        // [Compare] gives the right verdict whenever ConfirmPassword is validated, but nothing
+        // re-validates it when Password changes - FromModel auto-wires only IDependsOnProperties
+        // attributes (such as PropertyRange). Without this, fixing the password leaves a stale
+        // "must match" error under the confirmation box until that box is edited too.
+        SchemaConfirmPassword.DependsOn(SchemaPassword);
         SchemaSubmitCommand = SchemaForm.HandleSubmit(values =>
         {
             SchemaStatusMessage = localizer["Signup.SchemaSuccess", values["Email"]!];

@@ -1,3 +1,8 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
@@ -82,8 +87,51 @@ public class TransitionTests
 
             Assert.Same(child, transition.Content);
 
+            // ...and that it really stopped. Begun non-controllable, Leave ignored the Stop, ran
+            // to the end and held Opacity at 0: content mounted, but invisible.
+            Assert.Equal(1.0, transition.Opacity);
+
             window.Close();
             StaThread.PumpDispatcher();
+        });
+    }
+
+    [Fact]
+    public void ReShowingAfterACompletedLeaveRestoresWhatTheLeaveAnimated()
+    {
+        // A finished Storyboard keeps holding its end value (FillBehavior.HoldEnd). With no
+        // Enter animating Opacity back, the content used to come back still at Opacity 0.
+        StaThread.Run(() =>
+        {
+            var child = new Border();
+            var transition = new Transition { Child = child, Leave = CreateFadeStoryboard(TimeSpan.FromMilliseconds(100)) };
+            var window = new Window { Content = transition, Width = 100, Height = 100 };
+
+            try
+            {
+                window.Show();
+                StaThread.PumpDispatcher();
+
+                transition.Show = false;
+                PumpUntil(() => transition.Content is null, TimeSpan.FromSeconds(3));
+
+                Assert.Null(transition.Content);
+                Assert.Equal(0.0, transition.Opacity); // the hold this test is about
+
+                transition.Show = true;
+
+                // Removing a storyboard takes effect on the next animation tick, so wait for one -
+                // bounded, since with the bug the value never comes back at all.
+                PumpUntil(() => transition.Opacity == 1.0, TimeSpan.FromSeconds(3));
+
+                Assert.Same(child, transition.Content);
+                Assert.Equal(1.0, transition.Opacity);
+            }
+            finally
+            {
+                window.Close();
+                StaThread.PumpDispatcher();
+            }
         });
     }
 

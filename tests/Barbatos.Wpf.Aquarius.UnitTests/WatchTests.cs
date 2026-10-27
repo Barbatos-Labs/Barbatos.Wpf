@@ -1,4 +1,10 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 using System.Collections.ObjectModel;
+using System.Windows.Threading;
 
 namespace Barbatos.Wpf.Aquarius.UnitTests;
 
@@ -162,6 +168,110 @@ public class WatchTests
 
             Assert.Equal(1, invocations);
         });
+    }
+
+    [Fact]
+    public void PostFlushPassesTheNewestValueAndTheValueFromBeforeTheBurst()
+    {
+        // Vue's post-flush arguments. The pair captured at the burst's first change, (1, 0), is
+        // what this used to pass - a callback acting on it acted on a value already replaced.
+        StaThread.Run(() =>
+        {
+            var count = new Ref<int>(0);
+            var seen = new List<(int, int)>();
+
+            using var stop = Watch.On(count, (newValue, oldValue) => seen.Add((newValue, oldValue)), flush: WatchFlush.Post);
+
+            count.Value = 1;
+            count.Value = 2;
+            count.Value = 3;
+            StaThread.PumpDispatcher();
+
+            Assert.Equal((3, 0), Assert.Single(seen));
+
+            count.Value = 4;
+            StaThread.PumpDispatcher();
+
+            // The next burst starts from where the previous one ended.
+            Assert.Equal(2, seen.Count);
+            Assert.Equal((4, 3), seen[1]);
+        });
+    }
+
+    [Fact]
+    public void PostFlushTriggeredFromAWorkerThreadRunsOnTheWatchersThreadAndKeepsWatching()
+    {
+        // A change made on a worker used to schedule the callback on the worker's own dispatcher,
+        // which nothing pumps: the callback never ran and the "scheduled" flag stayed set, so the
+        // watcher ignored every later change too.
+        StaThread.Run(() =>
+        {
+            // In an app the UI thread's dispatcher exists long before any ViewModel builds a watcher.
+            _ = Dispatcher.CurrentDispatcher;
+            var uiThreadId = Environment.CurrentManagedThreadId;
+
+            var count = new Ref<int>(0);
+            var seen = new List<(int, int, int)>();
+
+            using var stop = Watch.On(
+                count,
+                (newValue, oldValue) => seen.Add((newValue, oldValue, Environment.CurrentManagedThreadId)),
+                flush: WatchFlush.Post);
+
+            WorkerThread.Run(() =>
+            {
+                count.Value = 1;
+                count.Value = 2;
+            });
+
+            Assert.Empty(seen);
+
+            StaThread.PumpDispatcher();
+
+            Assert.Equal((2, 0, uiThreadId), Assert.Single(seen));
+
+            count.Value = 3;
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(2, seen.Count);
+            Assert.Equal((3, 2, uiThreadId), seen[1]);
+        });
+    }
+
+    [Fact]
+    public void PostFlushFromAWorkerAfterTheWatchersThreadShutDownIsNotMovedToAnotherThread()
+    {
+        // The callback belongs to the thread that created the watcher and typically updates that
+        // thread's UI. Run on the Application's thread instead, once its own had shut down, those
+        // reads would throw on the main UI thread.
+        TestApplication.Invoke(() => { }); // an Application exists, as it does in any app
+
+        var ran = false;
+        Ref<int>? count = null;
+        IDisposable? stop = null;
+
+        StaThread.Run(() =>
+        {
+            _ = Dispatcher.CurrentDispatcher;
+            count = new Ref<int>(0);
+            stop = Watch.On(count, (_, _) => ran = true, flush: WatchFlush.Post);
+
+            Dispatcher.CurrentDispatcher.InvokeShutdown();
+        });
+
+        try
+        {
+            WorkerThread.Run(() => count!.Value = 1);
+
+            // Runs everything queued on the Application's dispatcher at Background or above.
+            TestApplication.Invoke(StaThread.PumpDispatcher);
+
+            Assert.False(ran);
+        }
+        finally
+        {
+            stop?.Dispose();
+        }
     }
 
     [Fact]

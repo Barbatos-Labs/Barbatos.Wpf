@@ -1,3 +1,8 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -20,14 +25,13 @@ public class LifecycleTests
             // Vue's own note applies here too: "onActivated is also called on mount."
             Assert.Equal(["OnBeforeCreate", "OnCreated", "OnBeforeMount", "OnMounted", "OnActivated"], vm.Calls);
 
-            // Every test in this file that mounts an element must unmount it again before
-            // returning, even when the test itself has nothing to do with unmounting:
-            // Application.Current is one process-lifetime singleton (see TestApplication),
-            // and a still-subscribed LifecycleState left over from a leaked mount would
-            // later get its DataContext touched from whichever thread happens to raise
-            // Application.Current.DispatcherUnhandledException next - a different thread
-            // than the one that created this element, which throws. xUnit does not
-            // guarantee test execution order, so this can't be "won't happen in practice."
+            // Every test in this file that mounts an element unmounts it again before
+            // returning, even when the test itself has nothing to do with unmounting: a mounted
+            // element subscribes its dispatcher's UnhandledException, and in the tests that run
+            // on TestApplication that dispatcher is shared by every later test, where a leftover
+            // subscription would intercept exceptions meant for them. (Lifecycle once subscribed
+            // the Application's from every thread, which made a leaked mount here poison the
+            // shared dispatcher too - see ErrorCapturedOnTheApplicationsThreadIsNotSeenByAnElementOnAnotherThread.)
             element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
         });
     }
@@ -116,6 +120,45 @@ public class LifecycleTests
             StaThread.PumpDispatcher();
 
             Assert.Equal(["OnBeforeUpdate", "OnUpdated"], vm.Calls);
+
+            // See the cleanup note in MountedFiresAfterBeforeMountOnLoaded above.
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+        });
+    }
+
+    [Fact]
+    public void PropertyChangesRaisedOnAWorkerThreadReachTheUpdateHooksOnTheElementsThread()
+    {
+        // Handled on the worker, the first change threw into the ViewModel's own setter (the
+        // element's DataContext cannot be read from another thread), and the batch it had opened
+        // never closed: later changes, even on the UI thread, produced no hooks at all.
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel();
+            var element = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(element, true);
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+            vm.Calls.Clear();
+
+            WorkerThread.Run(() =>
+            {
+                vm.Counter++;
+                vm.Counter++;
+            });
+
+            Assert.Empty(vm.Calls); // marshalled to this thread, not run on the worker
+
+            // The first pump runs the marshalled notifications, which queue IOnUpdated behind
+            // that pump's own marker; the second pump runs it.
+            StaThread.PumpDispatcher();
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(["OnBeforeUpdate", "OnUpdated"], vm.Calls);
+
+            vm.Counter++;
+            StaThread.PumpDispatcher();
+
+            Assert.Equal(["OnBeforeUpdate", "OnUpdated", "OnBeforeUpdate", "OnUpdated"], vm.Calls);
 
             // See the cleanup note in MountedFiresAfterBeforeMountOnLoaded above.
             element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
@@ -288,6 +331,93 @@ public class LifecycleTests
             Assert.Contains("OnErrorCaptured:boom", vm.Calls);
 
             element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+        });
+    }
+
+    [Fact]
+    public void ErrorCapturedSeesExceptionsOnTheElementsOwnThreadEvenWhenItIsNotTheApplicationsThread()
+    {
+        // The hook used to be wired to Application.Current.DispatcherUnhandledException, which
+        // only ever reports the Application's own thread. An element on any other UI thread - a
+        // window given its own thread, or this StaThread - never heard about its own exceptions:
+        // "boom" escaped the pump below unhandled.
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel { ShouldHandleError = true };
+            var element = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(element, true);
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+
+            try
+            {
+                Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => throw new InvalidOperationException("boom")));
+
+                var escaped = Record.Exception(StaThread.PumpDispatcher);
+
+                Assert.Null(escaped);
+                Assert.Contains("OnErrorCaptured:boom", vm.Calls);
+            }
+            finally
+            {
+                element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+            }
+        });
+    }
+
+    [Fact]
+    public void ErrorCapturedOnTheApplicationsThreadIsNotSeenByAnElementOnAnotherThread()
+    {
+        // The crash behind the first Windows CI run of this suite. Mounted on another thread, the
+        // element still subscribed the Application's DispatcherUnhandledException; when an
+        // exception reached the Application's thread, the element's handler read its DataContext
+        // from the wrong thread and threw "The calling thread cannot access this object" in place
+        // of the real exception - before the app's own handler could mark it handled. Between two
+        // tests nothing catches that, and it ended the test process.
+        TestApplication.Invoke(() => { }); // an Application exists, as it does in any app
+
+        StaThread.Run(() =>
+        {
+            var vm = new FakeLifecycleViewModel { ShouldHandleError = true };
+            var element = new ContentControl { DataContext = vm };
+            Lifecycle.SetEnable(element, true);
+            element.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, element));
+
+            try
+            {
+                Exception? escaped = null;
+                bool? observedHandled = null;
+
+                TestApplication.Invoke(() =>
+                {
+                    void Observer(object sender, DispatcherUnhandledExceptionEventArgs e)
+                    {
+                        observedHandled = e.Handled;
+                        e.Handled = true; // the app's own handler, keeping the shared dispatcher alive
+                    }
+
+                    Application.Current.DispatcherUnhandledException += Observer;
+
+                    try
+                    {
+                        Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => throw new InvalidOperationException("app-thread boom")));
+                        escaped = Record.Exception(StaThread.PumpDispatcher);
+                    }
+                    finally
+                    {
+                        Application.Current.DispatcherUnhandledException -= Observer;
+                    }
+                });
+
+                Assert.Null(escaped);
+                Assert.False(observedHandled); // reached the app's handler, unclaimed by the element
+                Assert.DoesNotContain(vm.Calls, call => call.StartsWith("OnErrorCaptured", StringComparison.Ordinal));
+            }
+            finally
+            {
+                // Before the fix this is also what removed the stray subscription again, so a
+                // failing run of this test cannot poison the tests after it.
+                element.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent, element));
+            }
         });
     }
 

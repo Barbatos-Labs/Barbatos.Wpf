@@ -24,7 +24,9 @@ public sealed class SampleActionLoggingInterceptor : IStoreActionInterceptor
 
     public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
     {
-        var label = $"{context.Store.GetType().Name}.{context.ActionName}()";
+        // context.Store is the Castle proxy subclass the container hands out (an interceptor only
+        // ever sees a proxied store), so the store's own type is its BaseType.
+        var label = $"{context.Store.GetType().BaseType!.Name}.{context.ActionName}()";
         _activityLog.Log($"[Interceptor] {label} starting");
 
         var stopwatch = Stopwatch.StartNew();

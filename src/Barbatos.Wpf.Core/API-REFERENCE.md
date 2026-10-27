@@ -7,7 +7,7 @@ after the official .NET API documentation.
 
 | Namespace | Description |
 |-----------|-------------|
-| **[`Barbatos.Wpf.Hosting`](#barbatoswpfhosting-namespace)** | The application host: `WpfApp`/`WpfAppBuilder`, initialization services, Essentials wiring, and the optional desktop features (single instance, run on startup, tray icon, keep awake, notifications, periodic services). |
+| **[`Barbatos.Wpf.Hosting`](#barbatoswpfhosting-namespace)** | The application host: `WpfApp`/`WpfAppBuilder`, initialization services, Essentials wiring, periodic services, the splash screen, and every optional feature's `ConfigureXxx` entry point. |
 | **[`Barbatos.Wpf.LifecycleEvents`](#barbatoswpflifecycleevents-namespace)** | The lifecycle event system and its WPF-specific (`WpfLifecycle`) application/window delegates. |
 | **[`Barbatos.Wpf.Dispatching`](#barbatoswpfdispatching-namespace)** | Dispatcher abstractions (`IDispatcher`, `IDispatcherTimer`, `IDispatcherProvider`) backed by the WPF `Dispatcher`. |
 | **[`Barbatos.Wpf.ApplicationModel`](#barbatoswpfapplicationmodel-namespace)** | App info, publisher info, version tracking, app actions, the launcher, permissions, and the shared Essentials exception types. |
@@ -20,7 +20,7 @@ after the official .NET API documentation.
 | **[`Barbatos.Wpf.Power`](#barbatoswpfpower-namespace)** | The keep-awake optional feature. |
 | **[`Barbatos.Wpf.Startup`](#barbatoswpfstartup-namespace)** | The run-on-startup optional feature. |
 | **[`Barbatos.Wpf.Input`](#barbatoswpfinput-namespace)** | The keyboard-shortcut optional feature: in-app `KeyBinding` and OS-level `GlobalKeyBinding` unified under one `InputAction` model, plus Hold/Tap/MultiTap/Press interactions. |
-| **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The push notifications optional feature. |
+| **[`Barbatos.Wpf.Notifications`](#barbatoswpfnotifications-namespace)** | The desktop (Windows toast) notifications optional feature. |
 | **[`Barbatos.Wpf.PushNotifications`](#barbatoswpfpushnotifications-namespace)** | The realtime push-notification client optional feature (SignalR). |
 | **[`Barbatos.Wpf.SingleInstance`](#barbatoswpfsingleinstance-namespace)** | The single-instance optional feature (enabled by default). |
 | **[`Barbatos.Wpf.Dialogs`](#barbatoswpfdialogs-namespace)** | The dialog service: owner assignment, duplicate-open prevention, and graceful bulk-close for child windows. |
@@ -42,7 +42,9 @@ every optional desktop feature.
 | [`WpfAppBuilder`](#wpfappbuilder-class) | Builds a `WpfApp`; implements `IHostApplicationBuilder`. |
 | [`WpfHostEnvironment`](#wpfhostenvironment-class) | The WPF `IHostEnvironment` implementation. |
 | `WpfApplication` | A `System.Windows.Application` subclass that owns the built `WpfApp` and forwards lifecycle events. See [splash screen support](#wpfapplication-splash-screen-support) below. |
+| `AppHostBuilderExtensions` | Static (partial) class holding every feature's `ConfigureXxx(this WpfAppBuilder, ...)` entry point — listed under Extension Methods below. |
 | `EssentialsExtensions` | `UseEssentials()` / `ConfigureEssentials(...)` — registers every Essentials service and app-action activation detection. |
+| `WpfAppExtensions` | `InitializeAppServices(this WpfApp)` runs every `IWpfInitializeService` against the root provider (`Build()` calls it); `InitializeScopedServices(this IServiceProvider)` runs every `IWpfInitializeScopedService` against a window's scoped provider (`WpfApplication` calls it). |
 | `PeriodicServiceOptions` | Options for `ConfigurePeriodicServices` (`Enabled`, `Schedules`). |
 | [`PeriodicSchedule`](#periodicschedule-class) | When and how often a periodic service runs: `Frequency`, `StartTime`, `EndTime`, `TimeOfDay`, `DaysOfWeek`, `DayOfMonth`, `Interval`, `Description`. |
 | `PeriodicServiceStatus` | Live status of a registered periodic service (`Name`, `Schedule`, `NextRunTime`, `IsCompleted`, `LastRunTime`, `RunCount`). |
@@ -57,7 +59,7 @@ every optional desktop feature.
 | Interface | Description |
 |-----------|-------------|
 | `IWpfInitializeService` | Runs once during `WpfAppBuilder.Build()`. |
-| `IWpfInitializeScopedService` | Runs once per window scope. |
+| `IWpfInitializeScopedService` | Runs once per window, on its first `Loaded`, against that window's private scope. |
 | `IWpfPlatformApplication` | Exposes the running `WpfApp` from `System.Windows.Application`. |
 | `IEssentialsBuilder` | Configures app actions and version tracking from `ConfigureEssentials`. |
 | [`IWpfPeriodicService`](#iwpfperiodicservice-interface) | A service executed on a recurring schedule. |
@@ -66,20 +68,32 @@ every optional desktop feature.
 
 ### Extension Methods
 
-- **`ConfigureDialogs(this WpfAppBuilder, Action<DialogOptions>? = null)`** — registers `IDialogService` (`Barbatos.Wpf.Dialogs`).
-- **`ConfigureSingleInstance(this WpfAppBuilder, Action<SingleInstanceOptions>? = null)`** — registers `ISingleInstanceService` (`Barbatos.Wpf.SingleInstance`); enabled by default the moment this is called.
-- **`ConfigureRunOnStartup(this WpfAppBuilder, Action<RunOnStartupOptions>? = null)`** — registers `IRunOnStartupService` (`Barbatos.Wpf.Startup`).
-- **`ConfigureTrayIcon(this WpfAppBuilder, Action<TrayIconOptions>? = null)`** — registers `ITrayIconService` (`Barbatos.Wpf.Tray`).
-- **`ConfigureKeepAwake(this WpfAppBuilder, Action<KeepAwakeOptions>? = null)`** — registers `IKeepAwakeService` (`Barbatos.Wpf.Power`).
-- **`ConfigureNotifications(this WpfAppBuilder, Action<NotificationOptions>? = null)`** — registers `INotificationService` (`Barbatos.Wpf.Notifications`).
-- **`ConfigurePushNotifications(this WpfAppBuilder, Action<PushNotificationOptions>? = null)`** / **`ConfigurePushNotifications<TNotification>(this WpfAppBuilder, Action<PushNotificationOptions>? = null)`** — registers `IPushNotificationService` (`Barbatos.Wpf.PushNotifications`); the generic overload uses `TNotification` as the payload shape instead of the default `PushNotification`.
-- **`ConfigurePeriodicServices(this WpfAppBuilder)`** / **`ConfigurePeriodicServices<TService>(this WpfAppBuilder)`** — registers `IPeriodicServiceScheduler` and (for the generic overload) `TService` as an `IWpfPeriodicService`.
-- **`UseEssentials(this WpfAppBuilder)`** — registers `IAppInfo`, `IPublisherInfo`, `IDeviceIdentity`, `IDeviceInfo`, `IFileSystem`, `IPreferences`, `ISecureStorage`, `IVersionTracking`, `IConnectivity`, `IDeviceDisplay`, `IEmail`, `IContacts`, `IGeolocation`, `IAppActions`, `ILauncher`; called by default when the builder is created with defaults.
-- **`ConfigureEssentials(this WpfAppBuilder, Action<IEssentialsBuilder>? = null)`** — configures app actions (`AddAppAction`, `OnAppAction`) and `UseVersionTracking()`.
+All on `AppHostBuilderExtensions` unless noted; each returns the builder, for chaining.
+
+- **`ConfigureDialogs(this WpfAppBuilder, Action<DialogOptions>? configure = null)`** — registers `IDialogService` (`Barbatos.Wpf.Dialogs`).
+- **`ConfigureSingleInstance(this WpfAppBuilder, Action<SingleInstanceOptions>? configure = null)`** — registers `ISingleInstanceService` (`Barbatos.Wpf.SingleInstance`); enabled by default the moment this is called.
+- **`ConfigureRunOnStartup(this WpfAppBuilder, Action<RunOnStartupOptions>? configure = null)`** — registers `IRunOnStartupService` (`Barbatos.Wpf.Startup`).
+- **`ConfigureTrayIcon(this WpfAppBuilder, Action<TrayIconOptions>? configure = null)`** — registers `ITrayIconService` (`Barbatos.Wpf.Tray`).
+- **`ConfigureKeepAwake(this WpfAppBuilder, Action<KeepAwakeOptions>? configure = null)`** — registers `IKeepAwakeService` (`Barbatos.Wpf.Power`).
+- **`ConfigureNotifications(this WpfAppBuilder, Action<NotificationOptions>? configure = null)`** — registers `INotificationService` (`Barbatos.Wpf.Notifications`), the desktop (toast) notifications feature.
+- **`ConfigurePushNotifications(this WpfAppBuilder, Action<PushNotificationOptions>? configure = null, Action<SignalRPushNotificationOptions>? configureSignalR = null)`** / **`ConfigurePushNotifications<TNotification>(...)`** (same parameters; `TNotification : class, IPushNotification`) — registers `IPushNotificationService` (`Barbatos.Wpf.PushNotifications`) and calls `ConfigureNotifications()` itself; the generic overload uses `TNotification` as the payload shape instead of the default `PushNotification`. `configureSignalR` only affects the default SignalR transport.
+- **`ConfigurePeriodicServices(this WpfAppBuilder, Action<PeriodicServiceOptions>? configure = null)`** / **`ConfigurePeriodicServices<TService>(this WpfAppBuilder, Action<PeriodicServiceOptions>? configure = null)`** (`TService : class, IWpfPeriodicService`) — registers `IPeriodicServiceScheduler` and (for the generic overload) `TService` as a singleton `IWpfPeriodicService`.
+- **`ConfigureInputSystem(this WpfAppBuilder, Action<InputSystemOptions>? configure = null)`** — registers `IInputSystemService` (`Barbatos.Wpf.Input`).
+- **`ConfigureMcp(this WpfAppBuilder, Action<McpOptions>? configure = null, Action<AiProviderOptions>? configureProvider = null, Action<AiAgentOptions>? configureAgent = null)`** — registers the MCP client and AI services; see [`Barbatos.Wpf.Mcp`](#barbatoswpfmcp-namespace).
+- **`ConfigureDispatching(this WpfAppBuilder)`** — registers the dispatching services; part of the builder defaults. See [`Barbatos.Wpf.Dispatching`](#barbatoswpfdispatching-namespace).
+- **`ConfigureLifecycleEvents(this WpfAppBuilder, Action<ILifecycleBuilder>? configureDelegate)`** — declared on `WpfAppHostBuilderExtensions` in the `Barbatos.Wpf.LifecycleEvents` namespace, not here; see [`Barbatos.Wpf.LifecycleEvents`](#barbatoswpflifecycleevents-namespace).
+- **`UseEssentials(this WpfAppBuilder)`** (on `EssentialsExtensions`) — registers `IAppInfo`, `IPublisherInfo`, `IDeviceIdentity`, `IDeviceInfo`, `IFileSystem`, `IPreferences`, `ISecureStorage`, `IVersionTracking`, `IConnectivity`, `IDeviceDisplay`, `IEmail`, `IContacts`, `IGeolocation`, `IAppActions`, `ILauncher`; called by default when the builder is created with defaults.
+- **`ConfigureEssentials(this WpfAppBuilder, Action<IEssentialsBuilder>? = null)`** (on `EssentialsExtensions`) — configures app actions (`AddAppAction`, `OnAppAction`) and `UseVersionTracking()`.
 
 Each `Configure...` feature method binds its options section (file values override code
 values) from the `Barbatos:{Feature}` configuration section — see
-[Optional desktop features](README.md#optional-desktop-features) in the README.
+[Optional desktop features](README.md#optional-desktop-features) in the README. Every
+platform seam (`ITrayIconPlatform`, `INotificationPlatform`, `IHotkeyPlatform`,
+`IStartupRegistrar`, `IPowerManager`, `IPushNotificationTransport`,
+`IPushNotificationFallbackPresenter`) is registered with `TryAddSingleton`, so an
+implementation registered *before* the `Configure...` call replaces the OS-backed default.
+These features report their failures only through `ILogger`; register a logging provider to
+see them.
 
 ---
 
@@ -137,10 +151,13 @@ public class WpfHostEnvironment : IHostEnvironment
 
 #### Properties
 
-- **`EnvironmentName`** (`string`, settable): defaults to `Environments.Production`; set once
-  by `WpfAppBuilder` from `HostDefaults.EnvironmentKey` (fed by the `DOTNET_` prefixed
-  environment variables configuration source), can be overridden from any configuration
-  source or directly in code. See [Configuring the hosting environment](README.md#configuring-the-hosting-environment).
+- **`EnvironmentName`** (`string`, settable): defaults to `Environments.Production`. `WpfAppBuilder`
+  creates the environment lazily and reads `HostDefaults.EnvironmentKey` from its configuration
+  once, at that moment — the first access of `WpfAppBuilder.Environment`, or (if the builder never
+  touches it) the first resolution of `IHostEnvironment` from the container. The `DOTNET_`-prefixed
+  environment variables source feeds that key at the lowest priority; a configuration source that
+  sets it overrides the variable only when added before that first read. Assignable directly in
+  code at any time. See [Configuring the hosting environment](README.md#configuring-the-hosting-environment).
 - **`ApplicationName`** (`string`, read-only, throws `NotSupportedException` on set): `AppInfo.Current.Name`.
 - **`ContentRootPath`** (`string`, read-only, throws `NotSupportedException` on set): `AppContext.BaseDirectory`.
 - **`ContentRootFileProvider`** (`IFileProvider`, read-only, throws `NotSupportedException` on set): a `PhysicalFileProvider` rooted at `ContentRootPath`.
@@ -273,30 +290,52 @@ The lifecycle event system: application and window events surfaced as typed dele
 
 | Type | Description |
 |------|-------------|
-| `ILifecycleEventService` | Resolves and invokes registered delegates by event name. |
-| `ILifecycleBuilder` | Registers delegates during `ConfigureLifecycleEvents`. |
-| `WpfLifecycle` | Static class of delegate types: `OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`, `OnDispatcherUnhandledException`, `OnExit`, `OnWindowCreated`, `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`, `OnWindowClosing`, `OnWindowClosed`. |
+| `ILifecycleEventService` | The registered delegates, by event name: **`GetEventDelegates<TDelegate>(string eventName)`** (`IEnumerable<TDelegate>`, in registration order, empty when none) and **`ContainsEvent(string eventName)`** (`bool`). Registered as a singleton by `ConfigureLifecycleEvents`. |
+| `ILifecycleBuilder` | Registers delegates during `ConfigureLifecycleEvents`: **`AddEvent<TDelegate>(string eventName, TDelegate action)`** (`where TDelegate : Delegate`). |
+| `LifecycleEventService` | The default implementation of both interfaces; its constructor takes the `IEnumerable<LifecycleEventRegistration>` that `ConfigureLifecycleEvents` registered and applies them in order. |
+| `LifecycleEventRegistration` | One `ConfigureLifecycleEvents` call's delegate (`new LifecycleEventRegistration(Action<ILifecycleBuilder>)`), registered as a singleton per call. |
+| `WpfLifecycle` | Static class of delegate types: `OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`, `OnDispatcherUnhandledException`, `OnExit`, `OnWindowCreated`, `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`, `OnWindowClosing`, `OnWindowClosed`. A built-in event's name is its delegate type's name. |
 | `IWpfLifecycleBuilder` | The fluent builder passed to `AddWpf(wpf => wpf.OnStartup(...)...)`. |
 
 ### Extension Methods
 
-- **`ConfigureLifecycleEvents(this WpfAppBuilder, Action<ILifecycleBuilder>?)`**
-- **`AddWpf(this ILifecycleBuilder, Action<IWpfLifecycleBuilder>)`**
-- **`AddEvent(this ILifecycleBuilder, string eventName, Delegate handler)`** — registers a custom, non-`WpfLifecycle` event.
-- **`ContainsEvent(this ILifecycleEventService, string eventName)`**
-- **`GetEventDelegates<TDelegate>(this ILifecycleEventService, string eventName)`**
-- **`InvokeEvents(this ILifecycleEventService, string eventName, ...)`**
+- **`WpfAppHostBuilderExtensions.ConfigureLifecycleEvents(this WpfAppBuilder, Action<ILifecycleBuilder>? configureDelegate)`** —
+  registers `ILifecycleEventService` once and adds `configureDelegate`'s delegates; every call's
+  delegates are kept, in call order. `null` only ensures the service is registered (the builder
+  defaults do this).
+- **`WpfLifecycleExtensions.AddWpf(this ILifecycleBuilder, Action<IWpfLifecycleBuilder> configureDelegate)`** (`ILifecycleBuilder`)
+- **`WpfLifecycleBuilderExtensions.OnStartup(this IWpfLifecycleBuilder, WpfLifecycle.OnStartup)`** … one
+  method per `WpfLifecycle` delegate (`OnExit`, `OnActivated`, … `OnWindowClosed`), each returning the
+  `IWpfLifecycleBuilder` for chaining.
+- **`LifecycleBuilderExtensions.AddEvent(this ILifecycleBuilder, string eventName, Action action)`** /
+  **`AddEvent<TDelegate>(this ILifecycleBuilder, string eventName, TDelegate action)`** (`where TDelegate : Delegate`) —
+  chainable forms of `ILifecycleBuilder.AddEvent`, e.g. for an app-defined, non-`WpfLifecycle` event.
+- **`LifecycleEventServiceExtensions.InvokeEvents(this ILifecycleEventService, string eventName)`** — invokes every
+  parameterless `Action` registered under `eventName`, in registration order.
+- **`LifecycleEventServiceExtensions.InvokeEvents<TDelegate>(this ILifecycleEventService, string eventName, Action<TDelegate> action)`** —
+  passes every `TDelegate` registered under `eventName` to `action`, which decides the arguments.
 
 #### Remarks
 
-Every window gets its own DI service scope; `IWpfInitializeScopedService` implementations
-run once per scope.
+Window events fire for every `Window` in the application, dialogs included; `OnWindowCreated`
+fires on a window's first `Loaded`, not in its constructor. At that first `Loaded`,
+`WpfApplication` also creates a private DI scope for the window, used only to run the
+`IWpfInitializeScopedService` implementations (and resolve the window's scoped `IDispatcher`)
+and disposed when the window closes; no public API resolves from it.
 
 ---
 
 ## `Barbatos.Wpf.Dispatching` Namespace
 
 Dispatcher abstractions backed by the WPF `Dispatcher`.
+
+### Classes
+
+| Class | Description |
+|-------|-------------|
+| `Dispatcher` | The `IDispatcher` over a WPF `System.Windows.Threading.Dispatcher` (no public constructor). **`static GetForCurrentThread()`** (`IDispatcher?`) forwards to `DispatcherProvider.Current`. `Dispatch`/`DispatchDelayed` return `false` once the WPF dispatcher has started shutting down. |
+| `DispatcherTimer` | The `IDispatcherTimer` over a WPF `System.Windows.Threading.DispatcherTimer`, which its public constructor takes. `IsRepeating` defaults to `true`; `false` stops the timer after its first `Tick`. |
+| `DispatcherProvider` | The default `IDispatcherProvider`. **`static Current`** (`IDispatcherProvider`, created on first use), **`static SetCurrent(IDispatcherProvider?)`** (`bool` — `true` only when it replaced an already-set provider), and **`GetForCurrentThread()`**, which creates and caches (per thread) a `Dispatcher` for `System.Windows.Threading.Dispatcher.CurrentDispatcher` — so calling it on a worker thread binds a new dispatcher to that thread, one nothing pumps unless that thread runs a dispatcher loop. |
 
 ### Interfaces
 
@@ -323,7 +362,7 @@ dispatcher or delegate.
 
 ### Extension Methods (on `WpfAppBuilder`)
 
-- **`ConfigureDispatching(this WpfAppBuilder)`** — registers `IDispatcherProvider`/`IDispatcher` app-wide and per-window; part of the builder defaults.
+- **`ConfigureDispatching(this WpfAppBuilder)`** (on `Barbatos.Wpf.Hosting.AppHostBuilderExtensions`) — registers `IDispatcherProvider` (a singleton: `DispatcherProvider.Current`), an application dispatcher bound during `Build()` to the thread that builds the host (the UI thread in a `WpfApplication`), and a scoped `IDispatcher` resolved per window; part of the builder defaults. Core's own features — periodic services, input-system timeouts, keep awake, single-instance activation, toast activation — run their UI-thread work on that application dispatcher.
 
 ---
 
@@ -336,8 +375,8 @@ Essentials exception types.
 
 | Type | Description |
 |------|-------------|
-| [`AppInfo`](#appinfo--ipublisherinfo) / `IAppInfo` | App identity: `AppId`, `Name`, `Version`, `VersionString`, `BuildString`, `RequestedTheme`, `PackagingModel`, `RequestedLayoutDirection`, `InstallDate`, `InstallLocation`, `ShowSettingsUI()`. (`AppGuid` is the deprecated former name of `AppId`.) |
-| [`PublisherInfo`](#appinfo--ipublisherinfo) / `IPublisherInfo` | Publisher identity: `Name`, `Website`, `SupportUrl`, `SupportEmail`, `Copyright`. |
+| [`AppInfo`](#appinfo--publisherinfo) / `IAppInfo` | App identity: `AppId`, `Name`, `Version`, `VersionString`, `BuildString`, `RequestedTheme`, `PackagingModel`, `RequestedLayoutDirection`, `InstallDate`, `InstallLocation`, `ShowSettingsUI()`. (`AppGuid` is the deprecated former name of `AppId`.) |
+| [`PublisherInfo`](#appinfo--publisherinfo) / `IPublisherInfo` | Publisher identity: `Name`, `Website`, `SupportUrl`, `SupportEmail`, `Copyright`. |
 | [`DeviceIdentity`](#deviceidentity--ideviceidentity) / `IDeviceIdentity` | License-enforcement identifiers: `GetInstanceIdAsync()`, `GetHardwareFingerprintAsync()`. |
 | `AppTheme` | `Unspecified`, `Light`, `Dark`. |
 | `AppPackagingModel` | `Packaged`, `Unpackaged`. |
@@ -353,7 +392,7 @@ Essentials exception types.
 | `Permissions.BasePermission` | Abstract base for every permission type; `Permissions.BasePlatformPermission` is the WPF platform base (`CheckStatusAsync`, `RequestAsync`, `EnsureDeclared`, `ShouldShowRationale`). |
 | `Permissions.Battery` / `Bluetooth` / `CalendarRead` / `CalendarWrite` / `Camera` / `ContactsRead` / `ContactsWrite` / `Flashlight` / `LaunchApp` / `LocationWhenInUse` / `LocationAlways` / `Maps` / `Media` / `Microphone` / `NearbyWifiDevices` / `NetworkState` / `Phone` / `Photos` / `PhotosAddOnly` / `PostNotifications` / `Reminders` / `Sensors` / `Sms` / `Speech` / `StorageRead` / `StorageWrite` / `Vibrate` | Nested marker permission types — see [Permissions](#permissions). |
 | `PermissionException` | Thrown for APIs requiring a permission (`UnauthorizedAccessException` subclass). |
-| `FeatureNotSupportedException` | Thrown by a feature unsupported on this platform (`NotSupportedException` subclass) — used by `Contacts`, `Geolocation`, and six of the `Permissions` types. |
+| `FeatureNotSupportedException` | Thrown by a feature unsupported on this platform (`NotSupportedException` subclass) — used by `Contacts`, `Geolocation`, six of the `Permissions` types, and `Email.ComposeAsync` (HTML body, or no Simple MAPI mail client). |
 | `FeatureNotEnabledException` | Thrown by a feature that exists but is not currently enabled (`InvalidOperationException` subclass). |
 
 ### `AppInfo` / `PublisherInfo`
@@ -365,6 +404,14 @@ Their properties resolve from the standard SDK-generated assembly attributes —
 needs a different value (or, for `AppId`, has no standard property at all). See
 [Configuring AppInfo and PublisherInfo](README.md#configuring-appinfo-and-publisherinfo) in
 the README for the full property table and fallback chain.
+
+`AppInfo.Version` (`Version`) is the `...AppInfo.Version` metadata parsed with
+`Version.Parse` (a non-numeric value throws `FormatException` on every read), else the entry
+assembly's `AssemblyName.Version` — always four parts, so `VersionString` reads `"1.2.3.0"`
+for `<Version>1.2.3</Version>` — else `0.0`. The SDK derives `AssemblyVersion` from
+`<Version>` with any prerelease suffix stripped (`1.3.0-beta.1` → `1.3.0.0`), while an explicit
+`<AssemblyVersion>$(Version)</AssemblyVersion>` with a prerelease `<Version>` fails the build
+with `CS7034`. `BuildString` (`string`) is `Version.Revision`, the fourth part.
 
 `AppInfo.AppId` (`string`) is the app's stable identifier; it does *not* have to be a GUID —
 any stable string works. It was previously called `AppGuid`; `AppInfo.AppGuid` and
@@ -393,8 +440,13 @@ License-enforcement identifiers. Has no .NET MAUI counterpart — see
 README for the full rationale and privacy/compliance notes (not legal advice).
 
 - **`GetInstanceIdAsync()`** → `Task<string>` — a random GUID generated on first use and
-  persisted via `ISecureStorage`. Identifies this app installation, not the physical machine;
-  resets on reinstall or if local app data is cleared.
+  persisted via `SecureStorage.Default` under the key `Barbatos.Wpf.DeviceIdentity.InstanceId`,
+  i.e. in `%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppId}\Settings\securestorage.dat`.
+  Identifies this app's data for this Windows user, not the physical machine. Changes when that
+  file is lost (deleted, a new user profile or machine), on `SecureStorage.RemoveAll()`, or when
+  `AppId` or `PublisherInfo.Name` changes; an ordinary uninstall/reinstall leaves the file, and
+  the id, in place. Concurrent calls within a process are serialized, so first calls racing
+  each other all receive the same id.
 - **`GetHardwareFingerprintAsync()`** → `Task<string>` — a 64-character uppercase hex SHA-256
   hash of a few motherboard/BIOS/CPU identifiers (read via WMI: `Win32_BaseBoard.SerialNumber`,
   `Win32_BIOS.SerialNumber`, `Win32_Processor.ProcessorId`), salted with `AppInfo.AppId` so
@@ -407,11 +459,19 @@ README for the full rationale and privacy/compliance notes (not legal advice).
 
 Pure C#, built entirely on `IPreferences` + `IAppInfo`, no platform-specific code.
 
-- **`Track()`** — call once (typically via `ConfigureEssentials(e => e.UseVersionTracking())`) to snapshot the current version/build into history.
-- **`IsFirstLaunchEver`**, **`IsFirstLaunchForCurrentVersion`**, **`IsFirstLaunchForCurrentBuild`** (`bool`)
-- **`CurrentVersion`**, **`CurrentBuild`**, **`PreviousVersion`**, **`PreviousBuild`**, **`FirstInstalledVersion`**, **`FirstInstalledBuild`** (`string?`)
-- **`VersionHistory`**, **`BuildHistory`** (`IReadOnlyList<string>`)
-- **`IsFirstLaunchForVersion(string)`**, **`IsFirstLaunchForBuild(string)`**
+The launch is recorded when the implementation is constructed — on the first access to
+`VersionTracking.Default` or the first resolve of `IVersionTracking` — because its constructor
+calls `Track()`. `ConfigureEssentials(e => e.UseVersionTracking())` forces that construction
+during `Build()`, so a run that never reads version tracking is still recorded. The history
+lives in `Preferences` (see [`Barbatos.Wpf.Storage`](#barbatoswpfstorage-namespace)).
+
+- **`Track()`** — idempotent: a no-op once the launch has been recorded, which construction
+  already did. Kept for MAUI parity.
+- **`IsFirstLaunchEver`**, **`IsFirstLaunchForCurrentVersion`**, **`IsFirstLaunchForCurrentBuild`** (`bool`) — computed once per process.
+- **`CurrentVersion`**, **`CurrentBuild`** (`string`) — `AppInfo.VersionString` / `AppInfo.BuildString`.
+- **`PreviousVersion`**, **`PreviousBuild`**, **`FirstInstalledVersion`**, **`FirstInstalledBuild`** (`string?`) — `null` when there is no such entry.
+- **`VersionHistory`**, **`BuildHistory`** — `IReadOnlyList<string>` on `IVersionTracking`; `IEnumerable<string>` on the static `VersionTracking` facade.
+- **`IsFirstLaunchForVersion(string)`**, **`IsFirstLaunchForBuild(string)`** → `bool`
 
 ### `AppActions` / `IAppActions`
 
@@ -419,10 +479,10 @@ Windows implementation backed by `System.Windows.Shell.JumpList` (the taskbar ri
 menu) instead of WinRT's `Windows.UI.StartScreen.JumpList`. See
 [App actions and version tracking](README.md#app-actions-and-version-tracking) in the README.
 
-- **`IsSupported`** (`bool`)
+- **`IsSupported`** (`bool`) — always `true`.
 - **`GetAsync()`** → `Task<IEnumerable<AppAction>>` — returns the actions last set by `SetAsync` in this process (no OS read-back API exists for `JumpList`).
-- **`SetAsync(IEnumerable<AppAction>)`** / **`SetAsync(params AppAction[])`**
-- **`OnAppAction`** (`event EventHandler<AppActionEventArgs>?`)
+- **`SetAsync(IEnumerable<AppAction>)`** / **`SetAsync(params AppAction[])`** — replaces the Jump List (hiding the Recent/Frequent categories) on `Application.Current`, so it needs a running WPF `Application`. Only actions set in a process before its startup event are recognised when clicked: an action added only at runtime shows in the Jump List but raises nothing after a restart unless the next launch declares it again (`ConfigureEssentials(e => e.AddAppAction(...))` does, during `Build()`).
+- **`OnAppAction`** (`event EventHandler<AppActionEventArgs>?`; `IAppActions.AppActionActivated` on the interface) — raised once, from the relaunched process's `WpfLifecycle.OnStartup` event, which runs inside `WpfApplication.OnStartup` before any main window exists. A handler added after `base.OnStartup(e)` never sees it. Under `ConfigureSingleInstance()` with an instance already running, the relaunched process exits inside `Build()` and the running instance receives only `ISingleInstanceService.SecondInstanceLaunched` (no arguments): the activation is not reported.
 
 ### `Launcher` / `ILauncher`
 
@@ -430,9 +490,12 @@ Windows implementation backed by `Process.Start(UseShellExecute: true)` instead 
 `Windows.System.Launcher`.
 
 - **`CanOpenAsync(Uri | string)`** → `Task<bool>` — looks up the URI's scheme under `HKEY_CLASSES_ROOT` for a registered `"URL Protocol"` value or a `shell\open\command` subkey.
-- **`OpenAsync(Uri | string)`** → `Task<bool>`
-- **`OpenAsync(OpenFileRequest)`** → `Task<bool>` — opens a file by full path with its associated application.
+- **`OpenAsync(Uri | string)`** → `Task<bool>` — `true` when `Process.Start` did not throw, including when the shell handed the URI to an already-running or COM-activated handler and returned no `Process`; `false` when the shell refused it (any exception is caught). The `string` overload builds a `Uri`, so a relative path throws `UriFormatException`.
+- **`OpenAsync(OpenFileRequest)`** → `Task<bool>` — opens a file by full path with its associated application; same `true`/`false` rule (`false` for a missing file). Throws `ArgumentNullException` for a `null` request or an empty `FullPath`.
 - **`TryOpenAsync(Uri | string)`** → `Task<bool>` — `CanOpenAsync` then `OpenAsync`.
+- **`LauncherExtensions`** — the `string` overloads of `CanOpenAsync`, `OpenAsync` and
+  `TryOpenAsync` for an injected `ILauncher`, which itself takes only `Uri`; each builds the
+  `Uri` the same way, so a relative path throws `UriFormatException`.
 
 ```csharp
 await Launcher.OpenAsync("https://example.com");
@@ -454,12 +517,17 @@ if (status != PermissionStatus.Granted)
     status = await Permissions.RequestAsync<Permissions.Camera>();
 ```
 
-Most permission types report `PermissionStatus.Granted` unconditionally (no manifest/capability
-concept for an unpackaged app, and Windows itself doesn't gate these behind a runtime consent
-prompt outside a packaged/store app). `ContactsRead`, `ContactsWrite`, `LocationWhenInUse`,
-`LocationAlways`, `Microphone`, and `Sensors` throw `FeatureNotSupportedException` instead,
-since a real check for these six needs WinRT device-access contracts this library opts out of
-(same reasoning as [`Contacts`/`Geolocation`](#barbatoswpfapplicationmodelcommunication-namespace)).
+Most permission types report `PermissionStatus.Granted` unconditionally, without consulting the
+OS (no manifest/capability concept or consent prompt for an unpackaged app); `RequestAsync`
+returns what `CheckStatusAsync` does and `EnsureDeclared()` is a no-op. `Granted` therefore
+means "not checked", not "Windows allows it": the Windows privacy settings can still block a
+desktop app's camera, and `PostNotifications` is `Granted` even when toasts are turned off
+(use `INotificationService.Availability`). Override `CheckStatusAsync()` in a subclass of
+`Permissions.BasePlatformPermission` for a real check. `ContactsRead`, `ContactsWrite`,
+`LocationWhenInUse`, `LocationAlways`, `Microphone`, and `Sensors` throw
+`FeatureNotSupportedException` instead, since a real check for these six needs WinRT
+device-access contracts this library opts out of (same reasoning as
+[`Contacts`/`Geolocation`](#barbatoswpfapplicationmodelcommunication-namespace)).
 
 ---
 
@@ -471,10 +539,11 @@ Email composition and contacts.
 
 | Type | Description |
 |------|-------------|
-| `Email` / `IEmail` | `IsComposeSupported`, `ComposeAsync(EmailMessage?)` — backed by Simple MAPI (`MAPISendMail`). |
+| `Email` / `IEmail` | `IsComposeSupported` (always `true`: Simple MAPI is the mechanism, not proof a client is installed), `ComposeAsync(EmailMessage?)` — backed by Simple MAPI's Unicode `MAPISendMailW`, on a thread-pool thread. Completes once the compose window is open (or, for a modal-only client, sent or cancelled); a user cancelling is not an error. Throws `FeatureNotSupportedException` for an HTML body or when no Simple MAPI client answers (none installed or set as the default, logon failure), `FileNotFoundException` for an attachment that does not exist (checked before any client starts), and `InvalidOperationException` carrying the MAPI code for any other MAPI error. |
 | `EmailMessage` | `Subject`, `Body`, `BodyFormat`, `To`, `Cc`, `Bcc`, `Attachments`. |
 | `EmailBodyFormat` | `PlainText`, `Html` (HTML throws — Simple MAPI is plain-text only). |
 | `EmailAttachment` | `FullPath` — the file to attach, referenced by path. |
+| `EmailExtensions` | On an injected `IEmail`: `ComposeAsync()` (an empty compose window, the same as `ComposeAsync(null)`) and `ComposeAsync(string subject, string body, params string[] to)`. Both fail exactly as `ComposeAsync(EmailMessage?)` does. |
 | `Contacts` / `IContacts` | `PickContactAsync()`, `GetAllAsync(CancellationToken)` — both throw `FeatureNotSupportedException` on Windows (see the README's [Contacts and Geolocation](README.md#contacts-and-geolocation) note). |
 | `Contact` | `Id`, `NamePrefix`, `GivenName`, `MiddleName`, `FamilyName`, `NameSuffix`, `DisplayName`, `Emails`, `Phones`. |
 | `ContactEmail` / `ContactPhone` | `Type` and value fields for a contact's email/phone entries. |
@@ -494,8 +563,10 @@ Device info and device display.
 
 ### `DeviceDisplay` / `IDeviceDisplay`
 
-- **`KeepScreenOn`** (`bool`, settable) — via `SetThreadExecutionState(ES_DISPLAY_REQUIRED)`.
+- **`KeepScreenOn`** (`bool`, settable from any thread) — a `SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)` request held by a dedicated background thread while `true`; the setter returns once the request is in force. Because the request is not made on the caller's thread, it combines with `IKeepAwakeService` (which holds `ES_SYSTEM_REQUIRED` on the UI thread) and with the app's own requests instead of replacing them, and turning it off releases only the display request.
 - **`MainDisplayInfo`** (`DisplayInfo`) — `Width`, `Height`, `Density`, `Orientation`, `Rotation`, `RefreshRate`; computed against the active WPF window via a Win32 monitor-info P/Invoke block.
+  - `Orientation` is a `DisplayOrientation`: `Unknown`, `Portrait`, `Landscape`.
+  - `Rotation` is a `DisplayRotation`: `Unknown`, `Rotation0`, `Rotation90`, `Rotation180`, `Rotation270`.
 - **`MainDisplayInfoChanged`** (`event EventHandler<DisplayInfoChangedEventArgs>`) — backed by `Microsoft.Win32.SystemEvents.DisplaySettingsChanged`; the listener starts on first subscription and stops when the last handler is removed.
 
 ---
@@ -510,7 +581,8 @@ Every member throws `FeatureNotSupportedException` on Windows — see
 
 - **`GetLastKnownLocationAsync()`**, **`GetLocationAsync(...)`** → `Task<Location?>`
 - **`StartListeningForegroundAsync(GeolocationListeningRequest)`** → `Task<bool>`, **`StopListeningForeground()`**
-- **`LocationChanged`**, **`ListeningFailed`** events
+- **`LocationChanged`** (`EventHandler<GeolocationLocationChangedEventArgs>`, carrying `Location`) and **`ListeningFailed`** (`EventHandler<GeolocationListeningFailedEventArgs>`, carrying `Error`) events — never raised, since listening cannot start
+- **`GeolocationExtensions`** — `GetLocationAsync()` and `GetLocationAsync(GeolocationRequest)` on an injected `IGeolocation`, filling in a default request and no cancellation token; they throw like the interface method
 
 `Location`, `GeolocationRequest`, `GeolocationAccuracy`, `GeolocationListeningRequest`,
 `GeolocationError`, `DistanceUnits`, and `AltitudeReferenceSystem` retain their full type
@@ -563,8 +635,9 @@ Stores encrypted key/value pairs in a local file under
 
 ### `ITrayIconService`
 
-- **`IsVisible`** (`bool`), **`SetVisible(bool)`**
-- **`SetToolTip(string)`**
+- **`IsVisible`** (`bool`), **`SetVisible(bool)`**, **`IsVisibleChanged`** (event)
+- **`SetToolTip(string)`** — the only live update; icon and menu are read from the options once,
+  on the first show.
 - **`ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon = None)`** — shows a
   balloon notification above the tray icon (e.g. to tell the user the app is still running
   after the main window was hidden); a no-op while `IsVisible` is `false`.
@@ -577,8 +650,10 @@ Stores encrypted key/value pairs in a local file under
 
 ### `TrayIconOptions`
 
-- **`Enabled`** (`bool`), **`ToolTip`** (`string?`)
-- **`MenuItems`** (`IList<TrayMenuItem>`) — each a `(string Header, Action OnClick)` pair added via `new TrayMenuItem("Open", () => { ... })`.
+- **`Enabled`** (`bool`, default `false`) — whether the icon is shown when the host is built.
+- **`ToolTip`** (`string?`) — defaults to the entry assembly's name (not `AppInfo.Name`).
+- **`IconPath`** (`string?`) — path of an `.ico` file for the tray icon; defaults to the icon associated with the application executable.
+- **`MenuItems`** (`IList<TrayMenuItem>`) — code only; each item is built with `new TrayMenuItem("Open", () => { ... })`.
 
 ### `TrayMenuItem`
 
@@ -592,6 +667,19 @@ Backed directly by the Win32 `Shell_NotifyIcon` API through a hidden `HwndSource
 window, instead of `System.Windows.Forms.NotifyIcon` — no `UseWindowsForms` / WinForms
 reference required.
 
+### `ITrayIconPlatform`
+
+The OS seam behind `ITrayIconService`; register your own before `ConfigureTrayIcon` to replace
+the `Shell_NotifyIcon` default (e.g. a fake in tests).
+
+- **`Show(TrayIconOptions)`** — adds the icon; icon, tooltip and menu are read from the options
+  the first time only, and a later call after `Hide()` re-adds the same icon.
+- **`Hide()`** — removes the icon; does nothing if it is not shown.
+- **`SetToolTip(string)`**, **`ShowBalloonTip(string title, string text, TrayIconBalloonIcon icon)`** —
+  the balloon is skipped silently when the icon is hidden or the shell reports the user is not
+  accepting notifications right now.
+- **`Clicked`**, **`DoubleClicked`** (`EventHandler?`).
+
 ---
 
 ## `Barbatos.Wpf.Power` Namespace
@@ -600,10 +688,24 @@ reference required.
 
 Prevents idle sleep via `SetThreadExecutionState`; released automatically when the host is disposed.
 
+- **`IsEnabled`** (`bool`), **`SetEnabled(bool)`**, **`IsEnabledChanged`** (event, raised only on
+  an actual change). The state is not persisted — persist it through configuration if needed.
+
 ### `KeepAwakeOptions`
 
-- **`Enabled`** (`bool`)
-- **`KeepDisplayOn`** (`bool`) — also prevents the display from turning off, not just system sleep.
+- **`Enabled`** (`bool`, default `false`) — keep the computer awake as soon as the host is built.
+- **`KeepDisplayOn`** (`bool`, default `false`) — also prevents the display from turning off, not
+  just system sleep. Read once; there is no runtime toggle for it.
+
+### `IPowerManager`
+
+The OS seam behind `IKeepAwakeService`; register your own before `ConfigureKeepAwake` to replace
+the default.
+
+- **`SetKeepAwake(bool keepAwake, bool keepDisplayOn)`** — requests (or, with `keepAwake: false`,
+  releases) the keep-awake state; each call replaces the previous state rather than stacking.
+  `keepDisplayOn` is ignored when `keepAwake` is `false`. The default applies it on the
+  application dispatcher's thread, since `SetThreadExecutionState` state is per thread.
 
 ---
 
@@ -611,11 +713,35 @@ Prevents idle sleep via `SetThreadExecutionState`; released automatically when t
 
 ### `IRunOnStartupService`
 
-Registers/unregisters the app in the current user's `Run` registry key.
+Registers/unregisters the app in the current user's `Run` registry key
+(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
+
+- **`IsEnabled`** (`bool`) — read from the registry on every access, so it reflects the `Run`
+  value (the OS persists it across restarts). It does not see the Task Manager / Settings
+  "Startup apps" switch, which Windows stores separately under `…\Explorer\StartupApproved\Run`
+  while leaving the `Run` value in place: an app the user switched off there reads `true` here
+  but does not start, and `SetEnabled(true)` does not switch it back on.
+- **`SetEnabled(bool)`** — writes or removes the entry; a no-op when `IsEnabled` already matches,
+  so it does not rewrite an existing entry that points at an old executable path.
+- **`IsEnabledChanged`** (event) — raised when `SetEnabled` changes the state.
 
 ### `RunOnStartupOptions`
 
-- **`Enabled`** (`bool`)
+- **`Enabled`** (`bool`, default `false`) — register at startup when the host is built. `false`
+  leaves an existing registration untouched, so the user's runtime choice survives.
+- **`EntryName`** (`string?`) — the `Run` value's name; defaults to the entry assembly's name (not `AppInfo.Name`).
+- **`ExecutablePath`** (`string?`) — defaults to `Environment.ProcessPath`; written quoted.
+- **`Arguments`** (`string?`) — appended after the quoted executable path.
+
+### `IStartupRegistrar`
+
+The OS seam behind `IRunOnStartupService`; register your own before `ConfigureRunOnStartup` to
+replace the registry default (e.g. a fake in tests).
+
+- **`IsRegistered(string entryName)`** (`bool`)
+- **`Register(string entryName, string command)`** — creates or overwrites the entry; `command`
+  is the full command line, quoted executable path included.
+- **`Unregister(string entryName)`** — does nothing if the entry does not exist.
 
 ---
 
@@ -719,16 +845,30 @@ was ported vs. deliberately dropped.
 - `PressInteraction(PressInteractionTrigger = Press)` — `Press`/`Release`/`PressAndRelease`,
   an explicit alternative to `DefaultInteraction`'s implicit on-press behavior.
 
+### `IHotkeyPlatform`
+
+The OS seam behind `GlobalKeyBinding`; register your own before `ConfigureInputSystem` to replace
+the `RegisterHotKey` default (e.g. a fake in tests).
+
+- **`Register(int id, Key key, ModifierKeys modifiers)`** (`bool`) — `false` when the OS refused
+  the registration, typically because another application owns the combination (the service
+  logs a warning).
+- **`Unregister(int id)`**
+- **`HotkeyPressed`** (`EventHandler<int>?`) — the argument is the id passed to `Register`.
+
 ---
 
 ## `Barbatos.Wpf.Notifications` Namespace
+
+Desktop (Windows toast) notifications — `ConfigureNotifications`. Not the realtime push client,
+which is `Barbatos.Wpf.PushNotifications` and displays through this feature.
 
 ### `INotificationService`
 
 - **`IsEnabled`** (`bool`), **`SetEnabled(bool)`** — `Show(...)` is a no-op while disabled.
 - **`Show(string title, string message, NotificationSeverity severity = NotificationSeverity.Info)`** — plain text notification.
 - **`Show(NotificationContent content)`** — rich notification: image, buttons, and a navigation payload.
-- **`Activated`** (`event EventHandler<NotificationActivatedEventArgs>`) — raised when the user clicks the notification body or a button (unless that button used `LaunchUri`, which opens directly without raising this event).
+- **`Activated`** (`event EventHandler<NotificationActivatedEventArgs>`) — raised when the user clicks the notification body or a button (unless that button used `LaunchUri`, which opens directly without raising this event). Raised on the UI thread: Windows reports the click on a background thread, and the service marshals it to the application dispatcher first. An activation that arrives once that dispatcher has shut down is dropped; only an app built with `useDefaults: false` and no `ConfigureDispatching()` gets it inline on the platform's thread.
 - **`IsEnabledChanged`** event
 - **`Availability`** (`NotificationAvailability`) — whether the OS currently allows this app to display notifications, read live from Windows on every access (not cached). `Show(...)` does not check this itself: Windows silently drops a toast it isn't allowed to show instead of raising an error, so this is the only way to detect it and offer an in-app fallback.
 - **`OpenSystemSettings()`** — opens the Windows Settings page for notifications (`ms-settings:notifications`), so the user can act on what `Availability` reported.
@@ -762,24 +902,43 @@ Mirrors `Windows.UI.Notifications.NotificationSetting`; returned by `INotificati
 ### `NotificationButton`
 
 - **`NotificationButton(string text, string? arguments = null)`** — clicking raises
-  `INotificationService.Activated` with `arguments`.
+  `INotificationService.Activated` with `arguments` (with no `arguments`, the toast's own
+  `NotificationContent.Arguments`, if it has any).
 - **`NotificationButton(string text, Uri launchUri)`** — clicking opens `launchUri` directly
   (e.g. a website or custom protocol) without raising `Activated` or waking the app.
 - **`Text`**, **`Arguments`**, **`LaunchUri`** (read-only properties mirroring the constructor used).
 
 ### `NotificationActivatedEventArgs`
 
-- **`Title`**, **`Message`** — of the most recently shown notification.
+- **`NotificationActivatedEventArgs(string title, string message, string? arguments = null)`**
+- **`Title`**, **`Message`** (`string`) — the clicked notification's own text. The default
+  platform recovers it through an id it adds to each toast's activation arguments, because
+  Windows hands back only the arguments: a toast shown by an earlier run of the app, or more than
+  100 toasts ago, reports empty strings.
 - **`Arguments`** (`string?`) — the payload from `NotificationContent.Arguments` (body click)
-  or `NotificationButton.Arguments` (button click), or `null` if none was set.
+  or `NotificationButton.Arguments` (button click), or `null` if none was set. The only part
+  that survives an app restart — route on it. A button created without arguments of its own
+  reports the toast's `NotificationContent.Arguments` instead of `null`: the Toolkit copies a
+  toast's arguments onto every button that does not set the same key itself.
 
 ### `NotificationOptions`
 
-- **`Enabled`** (`bool`)
+- **`Enabled`** (`bool`, default `true`)
 - **`IconPath`** (`string?`) — a persistent circular app logo overlay shown on every
   notification; defaults to the executable's icon.
 - **`Timeout`** (`TimeSpan`) — a hint (`Long` toast duration above ~7 seconds, `Short`
   otherwise); Windows may still manage actual visibility itself.
+
+### `INotificationPlatform`
+
+The OS seam behind `INotificationService`; register your own before `ConfigureNotifications`
+(or `ConfigurePushNotifications`) to replace the toast default (e.g. a fake in tests).
+
+- **`Show(NotificationOptions options, NotificationContent content)`**
+- **`Activated`** (`EventHandler<NotificationActivatedEventArgs>?`) — may be raised on any thread;
+  the service marshals it before raising its own `Activated`.
+- **`GetAvailability()`** (`NotificationAvailability`), **`OpenSystemSettings()`** — back the
+  service's `Availability` and `OpenSystemSettings()`.
 
 ---
 
@@ -799,7 +958,9 @@ see `IPushNotificationTransport` below for how to plug in a different delivery m
 - **`NotificationReceived`** (`event EventHandler<PushNotificationReceivedEventArgs>`) — raised
   for every notification, whichever display path was used.
 - **`RouteRequested`** (`event EventHandler<PushNotificationRouteRequestedEventArgs>`) — raised
-  when the user activates a notification whose action is `PushNotificationActionType.Route`.
+  when the user activates a notification whose action is `PushNotificationActionType.Route`, on
+  the UI thread: a toast click arrives through `INotificationService.Activated` (already
+  marshalled), and the built-in fallback window is clicked on the UI thread.
 - **`ConnectAsync(CancellationToken = default)`** → `Task` — starts the registered
   `IPushNotificationTransport`. The default transport throws `InvalidOperationException` if
   `SignalRPushNotificationOptions.ServerUrl`/`AppId` aren't set; a different transport may have
@@ -991,8 +1152,8 @@ MAUI's page-based navigation model has no equivalent of WPF's multi-window/owner
 State management: stores, getters, plugins, and a middleware-style action interceptor chain
 (design inspired by Vue's [Pinia](https://pinia.vuejs.org/) - see
 [State management](README.md#state-management-barbatoswpfapsu) in the README for the full
-behavior description, including the interceptor composition/ordering rules and the "call
-`next` first" constraint).
+behavior description, including the interceptor composition/ordering rules and why
+genuinely asynchronous interceptor work needs a `Task`-returning action).
 
 ### Classes / Interfaces
 
@@ -1055,6 +1216,19 @@ public sealed class Getter<T>
 #### Properties
 - **`Value`** (`T`) — recomputes only if invalidated (by any `dependencies` entry raising
   `StateChanged`) since the last access; otherwise returns the cached value.
+
+#### Remarks
+- **Raises no change notification.** A store property returning `Value` never raises
+  `PropertyChanged` by itself, so a XAML binding to it never updates; re-raise it from a
+  ViewModel on `StateChanged` of every dependency store.
+- **Invalidation happens on `StateChanged`, which `Patch` defers until it returns.** Outside
+  `Patch`, `PropertyChanged` subscribers that registered after the store's constructor already
+  see the getter invalidated; inside `Patch` they (and reads inside the patch callback) see the
+  stale cached value. Forward on `StateChanged`, not `PropertyChanged`.
+- **No `Dispose`/unsubscribe.** The constructor subscribes to each dependency's `StateChanged`
+  for good, so every dependency keeps the getter and everything `compute` captures alive. Create
+  getters inside stores; a getter built in a short-lived object over an app-lifetime store keeps
+  that object alive.
 
 ---
 
@@ -1133,8 +1307,11 @@ public interface IStoreActionInterceptor
 - **`InterceptAsync(StoreActionContext context, StoreActionDelegate next)`** — called for every
   intercepted action. Call `next` to continue the chain (its result becomes the action's return
   value), or don't call it at all to short-circuit the action entirely. Wrap it in `try`/`catch`
-  to observe or translate an error; wrap it in timing code to measure it; call it more than once
-  to retry.
+  to observe or translate an error; wrap it in timing code to measure it; call it again after a
+  failed attempt to retry. `next` may be called after an `await`, from any thread and more than
+  once, one call at a time; each call re-runs every interceptor after this one in the chain
+  (globals, then locals) and then the action body, while interceptors outside this one see a
+  single call. The action body runs on the thread that calls `next`.
 
 #### Remarks
 
@@ -1144,21 +1321,24 @@ type only) with `StoreServiceCollectionExtensions.AddStoreInterceptor`. Both com
 single chain per store — every global interceptor runs, in registration order, outside every
 local one, closest to the actual action call.
 
-`InterceptAsync` is genuinely awaitable for a `Task`/`Task<TResult>`-returning action. For a
-*synchronous* action, the chain still runs through this same `async` shape, but the proxy blocks
-on the chain's result (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a
-synchronous caller — safe only if every interceptor in that chain does purely synchronous work;
-an interceptor that genuinely suspends while wrapping a synchronous action risks the classic WPF
-sync-over-async deadlock.
+`InterceptAsync` is genuinely awaitable for a `Task`/`Task<TResult>`-returning action: real
+asynchronous work before `next` (an async precondition) and after it (flushing a log) both
+work, and so does calling `next` again to retry an attempt that failed after the action's own
+first `await`. The innermost `next` proceeds Castle DynamicProxy's `IInvocation` only while
+the intercepted call is still running on its own thread; any later call, or one from another
+thread, reaches the action through a second call on the proxy that skips the chain. Proceeding
+the invocation from a continuation instead re-entered the whole chain (`IInvocation.Proceed()`:
+an `await` before `next` hung) or raced the call's own return on the thread pool
+(`IInvocation.CaptureProceedInfo()`: a call occasionally ran the chain twice or never
+completed).
 
 > [!IMPORTANT]
-> Call `next` as your first meaningful step if you're going to call it at all — never `await`
-> anything genuinely asynchronous before calling it. Castle DynamicProxy's underlying
-> `IInvocation.Proceed()` (what `next` eventually calls, at the innermost interceptor) is not
-> safe to reach from a continuation that already crossed a real `await` suspension relative to
-> `InterceptAsync`'s own synchronous call — doing so hangs the action forever rather than
-> throwing. Awaiting real asynchronous work is fully supported *after* `next` returns
-> (post-processing, e.g. flushing a log) — only work ordered before it is unsafe.
+> For a *synchronous* action, the chain still runs through this same `async` shape, but the
+> proxy blocks on the chain's result (`GetAwaiter().GetResult()`) since there's no `Task` to hand
+> back to a synchronous caller — safe only if every interceptor in that chain does purely
+> synchronous work. An interceptor that genuinely suspends anywhere while wrapping a synchronous
+> action, before or after `next`, risks the classic WPF sync-over-async deadlock; a global
+> interceptor wraps synchronous actions too, so it should await nothing but `next()` itself.
 
 ---
 
@@ -1241,9 +1421,20 @@ public static class StoreServiceCollectionExtensions
 
 `AddStore<TStore>()` builds a Castle DynamicProxy class proxy around `TStore` only when at least
 one `IStoreActionInterceptor` (global or local) applies to it — a store with none registered gets
-a plain `ActivatorUtilities`-created instance, no proxy involved. Building the proxy requires
-`TStore` to be **non-`sealed`** with **exactly one public constructor**; violating either throws
-a descriptive `InvalidOperationException` at first resolution.
+a plain `ActivatorUtilities`-created instance, no proxy involved. Interceptors and plugins are
+read at that first resolution, so registering them before or after `AddStore` makes no
+difference, and the chain is fixed from then on. Building the proxy requires `TStore` to be:
+
+- **non-`sealed`** — otherwise `InvalidOperationException` at first resolution;
+- **`public`**, and every type enclosing it — otherwise Castle throws `ArgumentException`
+  ("... is not accessible") at first resolution;
+- constructed through **exactly one public constructor** — otherwise `InvalidOperationException`.
+  Every parameter is resolved with `GetRequiredService`, so optional parameters' default values
+  are not used: an unregistered parameter type throws `InvalidOperationException` ("No service for
+  type ...") even where the plain `ActivatorUtilities` path would have used the default.
+
+A global interceptor applies to every store, so registering the first one moves every store onto
+the proxy path and can surface these errors in a store that has no interceptor of its own.
 
 ---
 
@@ -1296,10 +1487,13 @@ public sealed class InterceptorHandle
 - **`Eject()`** — removes the associated interceptor from every chain it applies to, from that
   point on. Idempotent. Does not shrink or rebuild the chain — the interceptor's slot stays in
   place but becomes a transparent pass-through straight to the next interceptor (or the action
-  itself), as if it had never been registered. A call already in flight when `Eject()` runs
-  keeps using the interceptor, since its own pipeline was already built by the time `Eject()`
-  ran; every call that starts afterward skips it. There is no corresponding "re-attach" —
-  construct a new interceptor and register it again if the behavior needs to come back.
+  itself), as if it had never been registered. Each call checks `IsEjected` when it reaches that
+  slot: a call already inside the interceptor finishes with it, one still in an interceptor
+  further out skips it when it gets there, and so does every call that starts afterward. One-way: there is no "re-attach", and
+  registering the interceptor again does not help — `Build()` makes the service collection
+  read-only, and each store reads its chain once, at its first resolution — so the behavior
+  comes back only with a new container. For an on/off
+  setting, give the interceptor its own enabled flag (return `next()` while off) instead.
 
 ---
 
@@ -1321,11 +1515,15 @@ Connects to MCP servers and aggregates their tools.
 
 - **`Servers`** (`IReadOnlyList<McpServerStatus>`)
 - **`Tools`** (`IReadOnlyList<Microsoft.Extensions.AI.AITool>`) — aggregated from every
-  currently-connected server; if two servers expose a same-named tool, the most recently
-  connected one wins (logged as a warning).
+  currently-connected server; if two servers expose a same-named tool, the one from the server
+  added later (later in `Servers`) wins, logged as a warning naming both servers. A server takes
+  its place in `Servers` when `AddServerAsync` starts, so this is the order servers were added,
+  not the order they finished connecting.
 - **`Changed`** (`event EventHandler`) — a server was added, removed, connected, failed to
-  connect, or dropped off on its own. Raised on whichever thread caused the change, which for a
-  server dropping off is a background thread.
+  connect, or dropped off on its own. Raised on whichever thread caused the change: the caller's
+  for the "added" notification at the start of `AddServerAsync`, normally a thread-pool thread
+  for everything raised after an internal `ConfigureAwait(false)` await (connected, failed,
+  removed, dropped off).
 - **`AddServerAsync(McpServerDescriptor, CancellationToken = default)`** → `Task<McpServerStatus>`
   — throws `InvalidOperationException` for a descriptor that fails its own
   `McpServerDescriptor.Validate()`, `ArgumentException` for a duplicate `Name` (mirrors
@@ -1419,7 +1617,11 @@ server sets `OAuth`.
 - **`SectionName`** = `"Barbatos:Mcp"`
 - **`Enabled`** (`bool`, default `true`) — whether the seed `Servers` list is connected at
   startup; does not affect `AddServerAsync` calls made later at runtime.
-- **`Servers`** (`IList<McpServerDescriptor>`) — connected once, at startup, by `ConfigureMcp`.
+- **`Servers`** (`IList<McpServerDescriptor>`) — connected once, at startup, by `ConfigureMcp`,
+  in list order. A connection failure is logged and recorded on that entry's `McpServerStatus`;
+  an entry that fails `McpServerDescriptor.Validate()` or reuses a `Name` is rejected before a
+  status exists, so it is absent from `IMcpServerRegistry.Servers` and only the startup error log
+  records it.
 
 ### `IAiApiKeyProvider`
 
@@ -1443,7 +1645,8 @@ vault, ...) instead of the built-in `SecureStorageAiApiKeyProvider` (DPAPI via
 - **`AiProviderOptions`** (`SectionName` = `"Barbatos:Mcp:Provider"`): **`Provider`** (`string`,
   default `"openai"`, case-insensitive — only `"anthropic"` is special-cased, every other value
   is treated as OpenAI-wire-compatible), **`Model`** (`string?`, required), **`Endpoint`**
-  (`string?`, used for any non-`"openai"` OpenAI-compatible endpoint, e.g. Gemini's
+  (`string?`, the OpenAI-wire base URL used for every provider except `"anthropic"`, which
+  ignores it; `null` means the real OpenAI API, so set it for anything else — e.g. Gemini's
   `"https://generativelanguage.googleapis.com/v1beta/openai/"`), **`Providers`**
   (`IList<AiProviderDescriptor>`) — an optional catalog of provider choices the app wants to
   offer (e.g. in a settings UI), seeded the same way `McpOptions.Servers` seeds MCP servers.
@@ -1458,7 +1661,9 @@ currently-configured provider/model.
 - **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>` — true once a model is set
   and an API key has been stored for the configured provider, without building a client.
 - **`GetChatClientAsync(CancellationToken = default)`** → `Task<IChatClient>` — throws
-  `InvalidOperationException`, naming what's missing, if the model/endpoint/API key isn't set yet.
+  `InvalidOperationException`, naming what's missing, if the model isn't set or no API key is
+  stored for the configured provider yet. An endpoint is never required: `null` means the real
+  OpenAI API (and `"anthropic"` ignores it).
 - **`UpdateProvider(string provider, string model, string? endpoint = null)`** — changes the
   active provider/model, invalidating any cached client.
 - **`SelectProvider(string key)`** — looks `key` up in `AiProviderOptions.Providers` and calls
@@ -1519,9 +1724,14 @@ returned type is the framework's own `AIAgent`, not a wrapper — `RunAsync`, `R
 
 - **`ConfigurationChanged`** (`event EventHandler`) — forwards *both* `IAiChatClientFactory.ConfigurationChanged`
   and `IMcpServerRegistry.Changed`, since an agent is handed its tools once, at construction.
+  Raised synchronously on the forwarded event's thread, so a server connecting or dropping off
+  normally arrives on a thread-pool thread (once at startup, when a seed server connects); the
+  factory does not marshal — dispatch before touching UI state.
 - **`IsConfiguredAsync(CancellationToken = default)`** → `Task<bool>` — forwards `IAiChatClientFactory.IsConfiguredAsync`.
 - **`GetAgentAsync(CancellationToken = default)`** → `Task<AIAgent>` — the default agent described by
-  `AiAgentOptions`, cached until anything it was built from changes.
+  `AiAgentOptions`, cached until `ConfigurationChanged` fires or `GetChatClientAsync` returns a
+  different client instance. `AiAgentOptions` is read only when the agent is built, so editing it
+  at runtime does not invalidate the cache.
 - **`CreateAgentAsync(AiAgentDescriptor, CancellationToken = default)`** → `Task<AIAgent>` — a one-off,
   uncached agent with its own instructions/tools/approval policy.
 
@@ -1534,7 +1744,9 @@ Both throw `InvalidOperationException` if no provider is fully configured yet;
   `"Assistant"`), **`Description`**/**`Instructions`** (`string?`), **`ToolApproval`**
   (`AiToolApprovalMode`, default `Always`), **`IncludeMcpTools`** (`bool`, default `true`),
   **`EnableLogging`** (`bool`, default `true`), **`EnableOpenTelemetry`** (`bool`, default
-  `false`), **`OpenTelemetrySourceName`** (`string`, default `"Barbatos.Wpf.Mcp"`).
+  `false`), **`OpenTelemetrySourceName`** (`string`, default `"Barbatos.Wpf.Mcp"`). Read when the
+  default agent is built; a runtime edit shows up only at the next rebuild (provider/key change,
+  server connect/disconnect), and a reloaded configuration file never reaches it.
 - **`AiAgentDescriptor`**: **`Name`** (`string?`, required), **`Description`**/**`Instructions`**
   (`string?`), **`ToolApproval`** (default `Always`), **`IncludeMcpTools`** (default `true`),
   **`Tools`** (`IList<AITool>`), plus **`Validate()`** — the same pure pre-flight check

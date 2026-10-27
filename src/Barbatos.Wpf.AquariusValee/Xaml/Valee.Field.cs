@@ -26,10 +26,21 @@ public static partial class Valee
     /// <see cref="FormProperty"/>) needs: populated by <see cref="ApplyFieldBinding"/> (used by
     /// both <see cref="FieldProperty"/> and <see cref="ForProperty"/>) and by
     /// <see cref="PasswordFieldProperty"/>'s own changed callback, regardless of whether
-    /// <see cref="FormProperty"/> is used anywhere at all - a <see cref="ConditionalWeakTable{TKey,TValue}"/>
-    /// so a field with no more live-bound controls doesn't keep an element rooted.
+    /// <see cref="FormProperty"/> is used anywhere at all.
     /// </summary>
-    private static readonly ConditionalWeakTable<IField, FrameworkElement> ElementsByField = new();
+    /// <remarks>
+    /// Weak on both sides. The <see cref="ConditionalWeakTable{TKey,TValue}"/> keeps the field from
+    /// being rooted by this static, but it holds each <i>value</i> strongly for as long as its key
+    /// lives - so with the element stored directly, a <see cref="Form"/> owned by a long-lived
+    /// (singleton) ViewModel kept the last control bound to each field, and through its parent
+    /// chain the whole closed View, alive for the life of the process. The element is therefore
+    /// held through a <see cref="WeakReference{T}"/>: a control on screen is rooted by its window
+    /// anyway, and one that is gone has nothing left to focus.
+    /// </remarks>
+    private static readonly ConditionalWeakTable<IField, WeakReference<FrameworkElement>> ElementsByField = new();
+
+    private static void RememberElement(IField field, FrameworkElement element) =>
+        ElementsByField.AddOrUpdate(field, new WeakReference<FrameworkElement>(element));
 
     /// <summary>
     /// Binds a control's natural value property (<see cref="TextBox.Text"/>,
@@ -123,7 +134,7 @@ public static partial class Valee
         element.LostFocus -= OnFieldControlLostFocus;
         element.LostFocus += OnFieldControlLostFocus;
 
-        ElementsByField.AddOrUpdate(field, element);
+        RememberElement(field, element);
     }
 
     private static DependencyProperty ResolveFieldTargetProperty(FrameworkElement element) => element switch

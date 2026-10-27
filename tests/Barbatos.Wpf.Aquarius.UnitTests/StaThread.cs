@@ -1,3 +1,8 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 using System.Windows.Threading;
 
 namespace Barbatos.Wpf.Aquarius.UnitTests;
@@ -10,6 +15,13 @@ namespace Barbatos.Wpf.Aquarius.UnitTests;
 /// </summary>
 internal static class StaThread
 {
+    /// <summary>
+    /// How long a test body may run before it counts as hung. The whole suite runs in seconds;
+    /// without a limit, a body stuck in a dispatcher deadlock blocks the test host until CI's
+    /// blame collector kills it, and the run reports nothing about which test it was.
+    /// </summary>
+    private static readonly TimeSpan HangLimit = TimeSpan.FromMinutes(2);
+
     public static void Run(Action body)
     {
         ArgumentNullException.ThrowIfNull(body);
@@ -28,9 +40,14 @@ internal static class StaThread
             }
         });
 
+        // Background, so a body that never returns cannot keep the test host alive after the
+        // timeout below has failed its test.
+        thread.IsBackground = true;
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        thread.Join();
+
+        if (!thread.Join(HangLimit))
+            throw new TimeoutException($"The STA test body did not finish within {HangLimit}.");
 
         if (failure is not null)
             throw failure;

@@ -6,8 +6,8 @@
 namespace Barbatos.Wpf.Notifications;
 
 /// <summary>
-/// Options for the push notifications feature. Can be configured from code via
-/// <c>ConfigureNotifications</c> and/or from configuration files using the
+/// Options for the desktop (Windows toast) notifications feature. Can be configured from code
+/// via <c>ConfigureNotifications</c> and/or from configuration files using the
 /// <see cref="SectionName"/> section (file values override code values).
 /// </summary>
 public class NotificationOptions

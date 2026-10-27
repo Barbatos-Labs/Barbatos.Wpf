@@ -12,6 +12,10 @@ namespace Barbatos.Wpf.Aquarius.Xaml;
 
 public static partial class Directives
 {
+    // ModelProperty's default - see its remarks. Declared above it on purpose: static
+    // initializers run in textual order, and ModelProperty's metadata reads this one.
+    private static readonly object ModelUnset = new();
+
     /// <summary>
     /// Two-way-binding sugar for common input controls - the Aquarius counterpart of
     /// Vue's <c>v-model</c>.
@@ -32,25 +36,50 @@ public static partial class Directives
     /// <see cref="Selector.SelectedItemProperty"/>, <see cref="RangeBase.ValueProperty"/>).
     /// An unsupported element type throws, matching Vue's own dev-time warning for an
     /// invalid <c>v-model</c> target rather than silently doing nothing.
+    /// <para>
+    /// The two-way binding is created the first time the bound value resolves, <b>including when
+    /// it resolves to <see langword="null"/></b> - a <c>SelectedItem</c> nothing is selected in
+    /// yet, a <c>string?</c> not filled in yet. WPF calls a property-changed callback only when
+    /// the effective value changes, so with a <see langword="null"/> default a binding whose first
+    /// value was also <see langword="null"/> never reached this callback: the control showed the
+    /// value, but nothing the user selected or typed was written back until the source became
+    /// non-null some other way. The property's default is therefore a private "unset" marker
+    /// rather than <see langword="null"/>; <see cref="GetModel"/> still reports an unset property
+    /// as <see langword="null"/>. Setting <see langword="null"/> as a plain value now throws like
+    /// any other plain value, while clearing the property (<c>ClearValue</c>,
+    /// <see cref="BindingOperations.ClearBinding"/>) is accepted and leaves the two-way binding
+    /// already applied in place.
+    /// </para>
     /// </remarks>
     public static readonly DependencyProperty ModelProperty =
         DependencyProperty.RegisterAttached(
             "Model",
             typeof(object),
             typeof(Directives),
-            new FrameworkPropertyMetadata(null, OnModelChanged));
+            new FrameworkPropertyMetadata(ModelUnset, OnModelChanged));
 
     /// <summary>Sets <see cref="ModelProperty"/>.</summary>
     public static void SetModel(DependencyObject element, object? value) => element.SetValue(ModelProperty, value);
 
-    /// <summary>Gets <see cref="ModelProperty"/>.</summary>
-    public static object? GetModel(DependencyObject element) => element.GetValue(ModelProperty);
+    /// <summary>Gets <see cref="ModelProperty"/>; <see langword="null"/> while it is unset.</summary>
+    public static object? GetModel(DependencyObject element)
+    {
+        var value = element.GetValue(ModelProperty);
+        return ReferenceEquals(value, ModelUnset) ? null : value;
+    }
 
     private static void OnModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
+        var sourceBinding = BindingOperations.GetBindingExpression(d, ModelProperty)?.ParentBinding;
+
+        // Back to unset with no binding left means the property was cleared (ClearValue,
+        // ClearBinding), not given a plain value - nothing to apply and nothing to reject.
+        if (sourceBinding is null && ReferenceEquals(e.NewValue, ModelUnset))
+            return;
+
         var targetProperty = ResolveModelTargetProperty(d);
 
-        if (BindingOperations.GetBindingExpression(d, ModelProperty)?.ParentBinding is not { } sourceBinding)
+        if (sourceBinding is null)
         {
             throw new InvalidOperationException(
                 "Directives.Model must be set with a Binding, e.g. aq:Directives.Model=\"{Binding Path}\" " +

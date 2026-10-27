@@ -10,8 +10,16 @@ namespace Barbatos.Wpf.Core.UnitTests;
 // SecureStorage.Default is a process-wide singleton backed by a real DPAPI-encrypted file
 // (there is no InternalsVisibleTo seam to fake it), so every test uses a key unique to
 // itself.
+[Collection(CollectionName)]
 public class SecureStorageTests
 {
+    /// <summary>
+    /// The xUnit collection for test classes that must not run alongside
+    /// <see cref="RemoveAllClearsEveryStoredValue"/>, which empties the whole store - including
+    /// the DeviceIdentity instance id <see cref="DeviceIdentityTests"/> asserts on.
+    /// </summary>
+    public const string CollectionName = "SecureStorage";
+
     [Fact]
     public void DefaultIsCached()
     {

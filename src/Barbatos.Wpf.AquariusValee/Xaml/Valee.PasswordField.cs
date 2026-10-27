@@ -57,7 +57,7 @@ public static partial class Valee
         passwordBox.SetValue(AssociatedPasswordFieldProperty, field);
         passwordBox.PasswordChanged += OnPasswordBoxPasswordChanged;
         passwordBox.LostFocus += OnPasswordBoxLostFocus;
-        ElementsByField.AddOrUpdate(field, passwordBox);
+        RememberElement(field, passwordBox);
     }
 
     private static void OnPasswordBoxPasswordChanged(object sender, RoutedEventArgs e)

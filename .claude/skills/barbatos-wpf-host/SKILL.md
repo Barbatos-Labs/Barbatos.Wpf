@@ -19,7 +19,7 @@ builder. Not here: the Essentials facades (`barbatos-wpf-essentials`), Apsu stor
   [Optional desktop features](../../../src/Barbatos.Wpf.Core/README.md#optional-desktop-features),
   [Dialogs](../../../src/Barbatos.Wpf.Core/README.md#dialogs), [SplashScreen](../../../src/Barbatos.Wpf.Core/README.md#splashscreen),
   [Periodic services](../../../src/Barbatos.Wpf.Core/README.md#periodic-services); members in
-  [API-REFERENCE.md](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md#barbatoswpfhosting-namespace) (some feature signatures there are incomplete - trust `src/`).
+  [API-REFERENCE.md](../../../src/Barbatos.Wpf.Core/API-REFERENCE.md#barbatoswpfhosting-namespace) (where a document and `src/` disagree, trust `src/`).
 - Startup/exit ordering is decided in
   [`Platform/WpfApplication.cs`](../../../src/Barbatos.Wpf.Core/Platform/WpfApplication.cs);
   the builder in [`Hosting/WpfAppBuilder.cs`](../../../src/Barbatos.Wpf.Core/Hosting/WpfAppBuilder.cs).
@@ -126,7 +126,11 @@ during that cascade are no-ops because the host field is cleared first).
   access - override before that, or set `builder.Environment.EnvironmentName` directly.
 - Until a logging provider is added through `builder.Logging`, every `ILogger<T>` is a no-op - and
   features report failures only as log entries (refused hotkey, failed periodic run, push connect
-  error), so those failures are invisible.
+  error), so those failures are invisible. Core ships no provider: add one, e.g.
+  `builder.Logging.AddDebug()` from `Microsoft.Extensions.Logging.Debug` (the debugger's Output
+  window; the app's `.csproj` needs that `PackageReference` - inside this repo it is versionless,
+  since `Directory.Packages.props` already pins the version), plus a persisting provider in a
+  shipped app.
 - Swap the container with `ConfigureContainer(factory, configure)`; the last call wins.
 
 ## Configuration layering and settings that survive a restart
@@ -214,19 +218,23 @@ Application: `OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`,
 `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`, `OnWindowClosing`,
 `OnWindowClosed`.
 
-- Window events fire for **every** `Window`, dialogs and push fallback popups included. Filter
-  before acting. `OnWindowCreated` fires on the first `Loaded`, not in the constructor.
+- Window events fire for **every** `Window` - the splash screen, dialogs and push fallback
+  popups included. Filter before acting. `OnWindowCreated` fires on the first `Loaded`, not in
+  the constructor.
 - `WpfApplication` already subscribes to `Application.DispatcherUnhandledException`; observe it
   here, never with a second subscription in `App.xaml.cs`. It only sees UI-thread exceptions.
 - App-defined events: `events.AddEvent("MyEvent", new Action(() => ...))`, raised with
   `ILifecycleEventService.InvokeEvents("MyEvent")` (`HostBuilderLifecycleTests.CanRegisterCustomEvents`).
 
-Minimize-to-tray (adapted from the sample, plus the main-window filter the sample lacks):
+Minimize-to-tray (adapted from `samples/Barbatos.Wpf.Core.Sample/WpfProgram.cs`):
 
 ```csharp
 .OnWindowClosing((window, args) =>
 {
-    if (!ReferenceEquals(window, Application.Current?.MainWindow) || App.IsExiting)
+    // Match your main window's type, not Application.MainWindow: WPF makes the first window
+    // created - the splash screen - Application.MainWindow until it closes, so a reference
+    // check would cancel the splash's close and hide it instead.
+    if (window is not MainWindow || App.IsExiting)
         return;   // App.IsExiting: the sample's own flag, set by the tray "Exit" item before Shutdown()
 
     var tray = IWpfPlatformApplication.Current?.Services.GetService<ITrayIconService>();
@@ -250,11 +258,13 @@ once the dispatcher is shutting down.
   every later `Dispatch` returns `true` and never runs.
 - Arrive on the UI thread: lifecycle events, `SecondInstanceLaunched`, tray clicks and menu
   actions, `InputAction` events (global hotkeys too), periodic `ExecuteAsync` and
-  `ServiceExecuted`, push `NotificationReceived`.
-- Do **not** assume the UI thread: `IOptionsMonitor.OnChange`, `IPushNotificationService.ConnectionStateChanged`
-  (raised by the transport), and `INotificationService.Activated` / push `RouteRequested` after a
-  toast click - forwarded unmarshalled from the Toolkit's `ToastNotificationManagerCompat.OnActivated`,
-  which Microsoft documents as a background-thread callback. Marshal before touching UI.
+  `ServiceExecuted`, push `NotificationReceived`, and `INotificationService.Activated` / push
+  `RouteRequested` after a toast click - Windows reports the click on a background thread, and
+  `INotificationService` marshals it to the application dispatcher before raising anything
+  (an activation arriving after that dispatcher shut down is dropped).
+- Do **not** assume the UI thread: `IOptionsMonitor.OnChange` and
+  `IPushNotificationService.ConnectionStateChanged` (raised by the transport). Marshal before
+  touching UI.
 
 ## Splash screen and slow startup
 
@@ -334,8 +344,8 @@ Without the call the service is not registered (`GetService` returns `null`, inj
 | Shortcut does nothing | Feature not configured; map `Scope` lacks keyboard focus; map or service disabled; `FindAction` name differs (exact match) | See [features.md](features.md#input-system) |
 | Global hotkey never fires | Another app owns the combination (warning logged to a no-op logger), or a `GlobalKeyBinding` changed without `RefreshBindings()` | Add a logging provider; call `RefreshBindings()` |
 | Toast never appears | `IsEnabled` false (setting or config), or `Availability != Enabled` | Check `Availability`, offer `OpenSystemSettings()` |
-| Crash in a toast `Activated` handler updating UI | Raised off the UI thread | Marshal through a dispatcher captured on the UI thread |
-| Closing a dialog hides it and shows the tray balloon | Minimize-to-tray handler not filtered to `MainWindow` | Filter as above |
+| Closing a dialog hides it and shows the tray balloon | Minimize-to-tray handler not filtered to the main window | Filter by the main window's type, as above |
+| Tray balloon at startup, splash window lingers hidden | Minimize-to-tray filtered with `ReferenceEquals(window, Application.MainWindow)`; the splash is `MainWindow` until it closes | Filter by type (`window is not MainWindow`) |
 | Stuck splash | `CloseSplashScreenAsync()` not reached | `try/finally` around the preload |
 | Process alive with no window | Splash closed, then an early return or failure before any window was shown | Show a window or call `Shutdown()` on that path |
 | Main window flashes empty, or preloaded data missing | Preloaded ViewModel not a singleton, or loaded in `Loaded` | Singleton + await before `CloseSplashScreenAsync()` |
@@ -344,7 +354,7 @@ Without the call the service is not registered (`GetService` returns `null`, inj
 | JSON edited, running feature unchanged | Features read `IOptions<T>` once | Call the runtime service |
 | Exception at shutdown from the container | An `IAsyncDisposable`-only singleton, or a `Dispose()` that resolves services | Add `IDisposable`; resolve in the constructor |
 | `DispatchAsync` never completes | `IDispatcher` first resolved on a worker thread | Resolve/capture on the UI thread |
-| Warnings mentioned in docs never show | `builder.Logging` never configured | Register a provider |
+| Warnings mentioned in docs never show | `builder.Logging` never given a provider | `builder.Logging.AddDebug()` (package `Microsoft.Extensions.Logging.Debug`) or another provider |
 | `AddJsonFile` does not exist | Core does not reference the JSON provider | Add `Microsoft.Extensions.Configuration.Json` |
 
 Feature-specific rows (tray menu not updating, periodic job runs at startup, stale run-on-startup

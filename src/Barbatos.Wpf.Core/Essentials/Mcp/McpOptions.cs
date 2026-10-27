@@ -34,5 +34,14 @@ public class McpOptions
     /// entry is logged and recorded on that server's own <see cref="McpServerStatus"/> - it never
     /// prevents the others from connecting.
     /// </summary>
+    /// <remarks>
+    /// An entry that is rejected before connecting - one failing
+    /// <see cref="McpServerDescriptor.Validate"/>, or reusing an earlier entry's
+    /// <see cref="McpServerDescriptor.Name"/> - never gets a <see cref="McpServerStatus"/> at all:
+    /// <see cref="IMcpServerRegistry.AddServerAsync"/> rejects it before creating one, so it is
+    /// missing from <see cref="IMcpServerRegistry.Servers"/> and the startup error log is the only
+    /// place it shows up. Call <see cref="McpServerDescriptor.Validate"/> on entries built from
+    /// user input before seeding them.
+    /// </remarks>
     public IList<McpServerDescriptor> Servers { get; } = new List<McpServerDescriptor>();
 }

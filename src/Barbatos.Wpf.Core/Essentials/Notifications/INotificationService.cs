@@ -43,8 +43,18 @@ public interface INotificationService
 
     /// <summary>
     /// Occurs when the user clicks a notification (or one of its buttons) shown through this
-    /// service.
+    /// service. Raised on the application's UI thread.
     /// </summary>
+    /// <remarks>
+    /// Windows reports toast activations on a background thread, and the default service
+    /// marshals each one to the application dispatcher (the one Core's other features use)
+    /// before raising this event, so a handler can update UI-bound state directly - appending
+    /// to a bound <c>ObservableCollection</c> from the background thread would throw. An
+    /// activation that arrives after the dispatcher has shut down (the app is exiting) is
+    /// dropped. The event is raised inline, on the platform's thread, only in an app built
+    /// with <c>WpfApp.CreateBuilder(useDefaults: false)</c> that never called
+    /// <c>ConfigureDispatching()</c>.
+    /// </remarks>
     event EventHandler<NotificationActivatedEventArgs>? Activated;
 
     /// <summary>
@@ -133,9 +143,17 @@ public sealed class NotificationActivatedEventArgs : EventArgs
     }
 
     /// <summary>The title of the notification that was activated.</summary>
+    /// <remarks>
+    /// With the default toast platform this is the clicked toast's own title - but only when
+    /// this run of the app showed it, and it is among the last 100 shown. A toast left in the
+    /// notification center by an earlier run reports an empty string: Windows hands back only
+    /// the activation arguments, not the toast's text. Route on <see cref="Arguments"/>, which
+    /// survives restarts; treat this as display text.
+    /// </remarks>
     public string Title { get; }
 
     /// <summary>The message of the notification that was activated.</summary>
+    /// <remarks>Recovered the same way, with the same limits, as <see cref="Title"/>.</remarks>
     public string Message { get; }
 
     /// <summary>
@@ -144,6 +162,13 @@ public sealed class NotificationActivatedEventArgs : EventArgs
     /// user clicked), or <see langword="null"/> if none was set. Use this to route the user to
     /// the relevant place in the app.
     /// </summary>
+    /// <remarks>
+    /// With the default toast platform, a button created without arguments of its own reports
+    /// the toast's <see cref="NotificationContent.Arguments"/> instead of <see langword="null"/>:
+    /// the Windows Community Toolkit copies a toast's arguments onto every button that does not
+    /// set the same key itself. Give each button its own arguments when the handler must tell a
+    /// button click from a body click.
+    /// </remarks>
     public string? Arguments { get; }
 }
 

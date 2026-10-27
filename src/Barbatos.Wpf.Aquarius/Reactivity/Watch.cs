@@ -21,6 +21,19 @@ public enum WatchFlush
     /// Coalesce rapid-fire changes and invoke the callback once via
     /// <see cref="NextTick"/>, mirroring Vue's default <c>flush: 'post'</c> batching.
     /// </summary>
+    /// <remarks>
+    /// <see cref="Watch.On{T}(Ref{T}, Action{T, T}, bool, bool, bool, WatchFlush)"/> then passes
+    /// Vue's post-flush arguments: the <i>newest</i> value, and the value from <i>before the
+    /// burst's first change</i> - <c>0 -&gt; 1 -&gt; 2 -&gt; 3</c> in one go is a single
+    /// <c>(3, 0)</c>. (It used to pass the pair captured at the first change, <c>(1, 0)</c>, so a
+    /// callback acting on its arguments acted on a value that was already stale.) A burst that ends
+    /// on the value it started from still produces its one callback, with both arguments equal.
+    /// A change made on a worker thread still has its callback run on a UI thread - the one that
+    /// created the watcher (never another one: once that thread's dispatcher has shut down, the
+    /// callback is dropped), else <c>Application.Current</c>'s; see <see cref="NextTick"/> for the
+    /// full order. <see cref="Watch.Effect(Action, bool, WatchFlush, INotifyPropertyChanged[])"/>
+    /// coalesces the same way.
+    /// </remarks>
     Post,
 }
 
@@ -87,9 +100,15 @@ public static class Watch
         ArgumentNullException.ThrowIfNull(onChanged);
 
         var previous = source.Value;
+        var burstOld = previous;
         Action? pendingCleanup = null;
         var scheduled = false;
         IDisposable stopHandle = null!;
+
+        // The creating UI thread's dispatcher, if there is one: where a WatchFlush.Post callback
+        // belongs when the change itself arrives from a worker thread - kept even after it shuts
+        // down, since the callback may touch that thread's UI. Never created here.
+        var owner = NextTick.CurrentUiDispatcher();
 
         void RunCleanup()
         {
@@ -118,11 +137,14 @@ public static class Watch
                 if (scheduled)
                     return;
 
+                // Only the first change of a burst schedules; it alone knows the value from before
+                // the burst. The newest value is read when the callback runs, not captured here.
                 scheduled = true;
-                NextTick.Run(() =>
+                burstOld = old;
+                NextTick.RunOn(owner, () =>
                 {
                     scheduled = false;
-                    Fire(current, old);
+                    Fire(previous, burstOld);
                 });
             }
             else
@@ -201,6 +223,9 @@ public static class Watch
         var scheduled = false;
         IDisposable stopHandle = null!;
 
+        // See the same line in On() above.
+        var owner = NextTick.CurrentUiDispatcher();
+
         void Fire()
         {
             effect();
@@ -217,7 +242,7 @@ public static class Watch
                     return;
 
                 scheduled = true;
-                NextTick.Run(() =>
+                NextTick.RunOn(owner, () =>
                 {
                     scheduled = false;
                     Fire();

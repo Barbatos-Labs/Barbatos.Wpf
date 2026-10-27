@@ -1,6 +1,6 @@
 # Barbatos.Wpf.Core
 
-![Barbatos.Wpf.Core logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/core-logo.svg?raw=true)
+![Barbatos.Wpf.Core logo](https://raw.githubusercontent.com/Barbatos-Labs/Barbatos.Wpf/main/build/core-logo.svg)
 
 ### *A modern application host and ready-made platform services for WPF*
 
@@ -40,10 +40,12 @@ registered in the same container.**
   * [Closing other dialogs, without losing in-progress work](#closing-other-dialogs-without-losing-in-progress-work)
   * [Preventing a double-click from opening a dialog twice](#preventing-a-double-click-from-opening-a-dialog-twice)
 * **[SplashScreen](#splashscreen)**
+  * [Loading important data before the main window ever appears](#loading-important-data-before-the-main-window-ever-appears)
   * [Full customization](#full-customization)
   * [Showing it conditionally](#showing-it-conditionally)
   * [Avoiding flicker: minimum display duration](#avoiding-flicker-minimum-display-duration)
 * **[Periodic services](#periodic-services)**
+  * [Registering services after startup](#registering-services-after-startup)
 * **[State management (Barbatos.Wpf.Apsu)](#state-management-barbatoswpfapsu)**
   * [Stores](#stores)
   * [Getters](#getters)
@@ -52,13 +54,19 @@ registered in the same container.**
   * [Plugins](#plugins)
   * [Registry](#registry)
 * **[AI chat + MCP (Barbatos.Wpf.Mcp)](#ai-chat--mcp-barbatoswpfmcp)**
+  * [Hosted servers that need a sign-in (OAuth)](#hosted-servers-that-need-a-sign-in-oauth)
   * [Agents (Microsoft Agent Framework)](#agents-microsoft-agent-framework)
   * [Providers](#providers)
+  * [Models (IAiModelCatalog)](#models-iaimodelcatalog)
+  * [Attachments (images, documents)](#attachments-images-documents)
   * [Configuration](#configuration)
 * **[Ecosystem](#ecosystem)**
   * [Repository layout](#repository-layout)
 * **[API Reference](#api-reference)**
 * **[Community](#community)**
+  * [Maintainers](#maintainers)
+  * [Support](#support)
+  * [License](#license)
 
 ---
 
@@ -176,13 +184,31 @@ public static class WpfProgram
 `ILogger<T>`/`ILoggerFactory` pair if you never touch it, so consumers never receive
 `null`).
 
+**Add a logging provider.** Every optional desktop feature reports its failures only as log
+entries — a global hotkey another app already owns, a periodic run that threw, a push
+connection that could not start — and with no provider registered (the no-op pair, or
+`builder.Logging` touched but given no provider) those entries go nowhere. Core deliberately
+ships no provider of its own, so add one; during development the debug provider from the
+`Microsoft.Extensions.Logging.Debug` package, which writes to the debugger's Output window, is
+enough (the Core sample's `WpfProgram.cs` does exactly this):
+
+```csharp
+builder.Logging.AddDebug();
+```
+
+A shipped app usually also wants a provider that persists, such as a file or the Windows event
+log.
+
 ### Lifecycle events
 
 Application events (`OnStartup`, `OnActivated`, `OnDeactivated`, `OnSessionEnding`,
 `OnDispatcherUnhandledException`, `OnExit`) and window events (`OnWindowCreated`,
 `OnWindowLoaded`, `OnWindowActivated`, `OnWindowDeactivated`, `OnWindowStateChanged`,
-`OnWindowClosing`, `OnWindowClosed`) are surfaced through `ILifecycleEventService`, and every
-window gets its own service scope (with `IWpfInitializeScopedService` support).
+`OnWindowClosing`, `OnWindowClosed`) are surfaced through `ILifecycleEventService`. Window
+events fire for every `Window` in the app — the splash screen, dialogs and push-notification
+fallback popups included — so check which window it is before acting: the sample's
+minimize-to-tray handler returns early unless `window is MainWindow`, since cancelling
+`Closing` on any other window would leave it hidden but alive.
 
 ```csharp
 builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
@@ -191,8 +217,14 @@ builder.ConfigureLifecycleEvents(events => events.AddWpf(wpf => wpf
 ```
 
 `IWpfInitializeService` runs once during `Build()`; `IWpfInitializeScopedService` runs once
-per window scope — both are the WPF counterparts of `IMauiInitializeService`/
-`IMauiInitializeScopedService`.
+per window, the first time it raises `Loaded` — both are the WPF counterparts of
+`IMauiInitializeService`/`IMauiInitializeScopedService`. The per-window DI scope behind the
+latter is private to `WpfApplication`: it exists to run those initializers (and resolve that
+window's scoped `IDispatcher`) and is disposed when the window closes. App code cannot resolve
+from it — `Services` is always the root provider, and `Build()` creates the container without
+scope validation, so a service registered with `AddScoped` resolves there as one app-wide
+instance, not one per window. Register per-window state as transient instead, or create your
+own scope.
 
 ### Dispatching
 
@@ -206,13 +238,15 @@ registered app-wide (singleton) and per-window (scoped), plus the `DispatchAsync
 `HostingEnvironment`) resolves `EnvironmentName` the same way
 `Microsoft.Extensions.Hosting.HostBuilder` does: `WpfAppBuilder` adds an environment
 variables configuration source with the `DOTNET_` prefix as the very first (lowest-priority)
-entry in `builder.Configuration`, then reads `HostDefaults.EnvironmentKey` from it once,
-before any of your own configuration sources run. That means:
+entry in `builder.Configuration`, then reads `HostDefaults.EnvironmentKey` from the whole
+configuration once, lazily — the first time you access `builder.Environment` (or, if you never
+do, when `IHostEnvironment` is first resolved from the built container). That means:
 
 * Setting the `DOTNET_ENVIRONMENT` environment variable (e.g. `DOTNET_ENVIRONMENT=Staging`)
   before launching the app sets `builder.Environment.EnvironmentName`, with no code required.
-* Any configuration source you add that also sets the `environment` key overrides it —
-  including sources added *before* you first read `builder.Environment`:
+* Any configuration source that also sets the `environment` key overrides it, as long as it
+  is added *before* you first read `builder.Environment` — a source added after that first
+  read is never seen:
 
   ```csharp
   var builder = WpfApp.CreateBuilder();
@@ -223,9 +257,9 @@ before any of your own configuration sources run. That means:
 
   // builder.Environment.EnvironmentName == "Staging" from here on.
   ```
-* Unlike the WPF counterpart's previous behavior, `EnvironmentName` is a normal settable
-  property — `builder.Environment.EnvironmentName = "Staging";` works directly, and the value
-  is fixed once `Build()` has read it (it does not keep re-reading the environment variable).
+* `EnvironmentName` is a normal settable property — `builder.Environment.EnvironmentName =
+  "Staging";` works directly, at any time. Apart from that assignment the value stays what the
+  first read produced: it does not keep re-reading the environment variable or configuration.
 * `WpfHostEnvironment` also exposes `HostEnvironmentEnvExtensions` from
   `Microsoft.Extensions.Hosting` for free — `builder.Environment.IsDevelopment()`,
   `.IsProduction()`, `.IsEnvironment("Staging")`, etc.
@@ -262,13 +296,13 @@ container by `UseEssentials()`, part of the builder defaults:
 | Secure storage | `SecureStorage` | `ISecureStorage` | DPAPI (`ProtectedData`, current-user scope) instead of the WinRT `DataProtectionProvider` |
 | Version tracking | `VersionTracking` | `IVersionTracking` | Pure C#, no platform-specific code (built on `Preferences` + `AppInfo`) |
 | Connectivity | `Connectivity` | `IConnectivity` | `System.Net.NetworkInformation` instead of the WinRT `NetworkInformation` API |
-| Device display | `DeviceDisplay` | `IDeviceDisplay` | A Win32 monitor-info P/Invoke block against the active WPF window; `KeepScreenOn` via `SetThreadExecutionState`; change notifications via `SystemEvents.DisplaySettingsChanged` |
-| Email | `Email` | `IEmail` | Simple MAPI (`MAPISendMail`) |
-| Launcher | `Launcher` | `ILauncher` | `Process.Start(UseShellExecute: true)` instead of the WinRT `Windows.System.Launcher`; `CanOpenAsync` checks `HKEY_CLASSES_ROOT` for a registered scheme handler |
+| Device display | `DeviceDisplay` | `IDeviceDisplay` | A Win32 monitor-info P/Invoke block against the active WPF window; `KeepScreenOn` via `SetThreadExecutionState`, held on a thread of its own; change notifications via `SystemEvents.DisplaySettingsChanged` |
+| Email | `Email` | `IEmail` | Simple MAPI, Unicode entry point (`MAPISendMailW`); a missing mail client is reported as `FeatureNotSupportedException` |
+| Launcher | `Launcher` | `ILauncher` | `Process.Start(UseShellExecute: true)` instead of the WinRT `Windows.System.Launcher`, `true` whenever the shell accepts the target; `CanOpenAsync` checks `HKEY_CLASSES_ROOT` for a registered scheme handler |
 | Contacts | `Contacts` | `IContacts` | Throws `FeatureNotSupportedException` — see note below |
 | Geolocation | `Geolocation` | `IGeolocation` | Throws `FeatureNotSupportedException` — see note below; `Location`'s distance math is fully functional |
 | App actions | `AppActions` | `IAppActions` | The taskbar Jump List (`System.Windows.Shell.JumpList`) instead of the WinRT `Windows.UI.StartScreen.JumpList` |
-| Permissions | `Permissions.CheckStatusAsync<T>()` / `RequestAsync<T>()` | *(none — generic static API, no DI)* | Most permissions report `Granted` (no manifest/capability concept for an unpackaged app); `ContactsRead`/`ContactsWrite`/`LocationWhenInUse`/`LocationAlways`/`Microphone`/`Sensors` throw `FeatureNotSupportedException` — see [Permissions](#permissions) below |
+| Permissions | `Permissions.CheckStatusAsync<T>()` / `RequestAsync<T>()` | *(none — generic static API, no DI)* | Most permissions report `Granted` without checking anything (no manifest/capability concept for an unpackaged app); `ContactsRead`/`ContactsWrite`/`LocationWhenInUse`/`LocationAlways`/`Microphone`/`Sensors` throw `FeatureNotSupportedException` — see [Permissions](#permissions) below |
 
 ```csharp
 var name = AppInfo.Name;
@@ -281,6 +315,50 @@ await SecureStorage.SetAsync("api_token", token);
 await Email.ComposeAsync("Subject", "Body", "someone@example.com");
 await Launcher.OpenAsync("https://example.com");
 ```
+
+A few modules behave differently from their .NET MAUI originals on purpose, or have limits
+worth knowing before you rely on them:
+
+**`Email` reports failure.** `ComposeAsync` calls Simple MAPI's Unicode entry point
+`MAPISendMailW`, so a subject or body outside the system code page (Vietnamese on an
+English-locale machine, for one) reaches the mail client intact; the ANSI `MAPISendMail` the
+MAUI port uses turned those characters into `?`. When no mail client answers (none installed,
+or none set as the default), the call throws `FeatureNotSupportedException` instead of
+completing as if a compose window had opened; an attachment that does not exist throws
+`FileNotFoundException` before any client starts; a user closing the compose window is not an
+error. `IsComposeSupported` stays `true` — it says Simple MAPI is the mechanism, and only
+calling it tells whether a client answers — so offer a `mailto:` fallback:
+
+```csharp
+try
+{
+    await Email.ComposeAsync(subject, body, supportAddress);
+}
+catch (FeatureNotSupportedException)
+{
+    await Launcher.OpenAsync($"mailto:{supportAddress}?subject={Uri.EscapeDataString(subject)}");
+}
+```
+
+**`Launcher` returns `true` when the shell accepts the target.** `Process.Start` with shell
+execution returns no `Process` when the shell hands the target to an application that is
+already running or to a COM-activated handler, although the target opens. Counting that as a
+failure made a working browser hand-off look like an error, so `OpenAsync` now returns `false`
+only when the shell refuses (no handler, a missing file).
+
+**`DeviceDisplay.KeepScreenOn` stacks with keep-awake.** The
+`SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)` request is held by a background
+thread of its own for as long as the property is `true`. That state is per thread and each
+call replaces the calling thread's previous one, so applying it on the caller's thread — as
+earlier versions did — cancelled `ConfigureKeepAwake`'s `ES_SYSTEM_REQUIRED` (held on the UI
+thread) the moment the screen request was turned off. Windows combines every thread's request,
+so the two now add up, and `KeepScreenOn` can be set and cleared from any thread. For a
+persisted "keep the display on" setting prefer `KeepAwakeOptions.KeepDisplayOn`; use
+`KeepScreenOn` for a temporary "while presenting" request.
+
+**`Permissions` and `AppActions`** have Windows-specific limits of their own:
+[`Granted` means "not checked"](#permissions), and a Jump List click is
+[not reported while the app is already running under single instance](#app-actions-and-version-tracking).
 
 ### Configuring AppInfo and PublisherInfo
 
@@ -297,7 +375,7 @@ settings involved:
 ```xml
 <PropertyGroup>
   <OutputType>WinExe</OutputType>
-  <TargetFramework>net8.0-windows</TargetFramework>
+  <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
   <UseWPF>true</UseWPF>
 
   <!-- AppInfo.Name / PublisherInfo.Name / AppInfo.Version / PublisherInfo.Copyright -->
@@ -317,9 +395,23 @@ need:
 | Property | Standard fallback | Standard csproj property |
 | --- | --- | --- |
 | `AppInfo.Name` | `AssemblyProductAttribute`, then `AssemblyTitleAttribute` (`<Title>`), then the assembly name | `<Product>` |
-| `AppInfo.Version`/`VersionString` | The assembly's own `Version` | `<Version>` (or `<AssemblyVersion>` for finer control) |
+| `AppInfo.Version`/`VersionString` | The entry assembly's `AssemblyName.Version` (always four parts) | `<Version>` (or `<AssemblyVersion>` for finer control) |
 | `PublisherInfo.Name` | `AssemblyCompanyAttribute` | `<Company>` |
 | `PublisherInfo.Copyright` | `AssemblyCopyrightAttribute` | `<Copyright>` |
+
+**`AppInfo.Version` always has four parts.** It reads the entry assembly's
+`AssemblyName.Version`, so `<Version>1.2.3</Version>` reads back as `1.2.3.0` — show
+`AppInfo.Version.ToString(3)` in an About box. The SDK derives `AssemblyVersion` from
+`<Version>` with any prerelease suffix stripped (`<Version>1.3.0-beta.1</Version>` gives
+`1.3.0.0`; verified by building a probe project), and `FileVersion` defaults to that same
+value, so `<Version>` alone is enough for a prerelease too. Set `<AssemblyVersion>` only to a
+purely numeric value: `<AssemblyVersion>$(Version)</AssemblyVersion>` with a prerelease
+`<Version>` fails the build with `CS7034`. The one case that needs an explicit value is a shared
+`Directory.Build.props` that already sets `<AssemblyVersion>` (this repository's does, which is
+why its samples override it) — override it with the numeric part. The
+`Barbatos.Wpf.ApplicationModel.AppInfo.Version` metadata override below goes through
+`Version.Parse`, so it must be numeric as well; a value such as `1.2.0-beta` throws
+`FormatException` on every read.
 
 `AppInfo.AppId` and `PublisherInfo.Website`/`SupportUrl`/`SupportEmail` have no standard
 MSBuild-property equivalent — there is no built-in "app id"/"website"/"support URL"/"support
@@ -418,11 +510,13 @@ AppPublisher={#Publisher}
 > `GetVersionNumbers()` (used above to auto-extract `AppVersion` from the built `.exe`) reads
 > the Win32 `FileVersion` resource embedded in the PE file, not .NET's `AssemblyVersion` —
 > these are two different concepts that usually carry the same value only because the SDK
-> defaults `<FileVersion>` from `<Version>`. If you ever set `<AssemblyVersion>` to something
-> fixed (a common practice to avoid binding-redirect churn) while letting `<Version>`/
-> `<FileVersion>` increment per build, `AppInfo.VersionString` (which reads `AssemblyVersion`)
-> and what your installer reports from the `.exe` file will diverge — set `Barbatos.Wpf.ApplicationModel.AppInfo.Version` explicitly if you need them to
-> stay in lockstep.
+> defaults `<FileVersion>` to the `AssemblyVersion` it derives from `<Version>`. If you ever set
+> `<AssemblyVersion>` to something fixed (a common practice to avoid binding-redirect churn)
+> while letting `<Version>` increment per build (and setting `<FileVersion>` explicitly, since it
+> otherwise follows the fixed `AssemblyVersion`), `AppInfo.VersionString` (which
+> reads `AssemblyVersion`) and what your installer reports from the `.exe` file will diverge —
+> set `Barbatos.Wpf.ApplicationModel.AppInfo.Version` explicitly if you need them to stay in
+> lockstep.
 
 ### Reading back InstallDate and InstallLocation
 
@@ -482,14 +576,25 @@ rather than something an app typically needs to read back about itself, so they 
 through `ConfigureEssentials`:
 
 ```csharp
+// WpfProgram.cs
 builder.ConfigureEssentials(essentials => essentials
-    .AddAppAction("open", "Open", "Show the main window")
-    .OnAppAction(action =>
-    {
-        if (action.Id == "open")
-            App.ShowMainWindow();
-    })
+    .AddAppAction("new-note", "New note", "Start a blank note")
+    .OnAppAction(action => App.LaunchActionId = action.Id)
     .UseVersionTracking());
+
+// App.xaml.cs
+internal static string? LaunchActionId { get; set; }
+
+protected override void OnStartup(StartupEventArgs e)
+{
+    base.OnStartup(e);                  // a Jump List activation is raised in here
+
+    MainWindow = Services.GetRequiredService<MainWindow>();
+    MainWindow.Show();
+
+    if (LaunchActionId == "new-note")
+        Services.GetRequiredService<MainViewModel>().NewNote();   // the app's own command
+}
 ```
 
 Clicking a Jump List entry launches a new process with an encoded command-line argument;
@@ -500,14 +605,34 @@ List API instead of `Windows.UI.StartScreen.JumpList`. Because
 (unlike WinRT's `JumpList.LoadCurrentAsync()`), `AppActions.GetAsync()` returns the actions
 last set by `SetAsync()` in this process rather than querying the OS.
 
+That event fires inside `WpfApplication.OnStartup` — that is, inside your override's
+`base.OnStartup(e)` call, before any main window exists. Hence the shape above: the handler
+only records the id, and the app acts on it once `MainWindow` is shown. A handler that tries
+to show or activate the main window itself finds no window on a cold start, and an
+`AppActions.OnAppAction +=` placed *after* `base.OnStartup(e)` never sees the activation at all
+(the Core sample subscribes before it, in `App.xaml.cs`). Two further limits follow from a
+click being a relaunch:
+
+- **Under `ConfigureSingleInstance()`, only cold starts are reported.** While the app is
+  already running, the relaunched process exits inside `Build()` — before the startup event —
+  and the running instance receives only `ISingleInstanceService.SecondInstanceLaunched`,
+  which carries no command-line arguments. The action id is lost; the running instance can
+  bring its window forward (the default `ActivateMainWindow` behaviour), not tell which entry
+  was clicked.
+- **Actions must be declared at startup to be recognised.** The relaunched process matches
+  the clicked id against the actions set *in that process* before its startup event, which
+  `ConfigureEssentials` does during `Build()`. An action added later with
+  `AppActions.SetAsync(...)` appears in the Jump List but raises nothing after a restart unless
+  the next launch declares it the same way.
+
 ### Contacts and Geolocation
 
 A real Windows implementation of `Contacts`/`Geolocation` needs WinRT contracts
 (`Windows.ApplicationModel.Contacts.ContactPicker`,
-`Windows.Devices.Geolocation.Geolocator`) that require a TargetFramework with WinRT
-projections (`net8.0-windows10.0.19041.0`-style) and, for some APIs, MSIX packaging —
-neither of which this plain `net8.0-windows`/`net9.0-windows`/`net10.0-windows` WPF library
-uses. Rather than pull in that machinery, both modules still ship their full type surface
+`Windows.Devices.Geolocation.Geolocator`) and, for some APIs, MSIX packaging. Although this
+package targets `net*-windows10.0.17763.0`, it uses those WinRT projections only for toast
+notifications and keeps every Essentials module on Win32/.NET APIs. Rather than pull in that
+machinery, both modules still ship their full type surface
 (`IContacts`/`Contact`/`ContactEmail`/`ContactPhone`,
 `IGeolocation`/`Location`/`GeolocationRequest`/...) — useful if you share code with a .NET
 MAUI project, since it compiles unchanged either way — but every member of the Windows
@@ -547,10 +672,15 @@ Every permission type below is present as a nested type of `Permissions`: `Batte
 `PostNotifications`, `Reminders`, `Sensors`, `Sms`, `Speech`, `StorageRead`/`StorageWrite`,
 `Vibrate`. Two behaviors on WPF:
 
-- **Most permissions report `PermissionStatus.Granted`.** An unpackaged desktop WPF app has
-  no `AppxManifest.xml` capability declarations to check, and Windows itself doesn't gate
-  `Camera`, `CalendarRead`, `Phone`, `StorageRead`, etc. behind a runtime consent prompt
-  outside a packaged/store app — `EnsureDeclared()` is a no-op for the same reason.
+- **Most permissions report `PermissionStatus.Granted` without checking anything.** An
+  unpackaged desktop WPF app has no `AppxManifest.xml` capability declarations to check and no
+  runtime consent prompt to show, so `EnsureDeclared()` is a no-op and `RequestAsync` returns
+  what `CheckStatusAsync` does. Read `Granted` as "not gated by this API, not checked", not as
+  "Windows allows it": the Windows privacy settings (Settings ▸ Privacy & security ▸ Camera)
+  can still block a desktop app's camera, and `PostNotifications` is `Granted` even when the
+  user or a policy has turned this app's toasts off — read
+  `INotificationService.Availability` (from `ConfigureNotifications()`) before relying on a
+  toast.
 - **`ContactsRead`, `ContactsWrite`, `LocationWhenInUse`, `LocationAlways`, `Microphone`, and
   `Sensors` throw `FeatureNotSupportedException`.** A real check for these six needs WinRT
   device-access contracts (`ContactManager`, `Geolocator`, `DeviceAccessInformation`,
@@ -560,8 +690,20 @@ Every permission type below is present as a nested type of `Permissions`: `Batte
   honest about it instead.
 
 If you need a real permission check (for example reading the Windows privacy consent
-registry, or a custom capability broker), subclass `Permissions.BasePlatformPermission` and
-pass your subclass as `TPermission`.
+registry, or a custom capability broker), subclass `Permissions.BasePlatformPermission` (or
+one of the nested types), override `CheckStatusAsync()` — `RequestAsync()` forwards to it —
+and pass your subclass as `TPermission`:
+
+```csharp
+sealed class CameraPrivacyPermission : Permissions.BasePlatformPermission
+{
+    // ReadCameraConsent() is the app's own check, e.g. of the Windows privacy settings.
+    public override Task<PermissionStatus> CheckStatusAsync() =>
+        Task.FromResult(ReadCameraConsent() ? PermissionStatus.Granted : PermissionStatus.Denied);
+}
+
+var status = await Permissions.RequestAsync<CameraPrivacyPermission>();
+```
 
 ### License enforcement: DeviceIdentity
 
@@ -584,10 +726,19 @@ string installId = await DeviceIdentity.GetInstanceIdAsync();
 string fingerprint = await DeviceIdentity.GetHardwareFingerprintAsync();
 ```
 
-| Member | What it is | Survives reinstall? |
+| Member | What it is | Changes when |
 | --- | --- | --- |
-| `GetInstanceIdAsync()` | A random GUID generated on first use, persisted via `SecureStorage`. Identifies "this install", not the physical machine. | No |
-| `GetHardwareFingerprintAsync()` | A SHA-256 hash of a few motherboard/BIOS/CPU identifiers (read via WMI), salted with `AppInfo.AppId`. | Yes |
+| `GetInstanceIdAsync()` | A random GUID generated on first use, persisted via `SecureStorage` under the key `Barbatos.Wpf.DeviceIdentity.InstanceId`. Identifies this app's data for this Windows user, not the physical machine. | `%LocalAppData%\{Publisher}\{AppId}\Settings\securestorage.dat` is lost (deleted, a new Windows user profile or machine); `SecureStorage.RemoveAll()` runs; `AppInfo.AppId` or `PublisherInfo.Name` changes |
+| `GetHardwareFingerprintAsync()` | A SHA-256 hash of a few motherboard/BIOS/CPU identifiers (read via WMI), salted with `AppInfo.AppId`. | The hardware is replaced, or `AppInfo.AppId` changes |
+
+The instance id does **not** reset on an ordinary reinstall: uninstallers (Inno Setup, MSI)
+remove what they installed and, unless told otherwise, leave the per-user `%LocalAppData%`
+data behind — and the id lives there. To reset it on purpose, remove the
+`Barbatos.Wpf.DeviceIdentity.InstanceId` key from `SecureStorage` (an uninstaller can delete
+`securestorage.dat`, at the cost of every other secret stored there). Concurrent first calls
+within one process are serialized, so a startup licence check and a background job asking at
+the same moment receive the same id; two processes starting at the same moment can still each
+create one, and the last write wins on disk.
 
 Two design choices keep this narrower than the raw hardware-ID approach a lot of licensing
 code reaches for by default:
@@ -600,10 +751,11 @@ code reaches for by default:
   `IdentifierForVendor` is scoped to a developer rather than being a single ID usable to
   correlate a device across unrelated apps.
 
-Use `GetInstanceIdAsync()` alone if you don't need to survive a reinstall (the least invasive
-option). Use `GetHardwareFingerprintAsync()` (or both, keyed together) if a user should not be
-able to reset a per-machine activation count by simply reinstalling — this is the same
-technique commercial license managers (FlexNet, Reprise, ...) use.
+Use `GetInstanceIdAsync()` alone if an activation may reset along with the app's data (the
+least invasive option). Use `GetHardwareFingerprintAsync()` (or both, keyed together) if a
+user should not be able to reset a per-machine activation count by deleting that data or
+signing in as another Windows user — this is the same technique commercial license managers
+(FlexNet, Reprise, ...) use.
 
 **Network address:** for the same purpose (e.g. flagging one license activating from an
 unusual number of locations), resist the urge to call a third-party IP-lookup service (like
@@ -626,17 +778,22 @@ registered when its `Configure...` method is called, binds its own configuration
 | Feature | Builder method | Options section | Runtime service | Enabled by default? |
 | --- | --- | --- | --- | --- |
 | Single instance (block duplicate launches) | `ConfigureSingleInstance(...)` | `Barbatos:SingleInstance` | `ISingleInstanceService` | **Yes** |
-| Run on startup (registry `Run` key) | `ConfigureRunOnStartup()` | `Barbatos:RunOnStartup` | `IRunOnStartupService` | No |
+| Run on startup (registry `Run` key) | `ConfigureRunOnStartup(...)` | `Barbatos:RunOnStartup` | `IRunOnStartupService` | No |
 | System tray icon (`Shell_NotifyIcon`) | `ConfigureTrayIcon(...)` | `Barbatos:TrayIcon` | `ITrayIconService` | No |
-| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake()` | `Barbatos:KeepAwake` | `IKeepAwakeService` | No |
-| Push notifications (adaptive toast, images/buttons/navigation) | `ConfigureNotifications()` | `Barbatos:Notifications` | `INotificationService` | Yes |
-| Periodic background services | `ConfigurePeriodicServices<T>()` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
-| Realtime push notification listener (SignalR) | `ConfigurePushNotifications()` | `Barbatos:PushNotifications` | `IPushNotificationService` | Yes |
+| Keep computer awake (`SetThreadExecutionState`) | `ConfigureKeepAwake(...)` | `Barbatos:KeepAwake` | `IKeepAwakeService` | No |
+| Desktop notifications (adaptive Windows toast, images/buttons/navigation) | `ConfigureNotifications(...)` | `Barbatos:Notifications` | `INotificationService` | Yes |
+| Periodic background services | `ConfigurePeriodicServices<T>(...)` | `Barbatos:PeriodicServices` | `IPeriodicServiceScheduler` | Yes |
+| Realtime push notification listener (SignalR) | `ConfigurePushNotifications(...)` | `Barbatos:PushNotifications` | `IPushNotificationService` | Yes |
 | Keyboard shortcuts (in-app + `RegisterHotKey` global hotkeys) | `ConfigureInputSystem(...)` | `Barbatos:InputSystem` | `IInputSystemService` | Yes |
+| Dialogs (owner assignment, no duplicate opens, graceful close) — see [Dialogs](#dialogs) | `ConfigureDialogs(...)` | `Barbatos:Dialogs` | `IDialogService` | n/a (no on/off switch) |
 
 "Enabled by default" means what happens the moment you call the `Configure...` method with no
 further setup — every feature is still opt-in at the *builder* level (call the method, or the
 service isn't registered at all).
+
+These features report what goes wrong — a refused global hotkey, a failed periodic run, a push
+connection error — only through `ILogger`, so register a logging provider (see
+[Compose the host](#2-compose-the-host)) or those failures stay invisible.
 
 ```csharp
 builder.ConfigureSingleInstance();
@@ -691,8 +848,21 @@ Notes:
 - The tray icon supports a context menu, tooltip, click/double-click events, and balloon
   notifications (`ShowBalloonTip`); the sample uses it together with the `OnWindowClosing`
   lifecycle event to implement minimize-to-tray, showing a balloon each time the window is
-  hidden so a hidden window doesn't look identical to a closed app.
-- `RunOnStartup` state is persisted by the OS registry; the other toggles can be
+  hidden so a hidden window doesn't look identical to a closed app. That handler acts only when
+  `window is MainWindow`: lifecycle window events fire for every window, and cancelling a
+  dialog's or a fallback popup's close would hide it instead (with `IDialogService` still
+  tracking the hidden dialog as open). It matches the window's type rather than
+  `Application.MainWindow` because WPF makes the first window created — the splash screen —
+  `Application.MainWindow` until it closes (checked in dotnet/wpf's `Window.cs`), so a
+  reference check would hide the splash instead of closing it whenever the tray icon is
+  already visible at startup.
+- `RunOnStartup` state is persisted by the OS registry. Its `IsEnabled` reflects only the `Run`
+  value the service writes, not the switch in Task Manager's Startup tab or Settings > Apps >
+  Startup: Windows stores that one separately (`StartupApproved`) and keeps the `Run` value, so
+  after a user turns the app off there, `IsEnabled` still reads `true` and Windows does not
+  start it. The service leaves that key alone on purpose (it is undocumented, and it records a
+  choice the user made in the OS's own UI); a settings screen can say so next to its checkbox.
+  The other toggles can be
   persisted by writing their configuration sections back to a user settings file that is
   loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
 - Notifications are pushed as full adaptive Windows toast notifications (via the Windows
@@ -710,6 +880,14 @@ Notes:
     notification body itself (as opposed to a button); read it back from
     `NotificationActivatedEventArgs.Arguments` in the `Activated` handler to route the user
     to the relevant place in the app.
+  - `Activated` is raised on the UI thread. Windows reports toast clicks on a background thread,
+    and the service marshals each one to the application dispatcher first, so a handler can
+    navigate or append to a bound collection directly — the sample's handler does the latter.
+  - `NotificationActivatedEventArgs.Title`/`Message` are the clicked toast's own text, looked up
+    by an id the default toast platform adds to each toast's activation arguments. Windows hands
+    back only those arguments, never the text, so a toast left in the notification center by an
+    *earlier run* of the app (or one more than 100 toasts old) reports empty strings. Route on
+    `Arguments`, which survives restarts; treat `Title`/`Message` as display text.
   - Per-project branding: `NotificationOptions.IconPath` sets a persistent circular app
     logo overlay shown on every notification (defaults to the executable's icon); per-call
     visuals (image, buttons, navigation) are set per `NotificationContent`/`Show` call, so
@@ -757,7 +935,9 @@ Notes:
     so you always know when something arrived even if you never touch the UI event.
   - A notification's `Action` (`Url`/`Setting`/`Route`/`None`) is dispatched automatically for
     `Url`/`Setting` (opened via `Launcher`); `Route` raises `RouteRequested` instead, since only
-    your app knows its own screens/navigation.
+    your app knows its own screens/navigation. `RouteRequested` is raised on the UI thread for
+    both a toast click (it comes through `INotificationService.Activated`) and a click on the
+    built-in fallback window, so the handler can navigate directly.
   - The default transport's own `HandshakeMethodName`/`NotificationMethodName`/
     `AcknowledgeMethodName` (defaulting to `"RegisterDevice"`/`"ReceiveNotification"`/
     `"AcknowledgeNotification"`) are configurable via `ConfigurePushNotifications`'s
@@ -967,8 +1147,9 @@ This is a straightforward reordering, not a new API - the only two things that m
 already true of any DI-registered ViewModel: it must be a **singleton** (a scoped/transient
 registration would hand `MainWindow`'s constructor a second, still-unloaded instance instead of
 the one already awaited above), and the slow work has to be something you can genuinely `await`
-(if your "slow work" is synchronous, an `IWpfInitializeService` - covered by the splash the same
-way, since it also runs before `CreateWpfApp()` - is the better fit; see "Hosting" above).
+(if your "slow work" is synchronous, an `IWpfInitializeService` is the better fit - it runs
+inside `CreateWpfApp()`, during `Build()`, after the splash screen is already showing, so the
+splash covers it too, though without animating; see [Lifecycle events](#lifecycle-events)).
 
 Weigh this against just showing the window immediately and letting that one section show its
 own loading state instead (a spinner, a skeleton) - blocking the *entire* app's startup on one
@@ -1195,7 +1376,8 @@ the base every store derives from:
 Register a store with **`AddStore<TStore>()`** - it becomes a singleton, created lazily on
 first resolution and cached for the container's lifetime after that, keyed by `TStore` itself.
 A store's constructor can take further dependencies - other services, or other stores,
-resolved by the container the same way any other constructor dependency is. Register its local
+resolved from the container (once interceptors apply, with the stricter rules listed at the end
+of [Actions and action interceptors](#actions-and-action-interceptors)). Register its local
 interceptors in the same call by chaining `Add` on the builder it hands you - one `AddStore`
 call handles the store and every local interceptor it needs, instead of a separate
 `AddStoreInterceptor<TStore>(...)` call per interceptor plus a trailing `AddStore<TStore>()`:
@@ -1234,6 +1416,34 @@ C# has no proxy-based reactivity to auto-track that on its own - this is a coars
 specific property it actually reads), a deliberate simplification over a full
 dependency-tracking system.
 
+Three things a getter does not do, each of which bites when it is shown in XAML:
+
+- **It raises no `PropertyChanged`.** `Summary` above is a plain property read, so
+  `{Binding OrderStore.Summary}` reads it once and never updates. Expose it through a ViewModel
+  that re-raises it whenever any store the getter reads changes:
+
+  ```csharp
+  orderStore.StateChanged += (_, _) => OnPropertyChanged(nameof(Summary));
+  userStore.StateChanged += (_, _) => OnPropertyChanged(nameof(Summary));
+
+  public string Summary => _orderStore.Summary;
+  ```
+
+  Raise it from a ViewModel, not from the store's own `StateChanged` handler - a store raising its
+  own `PropertyChanged` there fires `StateChanged` again, recursively.
+- **Forwarding on `PropertyChanged` goes stale inside `Patch`.** Outside a `Patch`, the store's
+  own `PropertyChanged` handler (subscribed first, in `StoreBase`'s constructor) raises
+  `StateChanged` before any later subscriber runs, so the getter is already invalidated. Inside a
+  `Patch`, `StateChanged` waits until the patch returns: a `PropertyChanged` handler that reads
+  the getter gets the old cached value, and nothing notifies again afterwards. Forward on
+  `StateChanged`, as above.
+- **It has no `Dispose`.** Its constructor subscribes to every dependency's `StateChanged` and
+  never unsubscribes. Inside a store that costs nothing - store and getter share one lifetime -
+  but a `Getter<T>` built in a short-lived ViewModel over an app-lifetime store keeps that
+  ViewModel, and everything the callback captures, alive for the life of the app. Create getters
+  inside stores; for a per-screen derived value use something the ViewModel can dispose (for
+  example Aquarius's `Computed<T>`).
+
 ### Actions and action interceptors
 
 A `[Action]`-marked `public virtual` method is interceptable, shaped as ASP.NET Core-style
@@ -1247,13 +1457,19 @@ public sealed class LoggingInterceptor : IStoreActionInterceptor
 {
     public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
     {
-        Console.WriteLine($"[{context.Store.GetType().Name}] {context.ActionName} starting");
-        var result = await next(); // call first - see the warning below
-        Console.WriteLine($"[{context.Store.GetType().Name}] {context.ActionName} done");
+        // context.Store is the generated proxy subclass; its BaseType is the store's own type.
+        var store = context.Store.GetType().BaseType!.Name;
+        Console.WriteLine($"[{store}] {context.ActionName} starting");
+        var result = await next(); // the rest of the chain, then the action itself
+        Console.WriteLine($"[{store}] {context.ActionName} done");
         return result;
     }
 }
 ```
+
+An interceptor only ever runs on a store built behind the proxy (below), so
+`context.Store.GetType()` is always the generated subclass - `OrderStoreProxy` or similar - and
+`GetType().BaseType` is the type you registered.
 
 ```csharp
 // Global - wraps every store's actions. DI-constructed - no `new` needed, since
@@ -1305,19 +1521,56 @@ public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDeleg
 `StoreActionContext.Arguments` carries the actual call arguments in declaration order, so a
 condition can be about *what an action was called with*, not just the store's current state.
 
+`next` can be called after other asynchronous work, and called again to retry. An async
+precondition (a server-side permission check) can be awaited *before* `next()`, and a retry
+interceptor can call `next()` again after an attempt failed - even one that failed after the
+action's own first `await`. A local retry interceptor on a store whose actions return `Task`
+(see the note below for why that matters):
+
+```csharp
+public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+{
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            return await next(); // re-runs the interceptors after this one, then the action
+        }
+        catch (HttpRequestException) when (attempt < 3)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(attempt)); // back off, then try again
+        }
+    }
+}
+```
+
+Each call of `next` re-runs the rest of the chain - every interceptor after this one in the
+chain order above, then the action body - while interceptors outside this one see a single
+call. Make one call at a time (await it before starting the next), and keep the awaits before
+`next` on the caller's context (no `ConfigureAwait(false)`): the action body runs on whichever
+thread calls `next`.
+
+Both shapes used to hang or misbehave, because Castle DynamicProxy's `IInvocation` - its
+interceptor index and its `ReturnValue` - is only safe to proceed while the proxied call is still
+running on its own thread. Proceeded from a later continuation with `IInvocation.Proceed()`, it
+re-entered the whole chain instead of running the action: an `await` before `next` suspended
+again on every re-entry, a hang with no exception (confirmed by killing a stuck test host), and a
+retry ran the outer interceptors again, nested. `IInvocation.CaptureProceedInfo()` fixes that only
+where continuations wait for the call to return, as on a UI thread; a thread-pool continuation can
+run while the call is still returning, and a stress test then saw calls run the chain twice or
+never complete. So the pipeline proceeds Castle's invocation only from inside the call, and any
+later `next` - or one from another thread - reaches the action through a second call on the proxy
+that skips the chain. `StoreActionInterceptorTests` pins each shape, the thread-pool race included.
+
 > [!IMPORTANT]
-> **Call `next` as your first meaningful step if you're going to call it at all - never `await`
-> anything genuinely asynchronous before calling it.** Castle DynamicProxy's underlying
-> `Proceed()` (what `next` eventually reaches) is not safe to call from a continuation that
-> already crossed a real `await` suspension - doing so hangs the action forever instead of
-> throwing (confirmed by isolating and killing the stuck process during this feature's own
-> testing). Awaiting real asynchronous work *after* `next()` returns (post-processing, e.g.
-> flushing a log) is fully supported - only work ordered *before* it is unsafe. A synchronous
-> action's interceptor chain still runs through this same `async` shape, but the proxy blocks on
-> it (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a synchronous caller -
-> safe as long as every interceptor in that chain only does synchronous work, but risks the
-> classic WPF sync-over-async deadlock if one doesn't. Pair genuinely asynchronous interceptor
-> logic with a `Task`-returning action to avoid this entirely.
+> **Genuinely asynchronous interceptor work needs a `Task`-returning action.** A synchronous
+> action's interceptor chain still runs through the same `async` shape, but the proxy blocks on
+> it (`GetAwaiter().GetResult()`) since there's no `Task` to hand back to a synchronous caller.
+> That is safe as long as every interceptor in the chain only does synchronous work (an
+> `async` method awaiting already-completed tasks counts), but an interceptor that genuinely
+> suspends anywhere in it - before or after `next` - waits for a continuation on the UI thread
+> the proxy is blocking: the classic WPF sync-over-async deadlock. A global interceptor wraps
+> every store's synchronous actions too, so it should await nothing but `next()` itself.
 
 Combine with `OnDispatcherUnhandledException` (see [Lifecycle events](#lifecycle-events)) to give
 a store action's error and any other unhandled exception one shared reporting path, since an
@@ -1334,17 +1587,29 @@ public sealed class ErrorReportingInterceptor : IStoreActionInterceptor
         }
         catch (Exception ex)
         {
-            Report(context.Store.GetType().Name, context.ActionName, ex); // same sink OnDispatcherUnhandledException uses
+            Report(context.Store.GetType().BaseType!.Name, context.ActionName, ex); // same sink OnDispatcherUnhandledException uses
             throw;
         }
     }
 }
 ```
 
-A store using interceptors must be **non-`sealed`** with **exactly one public constructor**
-(interception works by generating a runtime subclass via Castle DynamicProxy that overrides every
-`[Action]`-marked method) - `AddStore<TStore>()` throws a descriptive `InvalidOperationException`
-at first resolution otherwise, rather than failing silently.
+Interception works by generating a runtime subclass via Castle DynamicProxy that overrides every
+`[Action]`-marked method, and that asks more of a store than the plain path does. A store with
+at least one interceptor applying to it - and a **global** interceptor applies to every store, so
+adding one can break a store that has none of its own - must be:
+
+- **non-`sealed`** - otherwise `InvalidOperationException` ("must not be sealed") at first
+  resolution;
+- **`public`**, along with every type it is nested in - Castle's generated assembly cannot
+  subclass anything less visible, and throws `ArgumentException` ("is not accessible");
+- built through **exactly one public constructor** - otherwise `InvalidOperationException`
+  ("must have exactly one public constructor"). Each of its parameters is resolved with
+  `GetRequiredService`, so an optional parameter's default value is *not* used the way
+  `ActivatorUtilities` (the plain path) uses it: a parameter whose type isn't registered throws
+  "No service for type ..." even when it has a default.
+
+All three fail loudly at first resolution rather than silently skipping interception.
 
 #### Removing an interceptor at runtime
 
@@ -1356,16 +1621,45 @@ remove an interceptor later without rebuilding the host - `axios`'s
 builder.Services.AddStoreInterceptor(new LoggingInterceptor(), out var loggingHandle);
 // Local interceptors have the same overload: AddStoreInterceptor<TStore>(interceptor, out handle)
 
-// Later, e.g. from a settings toggle:
+// Later, e.g. once a diagnostics session is over for good:
 loggingHandle.Eject();
 ```
 
 Ejecting doesn't remove the interceptor from the chain structurally - its slot just becomes a
 transparent pass-through straight to the next interceptor (or the action itself) from that call
-onward, as if it had never been registered. A call already in flight when `Eject()` runs keeps
-using the interceptor; every call that starts afterward skips it. There's no "re-attach" -
-construct and register a new interceptor if you need the behavior back. Most interceptors don't
-need this - it's opt-in per interceptor, not automatic.
+onward, as if it had never been registered. Each call checks at the moment it reaches that slot:
+a call already inside the interceptor when `Eject()` runs finishes with it, while a call still in
+an interceptor further out (awaiting before `next()`, say) skips it when it gets there, as does
+every call that starts afterward. Most interceptors don't need
+this - it's opt-in per interceptor, not automatic.
+
+Ejecting is one-way. There's no "re-attach", and registering the interceptor again is no way back
+either: `Build()` makes the service collection read-only, and each store reads its chain once,
+when it is first resolved - getting the behavior back takes a new container. For behavior a
+user can switch on and off (a settings toggle), give the interceptor its own flag instead:
+
+```csharp
+public sealed class ToggleableLoggingInterceptor : IStoreActionInterceptor
+{
+    public bool Enabled { get; set; } = true; // flipped by a settings screen, any number of times
+
+    public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next) =>
+        Enabled ? LogAroundAsync(context, next) : next();
+
+    async Task<object?> LogAroundAsync(StoreActionContext context, StoreActionDelegate next)
+    {
+        Console.WriteLine($"{context.ActionName} starting");
+        var result = await next();
+        Console.WriteLine($"{context.ActionName} done");
+        return result;
+    }
+}
+
+// Register the instance so the settings screen can reach the same object:
+var logging = new ToggleableLoggingInterceptor();
+builder.Services.AddSingleton(logging);
+builder.Services.AddSingleton<IStoreActionInterceptor>(logging);
+```
 
 ### Plugins
 
@@ -1389,6 +1683,12 @@ constructor has already run, in plugin-registration order. A plugin can read/wri
 subscribe to `StateChanged`, but cannot transparently intercept an action call (use an
 `IStoreActionInterceptor` for that instead).
 
+`Apply` runs inside that store's own DI resolution, so state a plugin *restores* is set before
+anything else can have subscribed to the store - the change notifications for it reach nobody.
+Whatever reacts to that state has to read the current value when it subscribes, the way Vue's
+`watch(..., { immediate: true })` does: the Aquarius sample's `OrderStore` checks for a restored
+`UserStore.SelectedUserId` right after wiring its watch, and loads that user's orders.
+
 ### Registry
 
 `IStoreRegistry` (resolved automatically - there's normally no need to depend on it directly)
@@ -1400,11 +1700,13 @@ See the `Barbatos.Wpf.Apsu` namespace in the [API Reference](#api-reference) for
 list. Two worked examples ship with this repository:
 
 - **`samples/Barbatos.Wpf.Core.Sample`** - `CounterStore` (state, a getter, two actions) plus
-  `SampleActionLoggingInterceptor`, a single global interceptor also called directly from the
-  `OnDispatcherUnhandledException` lifecycle hook, showing the two error paths share one policy.
+  `SampleActionLoggingInterceptor`, a single global interceptor that logs into
+  `SampleActivityLog`; the `OnDispatcherUnhandledException` lifecycle hook reports into that same
+  log, so a failed action and any other unhandled exception share one sink and one policy.
 - **`samples/Barbatos.Wpf.Aquarius.Sample`** (`ApsuInteropDemoView`/`ApsuInteropDemoViewModel`) -
   a richer scenario against a real API (jsonplaceholder.typicode.com): `UserStore`/`OrderStore`
-  watching each other's state and calling across stores, a getter combining both, and a full
+  watching each other's state and calling across stores, a getter combining both (forwarded to
+  XAML by the ViewModel), a plugin that restores the last selected user, and a full
   3-global + 3-local interceptor chain (logging, timing, audit trail, argument-based validation,
   a state-based guard, and a cooldown) demonstrating short-circuiting at every layer.
 
@@ -1579,7 +1881,15 @@ structured output via `RunAsync<T>`, and so on.
   `options.ToolApproval = AiToolApprovalMode.Never` for the older auto-execute behavior.
 - **The agent is rebuilt when its inputs change** - a different provider/model/API key, or an MCP
   server connecting or disconnecting. Ask `GetAgentAsync()` per conversation rather than holding
-  one forever; an `AgentSession` survives those rebuilds.
+  one forever; an `AgentSession` survives those rebuilds. `AiAgentOptions` itself is not one of
+  those inputs: it is read when the agent is built, so editing it at runtime only shows up at the
+  next rebuild. For different instructions or tools at runtime, use `CreateAgentAsync` (below) or
+  per-run instructions in `ChatClientAgentRunOptions`.
+- **`IAiAgentFactory.ConfigurationChanged` can arrive on a thread-pool thread.** It forwards
+  `IMcpServerRegistry.Changed`, which the registry raises after awaiting the connection - so a
+  seed server finishing its connect at startup reaches your handler off the UI thread. The MCP
+  layer is UI-agnostic and does not marshal; dispatch before touching bindings or a bound
+  collection (the sample's `MainViewModel` does).
 - **`CreateAgentAsync(descriptor)`** builds a second, differently-scoped agent (a summarizer, a
   code reviewer) with its own instructions, its own tools, and its own approval policy, without
   disturbing the default one.
@@ -1736,16 +2046,26 @@ A few behaviors worth knowing before relying on this feature:
   actually runs (for example because end users can add their own untrusted MCP servers), use
   `IAiAgentFactory` instead - its default `AiToolApprovalMode.Always` pauses the run and hands the
   pending call back to you, which is what the "Agents" section above is about.
-- **Tool name collisions**: if two connected servers expose a same-named tool, the one from
-  whichever server connected most recently wins - a warning is logged when this happens.
+- **Tool name collisions**: if two connected servers expose a same-named tool, the one from the
+  server *added* later wins - the one later in `IMcpServerRegistry.Servers` - and a warning naming
+  both servers is logged. A server takes its place in that list when `AddServerAsync` starts,
+  before it connects, so precedence follows the order servers were added (the seed list in
+  order, then runtime additions), not the order they happened to finish connecting.
 - **A failed server connection is still tracked** - `IMcpServerRegistry.Servers` includes it with
   `IsConnected = false` and `LastError` set, rather than disappearing; `AddServerAsync` also
   rethrows the exception, so a caller doesn't have to poll `Servers` just to notice a failure.
+  An entry rejected *before* connecting is different: a descriptor failing `Validate()`, or one
+  reusing a tracked `Name`, throws before any status exists, so a seed entry like that is missing
+  from `Servers` entirely and only the startup error log mentions it.
 - **Runtime-mutable state does not persist itself** - like every other runtime-mutable feature in
   this library (`ITrayIconService`, `IPeriodicServiceScheduler`), an `IMcpServerRegistry.AddServerAsync`/
   `IAiChatClientFactory.UpdateProvider` call made from a settings UI is not written back to a
-  config file automatically; persist it yourself (see `SettingsStore` in the sample) if it should
-  survive a restart.
+  config file automatically; persist it yourself if it should survive a restart. The sample
+  deliberately doesn't: its `SettingsStore` shows the pattern (a JSON file the host loads back into
+  configuration on the next start) for the tray, keep-awake, periodic-service and notification
+  settings only, so its AI provider/model and any server added at runtime start from the seeded
+  defaults on every launch. What does survive is held by the secret stores: the API key
+  (`IAiApiKeyProvider`) and a signed-in server's OAuth tokens (`IMcpTokenStore`).
 
 ---
 

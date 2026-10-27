@@ -54,12 +54,27 @@ class LauncherImplementation : ILauncher
         return canOpen;
     }
 
+    /// <summary>
+    /// Hands <paramref name="target"/> to the shell; <see langword="true"/> unless the shell
+    /// refused it.
+    /// </summary>
+    /// <remarks>
+    /// Success is "<see cref="Process.Start(ProcessStartInfo)"/> did not throw", not "a
+    /// <see cref="Process"/> came back": with shell execution, <c>Process.Start</c> returns
+    /// <see langword="null"/> whenever the shell satisfies the request without starting a new
+    /// process - a DDE hand-off to an application that is already running, or a COM-activated
+    /// handler such as a packaged app. The target did open in those cases, and reporting
+    /// <see langword="false"/> made callers such as the MCP browser sign-in treat a working
+    /// launch as a failure. A real refusal (no association, a missing file) surfaces as a
+    /// <see cref="System.ComponentModel.Win32Exception"/> and still yields
+    /// <see langword="false"/>.
+    /// </remarks>
     static bool PlatformOpen(string target)
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-            return process != null;
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })?.Dispose();
+            return true;
         }
         catch
         {

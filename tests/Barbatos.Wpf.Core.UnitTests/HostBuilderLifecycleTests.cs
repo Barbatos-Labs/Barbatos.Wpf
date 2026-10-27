@@ -3,6 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.Runtime.ExceptionServices;
 using Barbatos.Wpf.LifecycleEvents;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -105,17 +106,31 @@ public class HostBuilderLifecycleTests
 
         var lifecycle = wpfApp.Services.GetRequiredService<ILifecycleEventService>();
 
+        // Only the Window needs the STA thread; the assertion runs back here. An exception that
+        // escapes a bare thread terminates the test host instead of failing this test, so the
+        // thread only records what happened and the test thread rethrows it.
+        System.Windows.Window? createdWindow = null;
+        ExceptionDispatchInfo? failure = null;
         var thread = new Thread(() =>
         {
-            var window = new System.Windows.Window();
-            lifecycle.InvokeEvents<WpfLifecycle.OnWindowCreated>(nameof(WpfLifecycle.OnWindowCreated), del => del(window));
-
-            Assert.Same(window, receivedWindow);
+            try
+            {
+                var window = new System.Windows.Window();
+                createdWindow = window;
+                lifecycle.InvokeEvents<WpfLifecycle.OnWindowCreated>(nameof(WpfLifecycle.OnWindowCreated), del => del(window));
+            }
+            catch (Exception ex)
+            {
+                failure = ExceptionDispatchInfo.Capture(ex);
+            }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        thread.Join();
 
-        Assert.NotNull(receivedWindow);
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "The STA thread did not finish.");
+        failure?.Throw();
+
+        Assert.NotNull(createdWindow);
+        Assert.Same(createdWindow, receivedWindow);
     }
 }

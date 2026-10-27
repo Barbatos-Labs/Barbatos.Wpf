@@ -1,3 +1,8 @@
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT was not distributed with this file, You can obtain one at https://opensource.org/licenses/MIT.
+// Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
+// All Rights Reserved.
+
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -348,6 +353,22 @@ public class IfControlTests
                 Interval = TimeSpan.FromMilliseconds(50),
             };
 
+            // Ends the nested loop below even if the toggling timer never reaches its last tick -
+            // without it, Dispatcher.Run() would block this test, and with it the whole run, forever.
+            var timedOut = false;
+            var watchdog = new DispatcherTimer(DispatcherPriority.Normal)
+            {
+                Interval = TimeSpan.FromSeconds(10),
+            };
+
+            watchdog.Tick += (_, _) =>
+            {
+                watchdog.Stop();
+                timer.Stop();
+                timedOut = true;
+                Dispatcher.CurrentDispatcher.InvokeShutdown();
+            };
+
             timer.Tick += (_, _) =>
             {
                 ifControl.Condition = !ifControl.Condition;
@@ -355,6 +376,7 @@ public class IfControlTests
                 if (ticksSeen >= ticks)
                 {
                     timer.Stop();
+                    watchdog.Stop();
 
                     // Queued at Background (lower than Loaded) so this last tick's own
                     // pending Unloaded/Loaded connectivity work drains before shutdown,
@@ -363,8 +385,11 @@ public class IfControlTests
                 }
             };
             timer.Start();
+            watchdog.Start();
 
             Dispatcher.Run(); // a real nested message loop, so the timer actually fires on schedule
+
+            Assert.False(timedOut, $"The toggling timer ticked only {ticksSeen} of {ticks} times in 10 s.");
 
             // 5 alternating flips from True: false, true, false, true, false - 2 mounts, 3 unmounts.
             Assert.Equal(2, vm.Calls.Count(c => c == "OnMounted"));

@@ -184,10 +184,9 @@ public class StoreActionInterceptorTests
     [Fact]
     public async Task MiddlewareCanGenuinelyAwaitAsynchronousWorkAfterCallingNext()
     {
-        // The supported shape for real interceptor-side async work (e.g. flushing a log to a
-        // remote server): call next() as the first meaningful step, then await freely afterward.
-        // See DelayingMiddleware's own remarks - awaiting BEFORE next() is not safe and is
-        // deliberately not exercised here.
+        // Real interceptor-side async work after the action (e.g. flushing a log to a remote
+        // server). The before-next() counterpart is
+        // MiddlewareCanGenuinelyAwaitAsynchronousWorkBeforeCallingNext.
         var middleware = new DelayingMiddleware(TimeSpan.FromMilliseconds(15));
         var store = BuildStore<InterceptedStore>(middleware);
 
@@ -195,6 +194,206 @@ public class StoreActionInterceptorTests
 
         Assert.Equal(1, store.Count);
         Assert.True(middleware.RanAfterNext);
+    }
+
+    [Fact]
+    public async Task NextCalledFromAContinuationAfterTheInterceptedCallReturnedReachesTheAction()
+    {
+        // The exact condition the pipeline used to get wrong: next() reached only after Castle's
+        // Intercept() call had already returned. A plain IInvocation.Proceed() from there found
+        // Castle's interceptor index reset and re-entered the whole chain instead of running the
+        // action (so Entries became 2). The gate is opened only after the call returned to this
+        // test, so the continuation that calls next() cannot run any earlier.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var middleware = new AwaitBeforeNextMiddleware(() => gate.Task);
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        var call = store.IncrementAsync();
+        Assert.False(call.IsCompleted); // suspended before next(): the action has not started
+
+        gate.SetResult();
+        await call.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, store.Count);
+        Assert.Equal(1, middleware.Entries);
+    }
+
+    [Fact]
+    public async Task MiddlewareCanGenuinelyAwaitAsynchronousWorkBeforeCallingNext()
+    {
+        // An async precondition (a delay standing in for a server check) awaited before next().
+        // This used to hang the action forever; it now runs the action once.
+        var middleware = new AwaitBeforeNextMiddleware(() => Task.Delay(15));
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        await store.IncrementAsync().WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, store.Count);
+        Assert.Equal(1, middleware.Entries);
+    }
+
+    [Fact]
+    public async Task MiddlewareCanRetryAnAsyncActionThatFailedAfterItsFirstAwait()
+    {
+        // Retrying calls next() again from the continuation that observed the failure - after
+        // Intercept() returned, so this used to re-enter the chain: Outer and the retrying
+        // interceptor ran again, nested, each nested level with a fresh retry budget (so an
+        // action whose every attempt suspends and fails re-entered forever). A retry re-runs
+        // only what is inside the retrying interceptor (Inner, then the action).
+        var log = new List<string>();
+        var retry = new RetryMiddleware(maxAttempts: 3);
+        var builder = WpfApp.CreateBuilder();
+        builder.Services.AddSingleton<IStoreActionInterceptor>(new RecordingMiddleware("Outer", log));
+        builder.Services.AddSingleton<IStoreActionInterceptor>(retry);
+        builder.Services.AddSingleton<IStoreActionInterceptor>(new RecordingMiddleware("Inner", log));
+        builder.Services.AddStore<InterceptedStore>();
+        var store = builder.Build().Services.GetRequiredService<InterceptedStore>();
+
+        var call = store.FlakyAsync(failures: 2);
+        store.FlakyGate.SetResult(); // only now can the first attempt fail
+        var result = await call.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(3, result);
+        Assert.Equal(3, store.FlakyAttempts);
+        Assert.Equal(1, retry.Entries);
+        Assert.Equal(
+            new[]
+            {
+                "Outer.Before:FlakyAsync",
+                "Inner.Before:FlakyAsync", "Inner.Error:FlakyAsync",
+                "Inner.Before:FlakyAsync", "Inner.Error:FlakyAsync",
+                "Inner.Before:FlakyAsync", "Inner.After:FlakyAsync",
+                "Outer.After:FlakyAsync",
+            },
+            log);
+    }
+
+    [Fact]
+    public async Task RetryGivesUpAndPropagatesTheErrorOnceItsAttemptsAreSpent()
+    {
+        var retry = new RetryMiddleware(maxAttempts: 3);
+        var store = BuildStore<InterceptedStore>(retry);
+
+        var call = store.FlakyAsync(failures: int.MaxValue);
+        store.FlakyGate.SetResult();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => call.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(3, store.FlakyAttempts);
+        Assert.Equal(1, retry.Entries);
+    }
+
+    [Fact]
+    public void MiddlewareCanRetryASynchronousActionByCallingNextAgain()
+    {
+        var retry = new RetryMiddleware(maxAttempts: 3);
+        var store = BuildStore<InterceptedStore>(retry);
+
+        var result = store.FlakySync(failures: 2);
+
+        Assert.Equal(3, result);
+        Assert.Equal(3, store.FlakyAttempts);
+    }
+
+    [Fact]
+    public async Task NextCalledFromAThreadPoolContinuationWhileTheCallIsStillReturningRunsTheActionOnce()
+    {
+        // On a thread with no synchronization context, Task.Yield queues the continuation that
+        // calls next() to the thread pool at once, so it can start while the intercepted call is
+        // still returning through Castle on the calling thread. Proceeding Castle's invocation
+        // from there (IInvocation.CaptureProceedInfo) raced that return: on Linux every one of 10
+        // runs of this test against that code failed within 4,500 calls, some by running the
+        // chain twice and some by a call that never completed. Only the old code depends on
+        // timing - nothing in the pass condition does - and every wait is bounded, so a
+        // regression fails instead of hanging the run. The loop runs on a dedicated thread
+        // because from a pool thread Task.Yield queues to that thread's local queue, where
+        // another thread has to steal it, which makes the race rarer.
+        var middleware = new YieldBeforeNextMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        await Task.Factory.StartNew(
+            () =>
+            {
+                for (var call = 1; call <= 20_000; call++)
+                {
+                    var completed = store.IncrementWithoutAwaitingAsync().Wait(TimeSpan.FromSeconds(10));
+
+                    Assert.True(completed, $"call {call} never completed");
+                    Assert.Equal(call, middleware.Entries);
+                    Assert.Equal(call, store.Count);
+                }
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
+
+    [Fact]
+    public async Task SynchronousActionGetsItsArgumentsAndOutParameterWhenNextRunsOnAnotherThread()
+    {
+        // next() on a thread other than the blocked caller reaches the action through a second
+        // call on the proxy, so arguments go in and the out value comes back through the
+        // invocation's argument array. Called from the thread pool: on a UI thread the same
+        // blocking would be the documented sync-over-async deadlock.
+        var middleware = new NextOnAnotherThreadMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        var (found, doubled) = await Task.Run(() => (store.TryDouble(21, out var value), value))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(found);
+        Assert.Equal(42, doubled);
+        Assert.NotEqual(middleware.CallerThreadId, middleware.NextThreadId);
+        Assert.Equal(1, middleware.Entries);
+    }
+
+    [Fact]
+    public async Task ARefValueWrittenBeforeASynchronousActionThrowsSurvivesWhenNextRunsOnAnotherThread()
+    {
+        // A direct call keeps what the body wrote to a ref parameter before it threw, and so does
+        // next() in place. The second call through the proxy is made with reflection, which copies
+        // by-ref values back only on a normal return, so without copying them itself the caller
+        // read its own value back unchanged.
+        var store = BuildStore<InterceptedStore>(new NextOnAnotherThreadMiddleware());
+
+        var total = await Task.Run(() =>
+            {
+                var value = 1;
+                Assert.Throws<InvalidOperationException>(() => store.AccumulateThenFail(ref value));
+                return value;
+            })
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(6, total);
+    }
+
+    [Fact]
+    public void NextCalledFromInsideTheRunningActionBodyRunsTheBodyAgainInsteadOfThrowing()
+    {
+        // Outside the documented "one attempt at a time" shape, but it used to fail with Castle's
+        // "Cannot proceed past the end of the interception pipeline": the nested next() tried to
+        // proceed the invocation from inside its own Proceed.
+        var middleware = new ExposeNextMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+        store.NextFromInside = () => middleware.Next;
+
+        var runs = store.RunAgainFromInside();
+
+        Assert.Equal(2, runs);
+        Assert.Equal(2, store.ReentrantRuns);
+    }
+
+    [Fact]
+    public async Task NextReturnsNullForAnAsyncTaskAction()
+    {
+        // StoreActionDelegate documents null for a Task action. An async Task method's task is a
+        // Task<VoidTaskResult> at runtime, so next() used to hand back that boxed internal value.
+        var middleware = new ResultCapturingMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        await store.IncrementAsync();
+
+        Assert.True(middleware.Called);
+        Assert.Null(middleware.Result);
     }
 
     [Fact]
@@ -269,18 +468,26 @@ public class StoreActionInterceptorTests
     [Fact]
     public void AddStoreBuilderMixesTypeInstanceAndFactoryInterceptorsInOneCall()
     {
+        // All three kinds write to the one shared log, so the assertion pins their relative
+        // order too. An earlier version used Add<RecordingMiddleware>() for the type-based link
+        // and expected it to keep a private log - but the container fills that type's optional
+        // List<string> parameter from the AddSingleton(log) below, so it wrote "Before:Increment"
+        // first and the test failed on Windows CI while the builder itself was right.
         var log = new List<string>();
         var builder = WpfApp.CreateBuilder();
         builder.Services.AddSingleton(log);
         builder.Services.AddStore<InterceptedStore>(i => i
-            .Add<RecordingMiddleware>() // type-based, DI-constructed - its own separate Events list
+            .Add<TypeRegisteredChainMiddleware>() // type-based, DI-constructed
             .Add(new ChainMiddleware("Instance", log)) // instance-based
             .Add(sp => new ChainMiddleware("Factory", sp.GetRequiredService<List<string>>()))); // factory-based
         var wpfApp = builder.Build();
 
         wpfApp.Services.GetRequiredService<InterceptedStore>().Increment();
 
-        Assert.Equal(new[] { "Instance:Before", "Factory:Before", "Factory:After", "Instance:After" }, log);
+        // Add() order is chain order, whichever overload registered each link.
+        Assert.Equal(
+            new[] { "Type:Before", "Instance:Before", "Factory:Before", "Factory:After", "Instance:After", "Type:After" },
+            log);
     }
 
     [Fact]
@@ -588,6 +795,70 @@ public class StoreActionInterceptorTests
 
         [Action]
         public virtual void SetName(string name) => Name = name;
+
+        /// <summary>Opened by a test only after its <see cref="FlakyAsync"/> call has returned,
+        /// so the first attempt's failure - and every retry after it - happens in a continuation
+        /// that runs after Castle's Intercept() call is over.</summary>
+        public TaskCompletionSource FlakyGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int FlakyAttempts { get; private set; }
+
+        [Action]
+        public virtual async Task<int> FlakyAsync(int failures)
+        {
+            var attempt = ++FlakyAttempts;
+            await FlakyGate.Task;
+            if (attempt <= failures)
+                throw new InvalidOperationException($"attempt {attempt} failed");
+
+            return attempt;
+        }
+
+        [Action]
+        public virtual int FlakySync(int failures)
+        {
+            var attempt = ++FlakyAttempts;
+            if (attempt <= failures)
+                throw new InvalidOperationException($"attempt {attempt} failed");
+
+            return attempt;
+        }
+
+        [Action]
+        public virtual Task IncrementWithoutAwaitingAsync()
+        {
+            Count++;
+            return Task.CompletedTask;
+        }
+
+        [Action]
+        public virtual bool TryDouble(int value, out int doubled)
+        {
+            doubled = value * 2;
+            return true;
+        }
+
+        [Action]
+        public virtual void AccumulateThenFail(ref int total)
+        {
+            total += 5;
+            throw new InvalidOperationException("failed after writing the ref value");
+        }
+
+        /// <summary>Hands <see cref="RunAgainFromInside"/> the <c>next</c> of its own call.</summary>
+        public Func<StoreActionDelegate?>? NextFromInside { get; set; }
+
+        public int ReentrantRuns { get; private set; }
+
+        [Action]
+        public virtual int RunAgainFromInside()
+        {
+            ReentrantRuns++;
+            if (ReentrantRuns == 1 && NextFromInside?.Invoke() is { } next)
+                next().GetAwaiter().GetResult();
+
+            return ReentrantRuns;
+        }
     }
 
     public class OtherStore : StoreBase
@@ -640,6 +911,19 @@ public class StoreActionInterceptorTests
             _log.Add($"{_label}:After");
             return result;
         }
+    }
+
+    /// <summary>The DI-constructed link in <see cref="StoreActionInterceptorTests.AddStoreBuilderMixesTypeInstanceAndFactoryInterceptorsInOneCall"/>:
+    /// its only constructor parameter is the shared log that test registers, so the container
+    /// has exactly one way to build it.</summary>
+    sealed class TypeRegisteredChainMiddleware : IStoreActionInterceptor
+    {
+        readonly ChainMiddleware _inner;
+
+        public TypeRegisteredChainMiddleware(List<string> log) => _inner = new ChainMiddleware("Type", log);
+
+        public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next) =>
+            _inner.InterceptAsync(context, next);
     }
 
     class RecordingMiddleware : IStoreActionInterceptor
@@ -736,14 +1020,136 @@ public class StoreActionInterceptorTests
     }
 
     /// <summary>
-    /// Awaits real asynchronous work only <i>after</i> calling <c>next()</c> - the only safe
-    /// position for it (see <see cref="IStoreActionInterceptor"/>'s remarks). An earlier version
-    /// of this fixture also awaited a delay <i>before</i> calling <c>next()</c>, which hung every
-    /// test that used it indefinitely (confirmed by isolating and killing the stuck test host) -
-    /// Castle DynamicProxy's <c>IInvocation.Proceed()</c> is not safe to reach from a continuation
-    /// that has already crossed a genuine <see langword="await"/> suspension relative to
-    /// <c>Intercept()</c>'s own synchronous call.
+    /// Awaits <c>before</c>, then calls <c>next()</c>. An earlier version of
+    /// <see cref="DelayingMiddleware"/> awaited a delay before <c>next()</c> and hung every test
+    /// that used it (confirmed by killing the stuck test host): the pipeline then reached the
+    /// action through a plain <c>IInvocation.Proceed()</c>, which after <c>Intercept()</c> had
+    /// returned re-entered the chain instead. <see cref="Entries"/> above 1 is that regression;
+    /// from the second entry on this short-circuits rather than awaiting again, so the regression
+    /// fails the test at once instead of re-entering for the rest of the run.
     /// </summary>
+    sealed class AwaitBeforeNextMiddleware : IStoreActionInterceptor
+    {
+        readonly Func<Task> _before;
+        int _entries;
+
+        public AwaitBeforeNextMiddleware(Func<Task> before) => _before = before;
+
+        public int Entries => Volatile.Read(ref _entries);
+
+        public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            if (Interlocked.Increment(ref _entries) > 1)
+                return null;
+
+            await _before();
+            return await next();
+        }
+    }
+
+    /// <summary>Calls <c>next()</c> again after an <see cref="InvalidOperationException"/>, up to
+    /// <c>maxAttempts</c> calls in all. <see cref="Entries"/> counts how often the chain reached
+    /// this interceptor - once per action call, however many attempts it makes.</summary>
+    sealed class RetryMiddleware : IStoreActionInterceptor
+    {
+        readonly int _maxAttempts;
+        int _entries;
+
+        public RetryMiddleware(int maxAttempts) => _maxAttempts = maxAttempts;
+
+        public int Entries => Volatile.Read(ref _entries);
+
+        public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Interlocked.Increment(ref _entries);
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return await next();
+                }
+                catch (InvalidOperationException) when (attempt < _maxAttempts)
+                {
+                }
+            }
+        }
+    }
+
+    /// <summary>Yields before calling <c>next()</c>: off a synchronization context, the
+    /// continuation goes straight to the thread pool. <see cref="Entries"/> counts how often the
+    /// chain reached this interceptor.</summary>
+    sealed class YieldBeforeNextMiddleware : IStoreActionInterceptor
+    {
+        int _entries;
+
+        public int Entries => Volatile.Read(ref _entries);
+
+        public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Interlocked.Increment(ref _entries);
+            await Task.Yield();
+            return await next();
+        }
+    }
+
+    /// <summary>Calls <c>next()</c> on a dedicated thread (<see cref="TaskCreationOptions.LongRunning"/>)
+    /// and records both thread ids, so a test can tell the action was reached from a thread other
+    /// than its caller's.</summary>
+    sealed class NextOnAnotherThreadMiddleware : IStoreActionInterceptor
+    {
+        int _entries;
+
+        public int Entries => Volatile.Read(ref _entries);
+
+        public int CallerThreadId { get; private set; }
+
+        public int NextThreadId { get; private set; }
+
+        public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Interlocked.Increment(ref _entries);
+            CallerThreadId = Environment.CurrentManagedThreadId;
+            return Task.Factory.StartNew(
+                () =>
+                {
+                    NextThreadId = Environment.CurrentManagedThreadId;
+                    return next();
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default).Unwrap();
+        }
+    }
+
+    /// <summary>Keeps the <c>next</c> of the call in progress where the action body can reach it.</summary>
+    sealed class ExposeNextMiddleware : IStoreActionInterceptor
+    {
+        public StoreActionDelegate? Next { get; private set; }
+
+        public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Next = next;
+            return next();
+        }
+    }
+
+    /// <summary>Records what <c>next()</c> handed back.</summary>
+    sealed class ResultCapturingMiddleware : IStoreActionInterceptor
+    {
+        public bool Called { get; private set; }
+
+        public object? Result { get; private set; }
+
+        public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Result = await next();
+            Called = true;
+            return Result;
+        }
+    }
+
+    /// <summary>Awaits real asynchronous work after calling <c>next()</c> - see
+    /// <see cref="AwaitBeforeNextMiddleware"/> for the before-next() shape.</summary>
     sealed class DelayingMiddleware : IStoreActionInterceptor
     {
         readonly TimeSpan _delay;

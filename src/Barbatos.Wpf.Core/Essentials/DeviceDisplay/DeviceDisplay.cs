@@ -14,6 +14,16 @@ public interface IDeviceDisplay
     /// <summary>
     /// Gets or sets if the screen should be kept on.
     /// </summary>
+    /// <remarks>
+    /// On Windows this is a <c>SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)</c>
+    /// request held by a background thread of its own for as long as the property is
+    /// <see langword="true"/>, so it can be set and cleared from any thread. Because Windows
+    /// combines every thread's request, it coexists with the keep-awake feature
+    /// (<c>ConfigureKeepAwake</c>, which holds <c>ES_SYSTEM_REQUIRED</c> on the UI thread) and
+    /// with any request the app makes itself: turning one off no longer cancels the other.
+    /// Earlier versions applied the request on the calling thread, where it replaced - and on
+    /// release cleared - whatever that thread already held.
+    /// </remarks>
     bool KeepScreenOn { get; set; }
 
     /// <summary>

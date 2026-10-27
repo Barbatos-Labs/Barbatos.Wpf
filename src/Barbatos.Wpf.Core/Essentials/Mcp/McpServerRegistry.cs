@@ -50,7 +50,10 @@ internal sealed class McpServerRegistry : IMcpServerRegistry, IDisposable
         {
             lock (_lock)
             {
-                var byName = new Dictionary<string, AITool>();
+                // _entries is in the order AddServerAsync calls started (an entry is appended
+                // before it connects), so a later entry overwriting an earlier one means the
+                // server added later wins, regardless of which one finished connecting first.
+                var byName = new Dictionary<string, (AITool Tool, string Server)>();
                 foreach (var entry in _entries)
                 {
                     if (!entry.Status.IsConnected)
@@ -58,18 +61,20 @@ internal sealed class McpServerRegistry : IMcpServerRegistry, IDisposable
 
                     foreach (var tool in entry.Status.Tools)
                     {
-                        if (byName.ContainsKey(tool.Name))
+                        if (byName.TryGetValue(tool.Name, out var earlier))
                         {
                             _logger?.LogWarning(
-                                "MCP tool name collision: '{ToolName}' is exposed by more than one connected server; the most recently connected server's copy wins.",
-                                tool.Name);
+                                "MCP tool name collision: '{ToolName}' from '{LaterServer}' replaces the copy from '{EarlierServer}' - when connected servers expose a same-named tool, the server added later wins.",
+                                tool.Name,
+                                entry.Status.Name,
+                                earlier.Server);
                         }
 
-                        byName[tool.Name] = tool;
+                        byName[tool.Name] = (tool, entry.Status.Name);
                     }
                 }
 
-                return byName.Values.ToList();
+                return byName.Values.Select(value => value.Tool).ToList();
             }
         }
     }

@@ -12,8 +12,8 @@ paths:
 `.editorconfig` is the authority; these are the parts that are easy to get wrong.
 
 - **File header** on every `.cs` file in `src/` and `tests/` (`.editorconfig` makes `IDE0073`
-  an error, but only in the IDE — the build does not enforce code style, so check by eye; no
-  Aquarius, Router or Valee test file carries it yet), as `//` line comments with this exact text:
+  an error, but only in the IDE — the build does not enforce code style, so check by eye), as `//`
+  line comments with this exact text:
 
   ```csharp
   // This Source Code Form is subject to the terms of the MIT License.
