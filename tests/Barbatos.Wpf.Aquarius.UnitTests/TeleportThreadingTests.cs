@@ -11,14 +11,15 @@ namespace Barbatos.Wpf.Aquarius.UnitTests;
 
 /// <summary>
 /// <see cref="TeleportHost"/> with more than one UI thread - an app that runs a second window on
-/// its own thread, or this suite, whose test classes each mount their controls on their own STA
-/// thread in parallel.
+/// its own thread, or this suite, where every test mounts its controls on a fresh STA thread.
 /// </summary>
 /// <remarks>
 /// The registry and its events used to be process-wide. A host loading on one thread then ran
 /// every other thread's <see cref="Teleport"/> handler on the host's thread, where reading
-/// <see cref="Teleport.To"/> throws; on CI that exception escaped a <c>Loaded</c> handler and
-/// hung the whole test run.
+/// <see cref="Teleport.To"/> throws. On CI the other thread was one that had already exited:
+/// <c>LifecycleLeakTests</c> deliberately leaves a <see cref="Teleport"/> loaded, so it never
+/// unsubscribed, and the next test's host threw from inside its <c>Loaded</c> handler and hung
+/// the whole run.
 /// </remarks>
 public class TeleportThreadingTests
 {
@@ -118,6 +119,44 @@ public class TeleportThreadingTests
         Assert.Null(otherThreadFailure);
         Assert.True(stayedLocal);
         Assert.False(sawTheOtherThreadsHost);
+    }
+
+    [Fact]
+    public void ATeleportLeftLoadedOnAThreadThatHasExitedDoesNotBreakTheNextHost()
+    {
+        var hostName = $"Host-{Guid.NewGuid()}";
+
+        // The CI case exactly: never closed, so its Teleport stays subscribed to HostRegistered
+        // after its thread is gone. (It stays pinned for the rest of the run too, which is the
+        // price LifecycleLeakTests already pays for its AssertAlive control.)
+        StaThread.Run(() =>
+        {
+            var window = new Window { Content = new Teleport { To = hostName, Content = new Border() }, Width = 200, Height = 200 };
+            window.Show();
+            StaThread.PumpDispatcher();
+        });
+
+        StaThread.Run(() =>
+        {
+            Exception? escaped = null;
+            Dispatcher.CurrentDispatcher.UnhandledException += (_, e) =>
+            {
+                escaped ??= e.Exception;
+                e.Handled = true;
+            };
+
+            var host = new Grid();
+            TeleportHost.SetRegisterHost(host, hostName);
+            var window = new Window { Content = host, Width = 200, Height = 200 };
+
+            window.Show();
+            StaThread.PumpDispatcher();
+            window.Close();
+            StaThread.PumpDispatcher();
+
+            Assert.Null(escaped);
+            Assert.Empty(host.Children);
+        });
     }
 
     [Fact]

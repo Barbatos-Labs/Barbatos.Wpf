@@ -843,8 +843,9 @@ the most recently loaded one wins. Names are kept per UI thread: a `Panel` can o
 elements from its own thread, so a `Teleport` only sees hosts registered on its thread, and a
 second window running on its own thread has its own set of names. Earlier versions kept one
 process-wide registry, and a host loading on one thread made every `Teleport` on another thread
-throw from inside a `Loaded` handler; the test suite, which mounts controls on parallel STA
-threads, is what exposed it.
+throw from inside a `Loaded` handler. The test suite exposed it: each test mounts its controls
+on a fresh STA thread, and a `Teleport` one test deliberately left loaded made the next host to
+load, on another thread, throw.
 
 ### Several Teleports, one host
 
