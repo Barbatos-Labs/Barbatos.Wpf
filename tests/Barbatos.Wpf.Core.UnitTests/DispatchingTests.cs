@@ -106,7 +106,7 @@ public class DispatchingTests
 
         Assert.True(dispatched);
 
-        System.Windows.Threading.Dispatcher.PushFrame(frame);
+        PushFrame(frame);
 
         Assert.True(executed);
     }
@@ -124,7 +124,7 @@ public class DispatchingTests
             return 42;
         });
 
-        System.Windows.Threading.Dispatcher.PushFrame(frame);
+        PushFrame(frame);
 
         Assert.Equal(42, await task);
     }
@@ -208,9 +208,42 @@ public class DispatchingTests
         };
 
         timer.Start();
-        System.Windows.Threading.Dispatcher.PushFrame(frame);
+        PushFrame(frame);
 
         Assert.Equal(1, ticks);
         Assert.False(timer.IsRunning);
+    }
+
+    /// <summary>
+    /// Pumps this thread's dispatcher until <paramref name="frame"/> is ended, or fails the test
+    /// after ten seconds. Only the code under test ends these frames, so without the timer a
+    /// dispatcher that never runs the work would hang the whole test run instead of failing one
+    /// test.
+    /// </summary>
+    static void PushFrame(DispatcherFrame frame)
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        var timedOut = false;
+
+        // Fully qualified: Barbatos.Wpf.Dispatching has a DispatcherTimer of its own.
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = timeout };
+        timer.Tick += (sender, args) =>
+        {
+            timer.Stop();
+            timedOut = true;
+            frame.Continue = false;
+        };
+        timer.Start();
+
+        try
+        {
+            System.Windows.Threading.Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timer.Stop();
+        }
+
+        Assert.False(timedOut, $"The dispatched work did not run within {timeout}.");
     }
 }
