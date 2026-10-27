@@ -63,6 +63,12 @@ public sealed class FieldMeta : ObservableObject
     }
 
     /// <summary>Whether an asynchronous rule is currently in flight for this field.</summary>
+    /// <remarks>
+    /// Raised only by a non-silent pass of a field that has asynchronous rules, and lowered when
+    /// that pass ends - with a result, or with an exception from one of its rules. A pass superseded
+    /// by a newer one leaves it to the newer pass; <see cref="Field{T}.Reset()"/> and
+    /// <see cref="Field{T}.Dispose"/> lower it themselves.
+    /// </remarks>
     public bool Pending
     {
         get => _pending;

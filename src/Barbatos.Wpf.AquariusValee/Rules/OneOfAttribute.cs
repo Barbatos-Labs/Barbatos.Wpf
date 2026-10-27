@@ -32,11 +32,12 @@ public sealed class OneOfAttribute : ValidationAttribute
     private readonly string?[] _allowedStrings;
 
     /// <summary>Creates the attribute with the allowed literal values.</summary>
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
     public OneOfAttribute(params object?[] allowedValues)
+        : base("The {0} field must be one of the allowed values.")
     {
         _allowedValues = allowedValues ?? [];
         _allowedStrings = Array.ConvertAll(_allowedValues, allowed => allowed?.ToString());
-        ErrorMessage ??= "The {0} field must be one of the allowed values.";
     }
 
     /// <summary>The allowed literal values, as passed to the constructor.</summary>

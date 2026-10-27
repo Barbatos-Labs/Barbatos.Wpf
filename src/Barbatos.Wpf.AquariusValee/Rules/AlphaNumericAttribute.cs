@@ -17,7 +17,11 @@ namespace Barbatos.Wpf.AquariusValee.Rules;
 public sealed class AlphaNumericAttribute : ValidationAttribute
 {
     /// <summary>Creates the attribute.</summary>
-    public AlphaNumericAttribute() => ErrorMessage ??= "The {0} field may only contain letters and numbers.";
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
+    public AlphaNumericAttribute()
+        : base("The {0} field may only contain letters and numbers.")
+    {
+    }
 
     /// <summary>When <see langword="true"/>, only plain ASCII letters/digits are accepted instead of any Unicode letter/digit.</summary>
     public bool AsciiOnly { get; set; }

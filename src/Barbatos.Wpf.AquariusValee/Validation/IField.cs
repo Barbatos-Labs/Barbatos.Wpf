@@ -49,7 +49,7 @@ public interface IField : INotifyPropertyChanged, INotifyDataErrorInfo
     /// </summary>
     DataType? DataTypeHint { get; }
 
-    /// <summary>Whether the user should be able to edit this field - mirrors <c>[Editable(false)]</c> when built via <see cref="Form.FromModel{TModel}"/>. Defaults to <see langword="true"/>; Valee's own attached properties do not enforce this themselves (see remarks on <see cref="Xaml.Valee.FieldProperty"/>), it is a hint for your own templates/converters to react to.</summary>
+    /// <summary>Whether the field should be shown as not editable - <see langword="true"/> for a property marked <c>[Editable(false)]</c> when built via <see cref="Form.FromModel{TModel}"/>. Defaults to <see langword="false"/>; Valee's own attached properties do not enforce this themselves, it is a hint for your own templates/converters to react to.</summary>
     bool IsReadOnly { get; }
 
     /// <summary>
@@ -82,6 +82,13 @@ public interface IField : INotifyPropertyChanged, INotifyDataErrorInfo
     object? RawValue { get; }
 
     /// <summary>Runs every rule against the current value and writes the result (a <see cref="ValidationWriteMode.Force"/> pass).</summary>
+    /// <remarks>
+    /// An exception thrown by a rule faults the returned task (or cancels it, for a rule's own
+    /// <see cref="OperationCanceledException"/>), after <see cref="FieldMeta.Pending"/> has been
+    /// lowered and with <see cref="Errors"/> and <see cref="FieldMeta.Valid"/> left as the previous
+    /// pass wrote them. A pass superseded by a newer one completes normally instead, whatever its
+    /// rule threw - its result would have been discarded anyway.
+    /// </remarks>
     Task ValidateAsync();
 
     /// <summary>Marks the field <see cref="FieldMeta.Touched"/> and, depending on its trigger configuration, validates.</summary>

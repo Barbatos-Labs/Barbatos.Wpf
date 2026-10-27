@@ -168,20 +168,26 @@ a stale "don't match" error.
 `IDependsOnProperties`, so `FromModel` wires `DependsOn` itself once all fields exist (any custom
 attribute can opt in the same way). The message is `ErrorMessage` formatted with display name, min
 and max (`"The {0} field must be between {1} and {2}."`); a placeholder-free key works like any
-key but loses the live bounds, so localized text **with** bounds needs ad-hoc `DependsOn`.
+key but loses the live bounds. Localized text **with** bounds needs a resx resource
+(`ErrorMessageResourceType`/`ErrorMessageResourceName` - the resource string is the template,
+`RulesTests`) or ad-hoc `DependsOn` when the text must come from an app localizer.
 
 **Model-level: `IValidatableObject`** on a schema model runs only in `ValidateAllAsync`/submit (and
 `RevalidateValidatedAsync`), never per keystroke. Each result must name its members -
 `new ValidationResult("You must accept the terms.", [nameof(AcceptedTerms)])` - and the message is
 appended to each named field; a result with no member names, or naming a non-field, is dropped.
-The BCL's `Validator.TryValidateObject` does not call `Validate` while a `[Required]` property is
-empty, so model-level errors appear only once required fields are filled. It reports that
-`[Required]` failure instead, and `Form` appends it like any model-level result. After a submit, a
-schema field's `Errors` then lists the Required message twice (`ErrorMessage` is unaffected).
+It runs whether or not the properties' own attributes pass (an empty `[Required]` field does not
+hold it back), after any class-level `ValidationAttribute` (`[CustomValidation]` on the class) -
+a failing class-level attribute skips `Validate`, as in the BCL. `Form` does not call
+`Validator.TryValidateObject`: its `validateAllProperties: false` still re-checks every
+`[Required]` and stops there (`FormFromModelTests`). So `Validate` sees values its property
+attributes reject - `""`, `null`, out of range - and must not assume they passed: skip a
+comparison whose operand is empty rather than dereference it, or the submit throws.
 
 ## Async rules
 
-Adapted from `Views/CustomRules/CustomRulesViewModel.cs`, plus the `try`/`catch` explained below:
+Adapted from `Views/CustomRules/CustomRulesViewModel.cs`, plus the optional `try`/`catch`
+explained below:
 
 ```csharp
 Username.AddRule(async (value, cancellationToken) =>
@@ -194,9 +200,9 @@ Username.AddRule(async (value, cancellationToken) =>
         var available = await availabilityService.IsAvailableAsync(value, cancellationToken);
         return available ? null : "Validation.UsernameTaken";
     }
-    catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+    catch (HttpRequestException)
     {
-        return "Validation.UsernameCheckFailed";      // never let it escape - see below
+        return "Validation.UsernameCheckFailed";      // a failure shown as a message - see below
     }
 });
 ```
@@ -205,10 +211,18 @@ Username.AddRule(async (value, cancellationToken) =>
   (`AsyncValidationRaceTests`); forwarding turns a superseded call into cancelled work, not just a
   discarded result. There is no debounce: start the rule with
   `await Task.Delay(300, cancellationToken)` if each keystroke should not hit the server.
-- **Never let an exception escape.** `Field<T>` catches only `OperationCanceledException`, and
-  catches it whoever cancelled. Anything else - or an `HttpClient` timeout surfacing as
-  `TaskCanceledException` - skips the code that lowers `Meta.Pending`, leaving the field and its
-  form "checking..." forever; in a keystroke/blur/`DependsOn` pass nobody even observes the exception.
+- **A throwing rule is safe, but it is not a message** (`FieldRuleExceptionTests`). The pass
+  writes nothing (`Errors`/`Meta.Valid` keep the previous pass's values) and `Meta.Pending` is
+  lowered. The exception propagates from `ValidateAsync`/`ValidateAllAsync`/
+  `RevalidateValidatedAsync` and the `HandleSubmit` command (`IsSubmitting` still clears, neither
+  callback runs); a pass nobody awaits - typing, blur, `DependsOn`, the silent constructor/`Reset`
+  pass - rethrows it on the starting thread's `Dispatcher`, i.e. `Application.DispatcherUnhandledException`
+  (a pass started on a thread-pool thread leaves it on the task, for `UnobservedTaskException`).
+  Catch inside the rule, as above, when a failed check should read as an error under the field.
+- **Only Valee's own cancellation is swallowed**: a superseded pass ends quietly whatever it
+  throws. An `OperationCanceledException` in a live pass - an `HttpClient` timeout's
+  `TaskCanceledException` - is a failure like any other, so do not filter on the exception type
+  to tell the two apart; `cancellationToken.IsCancellationRequested` is the supersession signal.
 - Show progress with `{Binding Username.Meta.Pending}` or `Form.Meta.Pending`. Add the rule with
   `AddRule` after construction, as the sample does, so the constructor's silent pass never calls
   the service (a later `Reset`/`ResetForm` silent pass still does).
@@ -263,6 +277,11 @@ Valee takes no localization dependency; literal messages are fine. To localize, 
 | fixed text | a lookup key in `ErrorMessage`, `SetFieldError` or a rule's return value | resolved by a converter when the binding re-reads |
 | text with runtime values (`{0} is taken`, "at least {MinPrice}") | text resolved eagerly in the rule | `await form.RevalidateValidatedAsync()` |
 
+BCL default messages ("The {0} field is required.") are English whatever the culture - .NET ships
+no satellite resources for DataAnnotations - so every attribute a user can trip needs a key or a
+resource of its own. The resx route (`ErrorMessageResourceType`/`ErrorMessageResourceName`) works
+on Valee's `Rules` attributes as on BCL ones; never combine it with `ErrorMessage` (the BCL throws).
+
 Wrap the localizing converter in `SafeMessageConverter` (its XAML content property) so an unknown
 key or literal prose shows as written instead of blank - it returns the input when the inner
 converter returns null/empty or throws:
@@ -312,16 +331,16 @@ strings must be `string?` defaulting to `null`: those accept `null` but fail `""
   (they are `DataTypeAttribute`s already; `FromModel` throws a `TargetInvocationException` wrapping
   `AmbiguousMatchException`).
 - Lifetimes: `DependsOn` subscribes to the source, so a dependent field stays reachable from a
-  longer-lived source (a store, a singleton ViewModel) until disposed. `Valee` keeps the last
-  control bound to each field in a `ConditionalWeakTable` keyed by the field, so a `Form` that
-  outlives its View keeps that control and its tree alive - scope the form with its View.
+  longer-lived source (a store, a singleton ViewModel) until disposed. `Valee` remembers the last
+  control bound to each field (for focus-first-invalid) only through a weak reference, so a `Form`
+  that outlives its View does not keep the closed View alive (`ValeeFieldLeakTests`).
 
 ## Symptom -> cause -> fix
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Nothing shows while typing in a fresh field | validated-only passes before the first blur/submit | by design; it appears after blur or submit |
-| No error even after blur | plain `{Binding X.Value}` (no blur hook, `LostFocus` timing), `Triggers` without `OnBlur`, or a rule that throws | use `Valee.Field`/`Valee.For`; check `Triggers`; catch inside rules |
+| No error even after blur | plain `{Binding X.Value}` (no blur hook, `LostFocus` timing), `Triggers` without `OnBlur`, or a rule that throws (the pass writes nothing) | use `Valee.Field`/`Valee.For`; check `Triggers`; catch inside the rule and return a message |
 | Error area blank though `Meta.Valid` is false | field not validated yet (silent pass), or a localizing converter returned null for an unknown key | blur/submit; wrap the converter in `SafeMessageConverter` |
 | Raw key such as `Validation.Required` on screen | key missing from the locale files, or no converter on that binding | register the key / add the converter |
 | Message stays in the old language | eager text, an unrefreshed binding, or a key in `{0}` | see [Localized messages](#localized-messages) |
@@ -329,8 +348,9 @@ strings must be `string?` defaulting to `null`: those accept `null` but fail `""
 | "Passwords don't match" persists after fixing the password | `[Compare]` not wired for re-validation | `ConfirmPassword.DependsOn(Password)` |
 | `[Compare]` in `DefineField` always fails; `AddRule(attribute)` on a schema field does nothing | each works only in the other mode | `DependsOn` + closure; put the attribute on the model |
 | Optional URL/email field invalid from the start, or again after clearing it | `""` default / the box writes `""` when cleared | `string?` with `null` default / a rule that returns `null` for `""` |
-| `IValidatableObject` message never appears | no member names, a `[Required]` field still empty, or only per-keystroke validation ran | name members; it runs on submit/`ValidateAllAsync` |
-| "checking..." never clears, `Form.Meta.Pending` stuck | async rule threw or timed out | catch inside the rule, return a message |
+| `IValidatableObject` message never appears | no member names, a failing class-level attribute, or only per-keystroke validation ran | name members; it runs on submit/`ValidateAllAsync` once class-level attributes pass |
+| Unhandled exception (`DispatcherUnhandledException`) while typing or on blur; submit throws | a rule threw or timed out - rethrown from a pass nobody awaits, propagated from an awaited one | catch inside the rule and return a message |
+| "checking..." never clears, `Form.Meta.Pending` stuck | a rule that never completes (ignores the token and awaits forever) | forward the token; give the call a timeout |
 | Field bindings update but `Form.Meta.*` bindings are frozen | form created or mutated off the UI thread | UI thread only |
 | Unhandled `InvalidOperationException` mentioning `Valee.For` | `Form` null at `Loaded`, misspelt field name, or element inside a `Popup` | construct the form in the constructor; fix the name; use `Valee.Field` |
 | `PasswordBox` keeps its dots after `ResetForm()` | `Valee.PasswordField` is one-way | clear `PasswordBox.Password` in the View |
@@ -346,7 +366,8 @@ strings must be `string?` defaulting to `null`: those accept `null` but fail `""
    the UI thread (`dotnet new aqv-form` scaffolds the schema shape).
 2. Rules: BCL first, Valee `Rules` second, delegates last; `string?` for optional formatted strings.
 3. Cross-field: `DependsOn`, `[Compare]` + `DependsOn`, or `[PropertyRange]`; name members in
-   `IValidatableObject` results. Async rules forward the token, guard empty input, never throw.
+   `IValidatableObject` results. Async rules forward the token, guard empty input, and catch
+   the failures that should show as a message.
 4. `HandleSubmit`, server errors via `SetFieldError`, no validity gate on the button.
 5. View: `aqv:Valee.Form` on the container, `Valee.Field`/`For`/`PasswordField`, an error
    `TextBlock` per field (mandatory for `PasswordBox`), `SafeMessageConverter` when localized.
@@ -359,8 +380,9 @@ Load `barbatos-package-authoring` too. A new rule attribute goes in `Rules/` (na
 `Barbatos.Wpf.AquariusValee.Rules`, already mapped to `aqv:`) and follows the shipped ones:
 `public sealed class XxxAttribute : ValidationAttribute`,
 `[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter, AllowMultiple = false)]`,
-a default `ErrorMessage ??= "The {0} field ...";` in the constructor, and `IsValid` returning
-`true` for `null` (and normally for `""`) so `[Required]` alone owns emptiness. A cross-field rule
+the default message passed to the base constructor (`: base("The {0} field ...")` - never
+assigned to `ErrorMessage`, which would make the BCL reject `ErrorMessageResourceName`), and
+`IsValid` returning `true` for `null` (and normally for `""`) so `[Required]` alone owns emptiness. A cross-field rule
 implements `IDependsOnProperties`. Add its row to [reference.md](reference.md#valee-rules-attributes),
 tests for null, empty, non-string and failing values, and README/API-REFERENCE entries
 (`barbatos-docs-sync`). A new attached property follows the control rules in

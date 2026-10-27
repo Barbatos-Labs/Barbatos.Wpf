@@ -17,7 +17,11 @@ namespace Barbatos.Wpf.AquariusValee.Rules;
 public sealed class IntegerStringAttribute : ValidationAttribute
 {
     /// <summary>Creates the attribute.</summary>
-    public IntegerStringAttribute() => ErrorMessage ??= "The {0} field must be a whole number.";
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
+    public IntegerStringAttribute()
+        : base("The {0} field must be a whole number.")
+    {
+    }
 
     /// <inheritdoc/>
     public override bool IsValid(object? value)

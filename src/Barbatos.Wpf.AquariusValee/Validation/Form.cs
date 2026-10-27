@@ -156,8 +156,9 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     /// field). Each field's value stays live-synced back onto <paramref name="instance"/> as it
     /// changes - <see cref="GetModel{TModel}"/> returns that same instance, always up to date.
     /// <see cref="IValidatableObject"/> on <typeparamref name="TModel"/> (DataAnnotations' own
-    /// native cross-field mechanism) is honored too, checked once per <see cref="HandleSubmit"/>/
-    /// explicit whole-form validate rather than per keystroke.
+    /// native cross-field mechanism), and any <see cref="ValidationAttribute"/> on the class itself,
+    /// are honored too - checked once per <see cref="HandleSubmit"/>/explicit whole-form validate
+    /// rather than per keystroke, whether or not every property's own attributes pass.
     /// </summary>
     /// <remarks>
     /// A property with no settable get/set pair, or an indexer, is skipped. <c>[Display(Name = "...")]</c>
@@ -170,6 +171,14 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     /// <see cref="Rules.PropertyRangeAttribute"/>) is auto-wired via
     /// <see cref="Field{T}.DependsOn{TSource}"/> once every field exists, so declaration order does
     /// not matter and application code never has to wire this by hand.
+    /// <para>
+    /// Unlike <see cref="Validator.TryValidateObject(object, ValidationContext, ICollection{ValidationResult}, bool)"/>,
+    /// the model-level pass does not wait for the properties' own attributes to pass, so a submit
+    /// shows the model-level errors together with the field errors. <see cref="IValidatableObject.Validate"/>
+    /// therefore sees property values those attributes reject (an empty or <see langword="null"/>
+    /// required string, say) and must tolerate them; an exception it throws propagates from
+    /// <see cref="ValidateAllAsync"/> and ends a <see cref="HandleSubmit"/> like a throwing rule.
+    /// </para>
     /// </remarks>
     public static Form FromModel<TModel>(TModel instance) where TModel : notnull
     {
@@ -280,6 +289,14 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     /// <see cref="SubmitInvalid"/> with the first invalid field) - and finally clears
     /// <see cref="IsSubmitting"/>. Mirrors vee-validate's <c>handleSubmit</c> stage order exactly.
     /// </summary>
+    /// <remarks>
+    /// A rule that throws during the validation stage ends the submit with that exception: neither
+    /// <paramref name="onValid"/> nor <paramref name="onInvalid"/> runs, <see cref="IsSubmitting"/>
+    /// is still cleared, and the exception faults the command's
+    /// <see cref="IAsyncRelayCommand.ExecuteAsync(object)"/> task - which an
+    /// <see cref="AsyncRelayCommand"/> invoked from a button rethrows on the UI thread. An exception
+    /// from <paramref name="onValid"/> itself takes the same route.
+    /// </remarks>
     public IAsyncRelayCommand HandleSubmit(
         Func<IReadOnlyDictionary<string, object?>, Task> onValid,
         Action<IReadOnlyDictionary<string, object?>, IReadOnlyDictionary<string, IReadOnlyList<string>>>? onInvalid = null)
@@ -325,6 +342,11 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     }
 
     /// <summary>Runs a <see cref="ValidationWriteMode.Force"/> pass on every field (plus, for a <see cref="FromModel{TModel}"/>-built form, <see cref="IValidatableObject"/>) and returns whether the whole form is valid.</summary>
+    /// <remarks>
+    /// Every field's pass runs to the end even when one of them throws; the first rule exception
+    /// then propagates from the returned task and the model-level pass is skipped. See
+    /// <see cref="Field{T}"/>'s remarks for the state a throwing pass leaves behind.
+    /// </remarks>
     public async Task<bool> ValidateAllAsync()
     {
         await Task.WhenAll(_fields.Values.Select(f => f.ValidateAsync()));
@@ -456,13 +478,25 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     }
 
     /// <summary>
-    /// Runs <see cref="IValidatableObject"/> (if implemented) against the live model instance -
-    /// DataAnnotations' own native cross-field mechanism - and layers any resulting message onto
+    /// Runs the model's class-level <see cref="ValidationAttribute"/>s and then
+    /// <see cref="IValidatableObject"/> (if implemented) against the live model instance -
+    /// DataAnnotations' own native cross-field mechanisms - and layers any resulting message onto
     /// every named field it references, on top of (not replacing) that field's own rule errors.
-    /// <c>validateAllProperties: false</c> deliberately skips per-property attribute re-checking
-    /// here, since <see cref="ValidateAllAsync"/> already ran each field's own attributes
-    /// individually just above.
     /// </summary>
+    /// <remarks>
+    /// This is <see cref="Validator.TryValidateObject(object, ValidationContext, ICollection{ValidationResult}, bool)"/>'s
+    /// second and third steps without its first, done by hand because no overload skips the first.
+    /// That first step re-checks property attributes, which every field has just done itself - and
+    /// <c>validateAllProperties: false</c>, which this used to pass, does not skip it: confirmed
+    /// against the BCL, it still evaluates every property's <see cref="RequiredAttribute"/> and
+    /// returns each failure with the property as its member name. Appended here, that showed an
+    /// empty required field's message twice, and because the BCL stops after a failing step,
+    /// <see cref="IValidatableObject.Validate"/> never ran while any required field was still empty.
+    /// The BCL's order between the two remaining steps is kept: a failing class-level attribute
+    /// still skips <see cref="IValidatableObject.Validate"/>. Class-level attributes are read
+    /// through <see cref="TypeDescriptor"/>, as the BCL's own attribute store reads them, so a
+    /// registered type-description provider contributes the same attributes in both places.
+    /// </remarks>
     /// <param name="only">
     /// When non-<see langword="null"/>, restricts which fields may receive a message - used by
     /// <see cref="RevalidateValidatedAsync"/> so re-running this cannot surface a model-level
@@ -471,9 +505,19 @@ public sealed class Form : ObservableObject, INotifyDataErrorInfo, IDisposable
     /// </param>
     private void RunModelLevelValidation(IReadOnlyCollection<IField>? only = null)
     {
-        var context = new ValidationContext(_model!);
+        var model = _model!;
+        var context = new ValidationContext(model);
         var results = new List<ValidationResult>();
-        Validator.TryValidateObject(_model!, context, results, validateAllProperties: false);
+
+        var classAttributes = TypeDescriptor.GetAttributes(model).OfType<ValidationAttribute>().ToArray();
+
+        if (classAttributes.Length > 0)
+            Validator.TryValidateValue(model, context, results, classAttributes);
+
+        // ValidationResult.Success is null, so a Validate implementation reports "fine" with null
+        // entries - skipped, as the BCL skips them.
+        if (results.Count == 0 && model is IValidatableObject validatable && validatable.Validate(context) is { } modelResults)
+            results.AddRange(modelResults.Where(result => result is not null));
 
         foreach (var result in results)
         {

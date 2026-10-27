@@ -226,4 +226,84 @@ public class RulesTests
 
         Assert.Equal([nameof(PriceModel.MinPrice), nameof(PriceModel.MaxPrice)], attribute.DependsOnPropertyNames);
     }
+
+    // Stands in for a .resx-generated resource class: ValidationAttribute looks the named static
+    // string property up by reflection, exactly as it does on a generated Resources class.
+    public static class RuleMessages
+    {
+        public static string LettersOnly => "Chỉ được nhập chữ cái vào {0}.";
+
+        public static string PriceOutOfRange => "{0} phải nằm trong khoảng {1} đến {2}.";
+    }
+
+    [Fact]
+    public void AValeeRuleTakesItsMessageFromAResourceWhenOneIsNamed()
+    {
+        // Every Valee rule used to assign its default text to ErrorMessage in its constructor, and
+        // the BCL throws InvalidOperationException ("Either ErrorMessageString or
+        // ErrorMessageResourceName must be set, but not both") the moment a message is formatted
+        // with both set - so the resx route DataAnnotations offers for localization was closed.
+        var attribute = new AlphaAttribute
+        {
+            ErrorMessageResourceType = typeof(RuleMessages),
+            ErrorMessageResourceName = nameof(RuleMessages.LettersOnly),
+        };
+
+        Assert.Equal("Chỉ được nhập chữ cái vào Họ tên.", attribute.FormatErrorMessage("Họ tên"));
+    }
+
+    [Fact]
+    public async Task AResourceMessageReachesTheFieldsErrors()
+    {
+        var field = new Field<string>("FullName", "abc123", new AlphaAttribute
+        {
+            ErrorMessageResourceType = typeof(RuleMessages),
+            ErrorMessageResourceName = nameof(RuleMessages.LettersOnly),
+        })
+        {
+            Label = "Họ tên",
+        };
+
+        await field.ValidateAsync();
+
+        Assert.Equal("Chỉ được nhập chữ cái vào Họ tên.", field.ErrorMessage);
+    }
+
+    private sealed class LocalizedPriceModel
+    {
+        public int MinPrice { get; set; } = 10;
+
+        public int MaxPrice { get; set; } = 100;
+
+        [Display(Name = "Giá")]
+        [PropertyRange(nameof(MinPrice), nameof(MaxPrice),
+            ErrorMessageResourceType = typeof(RuleMessages),
+            ErrorMessageResourceName = nameof(RuleMessages.PriceOutOfRange))]
+        public int Price { get; set; } = 500;
+    }
+
+    [Fact]
+    public async Task PropertyRangeFormatsAResourceMessageWithTheLiveBounds()
+    {
+        // The one localization route a PropertyRange message has - an attribute cannot reach a DI
+        // localizer - and it keeps the {1}/{2} placeholders a lookup-key message has to give up.
+        var form = Form.FromModel(new LocalizedPriceModel());
+
+        await form.Fields["Price"].ValidateAsync();
+
+        Assert.Equal("Giá phải nằm trong khoảng 10 đến 100.", form.Fields["Price"].ErrorMessage);
+    }
+
+    [Fact]
+    public void AValeeRuleStillFallsBackToItsDefaultMessageAndANamedErrorMessageStillWins()
+    {
+        // The default now travels through the base constructor, so ErrorMessage itself reads null
+        // until set - the same as on the BCL's own attributes.
+        var byDefault = new DigitsAttribute(6);
+        var custom = new DigitsAttribute(6) { ErrorMessage = "Enter the {0} from the text message." };
+
+        Assert.Null(byDefault.ErrorMessage);
+        Assert.Equal("The PIN field must be exactly 6 digits.", byDefault.FormatErrorMessage("PIN"));
+        Assert.Equal("Enter the PIN from the text message.", custom.FormatErrorMessage("PIN"));
+    }
 }

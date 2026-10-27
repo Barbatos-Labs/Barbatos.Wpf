@@ -46,12 +46,13 @@ public sealed class PatternAttribute : ValidationAttribute
     private readonly Lazy<Regex> _regex;
 
     /// <summary>Creates the attribute with the regular expression <paramref name="pattern"/> to match.</summary>
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
     public PatternAttribute(string pattern)
+        : base("The {0} field is not in the expected format.")
     {
         ArgumentException.ThrowIfNullOrEmpty(pattern);
 
         Pattern = pattern;
-        ErrorMessage ??= "The {0} field is not in the expected format.";
         _regex = new Lazy<Regex>(() => new Regex(Pattern, Options, TimeSpan.FromMilliseconds(MatchTimeoutInMilliseconds)));
     }
 

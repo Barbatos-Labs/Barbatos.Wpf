@@ -27,11 +27,12 @@ public sealed class NotOneOfAttribute : ValidationAttribute
     private readonly string?[] _disallowedStrings;
 
     /// <summary>Creates the attribute with the disallowed literal values.</summary>
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
     public NotOneOfAttribute(params object?[] disallowedValues)
+        : base("The {0} field must not be one of the disallowed values.")
     {
         _disallowedValues = disallowedValues ?? [];
         _disallowedStrings = Array.ConvertAll(_disallowedValues, disallowed => disallowed?.ToString());
-        ErrorMessage ??= "The {0} field must not be one of the disallowed values.";
     }
 
     /// <summary>The disallowed literal values, as passed to the constructor.</summary>

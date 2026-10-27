@@ -6,6 +6,8 @@
 using System.Collections;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Runtime.ExceptionServices;
+using System.Windows.Threading;
 using Barbatos.Wpf.Aquarius.Reactivity;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -42,6 +44,26 @@ namespace Barbatos.Wpf.AquariusValee.Validation;
 /// own message, not both. This is the BCL's own long-standing, deliberate behavior (checking a
 /// format/length rule on a value that's simply missing is rarely useful) - inherited as-is here
 /// rather than worked around, since it already matches the sensible outcome, not fought.
+/// </para>
+/// <para>
+/// <b>A rule that throws</b> (any of the three shapes) ends its pass without writing a result:
+/// <see cref="Errors"/>, <see cref="FieldMeta.Valid"/> and <see cref="FieldMeta.Validated"/> keep
+/// what the previous pass wrote, and <see cref="FieldMeta.Pending"/> is lowered all the same. The
+/// exception then reaches whoever awaits the pass - <see cref="ValidateAsync"/>,
+/// <see cref="Form.ValidateAllAsync"/>, <see cref="Form.RevalidateValidatedAsync"/>, a
+/// <see cref="Form.HandleSubmit"/> command. A pass nobody awaits (<see cref="HandleChange"/>,
+/// <see cref="HandleBlur"/>, a <see cref="DependsOn{TSource}"/> source changing, the silent pass a
+/// constructor or <see cref="Reset()"/> runs) rethrows it on the <see cref="Dispatcher"/> of the
+/// thread that started the pass, where it surfaces as
+/// <see cref="System.Windows.Application.DispatcherUnhandledException"/> instead of disappearing
+/// with a discarded <see cref="Task"/>; a pass started on a thread-pool thread, or on a thread with
+/// no <see cref="Dispatcher"/>, leaves it on that task for
+/// <see cref="TaskScheduler.UnobservedTaskException"/>, since nothing pumps such a thread's
+/// dispatcher. The one thing swallowed is the cancellation of a pass Valee
+/// itself superseded; an <see cref="OperationCanceledException"/> from anywhere else (an
+/// <c>HttpClient</c> timeout raises <see cref="TaskCanceledException"/>) is a failure like any
+/// other. A rule whose failure should read as a message - "could not check right now" - catches
+/// inside the rule and returns that message.
 /// </para>
 /// <para>
 /// Implements <see cref="INotifyDataErrorInfo"/> directly, so a plain
@@ -83,7 +105,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     public Field(string name, T initialValue)
     {
         Initialize(name, initialValue);
-        _ = ValidateInternal(ValidationWriteMode.Silent);
+        FireAndForget(ValidateInternal(ValidationWriteMode.Silent));
     }
 
     /// <summary>Creates a field validated by one or more <see cref="ValidationAttribute"/>s (the same attributes usable on a DataAnnotations model property).</summary>
@@ -92,7 +114,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         Initialize(name, initialValue);
         _attributeRules.AddRange(rules);
         (Minimum, Maximum) = RangeMetadata.From(rules.OfType<RangeAttribute>().FirstOrDefault());
-        _ = ValidateInternal(ValidationWriteMode.Silent);
+        FireAndForget(ValidateInternal(ValidationWriteMode.Silent));
     }
 
     /// <summary>Creates a field validated by one or more synchronous, schema-less rule delegates.</summary>
@@ -100,7 +122,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     {
         Initialize(name, initialValue);
         _syncRules.AddRange(rules);
-        _ = ValidateInternal(ValidationWriteMode.Silent);
+        FireAndForget(ValidateInternal(ValidationWriteMode.Silent));
     }
 
     /// <summary>Creates a field validated by one or more asynchronous, schema-less rule delegates.</summary>
@@ -108,7 +130,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     {
         Initialize(name, initialValue);
         _asyncRules.AddRange(rules);
-        _ = ValidateInternal(ValidationWriteMode.Silent);
+        FireAndForget(ValidateInternal(ValidationWriteMode.Silent));
     }
 
     /// <summary>Used only by <see cref="Form.FromModel{TModel}"/> to back a field with a real model property's own declared attributes.</summary>
@@ -131,7 +153,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         IsReadOnly = isReadOnly;
         ModelAttributeValidator = modelAttributeValidator;
         WriteBackToModel = writeBackToModel;
-        _ = ValidateInternal(ValidationWriteMode.Silent);
+        FireAndForget(ValidateInternal(ValidationWriteMode.Silent));
     }
 
     private void Initialize(string name, T initialValue)
@@ -214,7 +236,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         Meta.NotifyDirtyChanged();
 
         if (shouldValidate && Triggers.HasFlag(ValidateTrigger.OnChange))
-            _ = ValidateInternal(ValidationWriteMode.ValidatedOnly);
+            FireAndForget(ValidateInternal(ValidationWriteMode.ValidatedOnly));
     }
 
     /// <summary>Marks the field <see cref="FieldMeta.Touched"/> and, if <see cref="Triggers"/> includes <see cref="ValidateTrigger.OnBlur"/>, runs a <see cref="ValidationWriteMode.Force"/> validation pass.</summary>
@@ -223,7 +245,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         Meta.Touched = true;
 
         if (Triggers.HasFlag(ValidateTrigger.OnBlur))
-            _ = ValidateInternal(ValidationWriteMode.Force);
+            FireAndForget(ValidateInternal(ValidationWriteMode.Force));
     }
 
     /// <inheritdoc/>
@@ -274,7 +296,7 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var handle = Watch.On(source._value, (_, _) => _ = ValidateInternal(ValidationWriteMode.ValidatedOnly));
+        var handle = Watch.On(source._value, (_, _) => FireAndForget(ValidateInternal(ValidationWriteMode.ValidatedOnly)));
         _dependencyHandles.Add(handle);
         return handle;
     }
@@ -344,7 +366,65 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
         Meta.Pending = false;
         ReplaceErrors([]);
 
-        _ = ValidateInternal(ValidationWriteMode.Silent);
+        FireAndForget(ValidateInternal(ValidationWriteMode.Silent));
+    }
+
+    /// <summary>
+    /// Observes a pass nobody awaits (a value change, a blur, a <see cref="DependsOn{TSource}"/>
+    /// source changing, the silent pass at construction and <see cref="Reset()"/>), so a rule's
+    /// exception does not vanish with the discarded <see cref="Task"/>. Called on the thread that
+    /// started the pass, right after starting it.
+    /// </summary>
+    /// <remarks>
+    /// The fault is rethrown on the <see cref="Dispatcher"/> of the thread that started the pass -
+    /// the same "observe the fault, rethrow through the Dispatcher" shape Aquarius's
+    /// <c>Lifecycle</c> uses for async hooks - so it reaches
+    /// <see cref="System.Windows.Application.DispatcherUnhandledException"/> like any other
+    /// failure on the UI thread. A thread with no <see cref="Dispatcher"/> has nowhere to route
+    /// it, and neither has a thread-pool thread, so there the fault stays on the task, where
+    /// <see cref="TaskScheduler.UnobservedTaskException"/> is the only remaining observer.
+    /// </remarks>
+    private static void FireAndForget(Task pass)
+    {
+        // A pool thread is never a UI thread, even when it owns a Dispatcher: one is created on any
+        // thread that merely reads Dispatcher.CurrentDispatcher - FormMeta's NextTick does, in the
+        // very HandleChange that starts this pass, for a form field changed off the UI thread - and
+        // nothing ever pumps it. Posting there would mark the fault observed and then never run it,
+        // which loses it more thoroughly than leaving it on the task.
+        if (pass.IsCompletedSuccessfully
+            || Thread.CurrentThread.IsThreadPoolThread
+            || Dispatcher.FromThread(Thread.CurrentThread) is not { } dispatcher)
+        {
+            return;
+        }
+
+        if (pass.IsCompleted)
+        {
+            RethrowOn(dispatcher, pass);
+            return;
+        }
+
+        pass.ContinueWith(
+            static (completed, state) => RethrowOn((Dispatcher)state!, completed),
+            dispatcher,
+            CancellationToken.None,
+            TaskContinuationOptions.NotOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private static void RethrowOn(Dispatcher dispatcher, Task pass)
+    {
+        // GetResult rather than Task.Exception: a rule's own OperationCanceledException (an
+        // HttpClient timeout) leaves the pass Canceled, not Faulted, and Task.Exception is null
+        // for a canceled task - GetResult is the one accessor that hands back either.
+        try
+        {
+            pass.GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            dispatcher.BeginInvoke((Action)(() => ExceptionDispatchInfo.Throw(exception)));
+        }
     }
 
     private async Task ValidateInternal(ValidationWriteMode mode)
@@ -367,6 +447,11 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
 
         List<string> messages;
 
+        // cts is cancelled exactly when this pass has been superseded - by a newer pass, Reset or
+        // Dispose, each of which cancels it before replacing it - so cts.IsCancellationRequested,
+        // not the type of whatever a rule throws, is what says "Valee cancelled this pass". It is
+        // read rather than _validationCts because Cancel() can run this pass's continuation inline,
+        // before the caller has swapped in its replacement.
         try
         {
             var currentValue = _value.Value;
@@ -395,16 +480,27 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
                     messages.Add(message);
             }
         }
-        catch (OperationCanceledException)
+        catch (Exception) when (cts.IsCancellationRequested)
         {
+            // A superseded pass ends quietly whatever its rule threw: its result would be
+            // discarded anyway, and not every library reports cancellation as an
+            // OperationCanceledException. An OperationCanceledException from a pass Valee did NOT
+            // cancel - an HttpClient timeout surfaces as TaskCanceledException - is a real failure
+            // and propagates like any other exception.
             return;
+        }
+        finally
+        {
+            // Lowered by the pass that raised it, however that pass ended - a throwing rule used to
+            // skip this and leave the field, and its whole Form, Pending forever. Never by a
+            // superseded pass: its replacement raised Pending again and owns it now (Reset and
+            // Dispose lower it themselves).
+            if (tracksPending && !cts.IsCancellationRequested)
+                Meta.Pending = false;
         }
 
         if (cts.Token.IsCancellationRequested || !ReferenceEquals(cts, _validationCts))
             return;
-
-        if (tracksPending)
-            Meta.Pending = false;
 
         // Updated on every pass regardless of mode - this is what lets Meta.Valid stay accurate
         // even while a Silent/ValidatedOnly pass withholds the visible Errors themselves.

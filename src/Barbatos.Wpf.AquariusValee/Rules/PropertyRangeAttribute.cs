@@ -46,14 +46,15 @@ public sealed class PropertyRangeAttribute : ValidationAttribute, IDependsOnProp
     private readonly string _maxPropertyName;
 
     /// <summary>Creates the attribute, naming the two sibling properties (typically via <see langword="nameof"/>) that hold the current lower and upper bound.</summary>
+    /// <remarks>The default message goes to the base constructor, as the BCL's own attributes pass theirs, so <see cref="ValidationAttribute.ErrorMessage"/> reads <see langword="null"/> until set and <see cref="ValidationAttribute.ErrorMessageResourceName"/> can supply a localized message instead - assigning the default to <c>ErrorMessage</c> made the BCL reject that resource pair with an <see cref="InvalidOperationException"/>.</remarks>
     public PropertyRangeAttribute(string minPropertyName, string maxPropertyName)
+        : base("The {0} field must be between {1} and {2}.")
     {
         ArgumentException.ThrowIfNullOrEmpty(minPropertyName);
         ArgumentException.ThrowIfNullOrEmpty(maxPropertyName);
 
         _minPropertyName = minPropertyName;
         _maxPropertyName = maxPropertyName;
-        ErrorMessage ??= "The {0} field must be between {1} and {2}.";
     }
 
     /// <inheritdoc/>
