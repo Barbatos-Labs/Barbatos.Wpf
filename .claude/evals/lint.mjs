@@ -151,7 +151,7 @@ const globToRegExp = (glob) =>
 const markdownUnder = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name);
-    if (e.isDirectory()) return e.name === "results" ? [] : markdownUnder(p);
+    if (e.isDirectory()) return e.name === "results" || e.name === "worktrees" ? [] : markdownUnder(p);
     return e.name.endsWith(".md") ? [p] : [];
   });
 
