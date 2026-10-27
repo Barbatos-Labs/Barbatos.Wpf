@@ -32,7 +32,11 @@ namespace Barbatos.Wpf.Aquarius.Animation;
 /// <see cref="Transition"/> clones its storyboards - see its remarks). Since
 /// <c>Loaded</c> only fires when a container is genuinely, newly attached to a live
 /// visual tree, already-realized containers are untouched with no extra bookkeeping
-/// needed to tell "new" from "existing". One caveat: a *virtualizing* panel
+/// needed to tell "new" from "existing". The hook unsubscribes itself on that first
+/// <c>Loaded</c>: a container loaded again later - the list's <c>TabItem</c> or <c>If</c>
+/// coming back - holds an item that is not new, so nothing replays (an earlier version
+/// stayed subscribed and replayed every container's animation each time). One caveat: a
+/// *virtualizing* panel
 /// (the default for <see cref="ListBox"/>/<see cref="ListView"/>) can satisfy a newly
 /// added item by reusing a recycled container instead of creating a new one, and a
 /// reused container does not re-fire <c>Loaded</c> - if the enter animation should be
@@ -42,7 +46,10 @@ namespace Barbatos.Wpf.Aquarius.Animation;
 /// </remarks>
 public static class TransitionGroup
 {
-    /// <summary>Played once for each item container newly added to the live visual tree.</summary>
+    /// <summary>
+    /// Played once for each item container newly added to the live visual tree - on its first
+    /// <c>Loaded</c> only, never again when that container is reloaded.
+    /// </summary>
     public static readonly DependencyProperty EnterProperty =
         DependencyProperty.RegisterAttached(
             "Enter",
@@ -108,7 +115,15 @@ public static class TransitionGroup
             container.Loaded += OnContainerLoaded;
         }
 
-        private void OnContainerLoaded(object sender, RoutedEventArgs e) =>
-            GetEnter(itemsControl)?.Clone().Begin((FrameworkElement)sender);
+        private void OnContainerLoaded(object sender, RoutedEventArgs e)
+        {
+            // One-shot, as documented. Staying subscribed replayed Enter on every later Loaded -
+            // each time the list's tab or If came back - for items that were not new at all.
+            // HookedProperty stays set, so the container is never hooked again either.
+            var container = (FrameworkElement)sender;
+            container.Loaded -= OnContainerLoaded;
+
+            GetEnter(itemsControl)?.Clone().Begin(container);
+        }
     }
 }

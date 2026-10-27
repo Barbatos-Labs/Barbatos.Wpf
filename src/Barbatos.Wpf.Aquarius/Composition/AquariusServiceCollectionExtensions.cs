@@ -36,12 +36,25 @@ namespace Barbatos.Wpf.Aquarius.Composition;
 public static class AquariusServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers Aquarius's own options, configured from code via <paramref name="configure"/>
-    /// and/or from the <c>Barbatos:Aquarius</c> configuration section (configuration values
-    /// override code values). Call
-    /// <see cref="AquariusServiceProviderExtensions.UseAquarius"/> once the container is built to
-    /// actually apply them.
+    /// Registers Aquarius's own options, configured from code via <paramref name="configure"/>.
+    /// Call <see cref="AquariusServiceProviderExtensions.UseAquarius"/> once the container is
+    /// built to actually apply them.
     /// </summary>
+    /// <remarks>
+    /// Nothing here reads configuration: this package depends on
+    /// <c>Microsoft.Extensions.Options</c> and the DI abstractions only, deliberately not on
+    /// <c>Microsoft.Extensions.Configuration</c>, so it stays installable in an app with no
+    /// configuration system at all. <see cref="AquariusOptions.SectionName"/> names the section
+    /// this repository's <c>Barbatos:</c> convention reserves for these options; an app that wants
+    /// them in <c>appsettings.json</c> binds it itself, after this call so file values override
+    /// code values (<c>Bind</c> comes from <c>Microsoft.Extensions.Options.ConfigurationExtensions</c>,
+    /// which a Barbatos.Wpf.Core app already has):
+    /// <code>
+    /// builder.Services.AddAquarius(options => options.ThrowOnUnresolvedViewModels = true);
+    /// builder.Services.AddOptions&lt;AquariusOptions&gt;().Bind(builder.Configuration.GetSection(AquariusOptions.SectionName));
+    /// </code>
+    /// <see cref="AquariusOptions.ViewModelResolver"/> is a delegate and cannot come from a file.
+    /// </remarks>
     /// <param name="services">The service collection to add to.</param>
     /// <param name="configure">Optional code-side configuration - see <see cref="AquariusOptions"/>.</param>
     public static IServiceCollection AddAquarius(this IServiceCollection services, Action<AquariusOptions>? configure = null)

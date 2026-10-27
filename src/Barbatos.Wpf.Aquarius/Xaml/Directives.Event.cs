@@ -44,7 +44,7 @@ public static partial class Directives
     /// <item><c>stop</c>, <c>prevent</c> - both set <see cref="RoutedEventArgs.Handled"/> on a
     /// routed event. WPF collapses the DOM's separate stopPropagation/preventDefault into one
     /// <c>Handled</c> flag, so these two are honestly the same operation here.</item>
-    /// <item><c>once</c> - unhooks after this single invocation.</item>
+    /// <item><c>once</c> - unhooks for good the first time the event is raised.</item>
     /// <item><c>self</c> - only invokes the command if <c>OriginalSource</c> is the element
     /// itself, not a descendant the event bubbled up from.</item>
     /// <item><c>left</c>/<c>right</c>/<c>middle</c> - only invokes for that
@@ -53,6 +53,11 @@ public static partial class Directives
     /// <c>right</c>/<c>delete</c> - only invokes for that <see cref="KeyEventArgs.Key"/>
     /// (<c>delete</c> matches both Delete and Backspace, matching Vue's own alias).</item>
     /// </list>
+    /// <c>stop</c>/<c>prevent</c> and <c>once</c> act on every raise of the event, <i>before</i>
+    /// the <c>self</c>/button/key filters decide whether the command runs: <c>"enter,stop"</c>
+    /// marks every key <c>Handled</c>, not only Enter, and <c>"enter,once"</c> unhooks on the
+    /// first key of any kind - even when that key was not Enter and the command never ran. To
+    /// handle or unhook only on a match, check the key inside the command instead.
     /// <c>capture</c> is intentionally not a modifier here - WPF already has a native, more
     /// idiomatic equivalent, the <c>Preview{EventName}</c> tunneling event, so
     /// <c>Directives.Event="PreviewMouseDown"</c> *is* the capture-phase port. <c>passive</c> is

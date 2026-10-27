@@ -137,7 +137,7 @@ Watch.On(viewModel.DockTarget, (target, _) =>
 ## Transition and TransitionGroup
 
 Sample: `MainWindow.xaml` (`FadeSlideIn`/`FadeSlideOut`/`LogEnter` storyboards). Tests:
-`TransitionTests.cs`.
+`TransitionTests.cs`, `TransitionGroupTests.cs`.
 
 ```xml
 <Window.Resources>
@@ -164,12 +164,13 @@ Sample: `MainWindow.xaml` (`FadeSlideIn`/`FadeSlideOut`/`LogEnter` storyboards).
 - **`Enter` does not play on first render** (no Vue `appear`): the initial `Child` is shown
   directly. To animate in on load, start with `Show` false and flip it.
 - Storyboards are cloned per play, so one shared resource across many `Transition`s does not
-  cross-fire `Completed`. Re-toggling mid-`Leave` keeps the content mounted (the pending
-  `Completed` is detached first - `TransitionTests.cs`).
-- Give every `Leave` an `Enter` that animates the same properties back. Both start with
-  `Begin(this)`, which is not controllable, so the `Stop` call on a re-toggle cannot undo a
-  running `Leave`, and a finished one holds its end value (`FillBehavior.HoldEnd`); only a new
-  animation on the same property replaces it, otherwise re-shown content can stay at `Opacity` 0.
+  cross-fire `Completed`.
+- `Leave` is begun controllable and kept until the next show. `Show` -> `true` (mid-`Leave` or
+  after it finished) starts `Enter`, then removes `Leave`: a re-toggle mid-`Leave` really stops it
+  and keeps the content mounted, and whatever only `Leave` animated drops its held end value
+  (`FillBehavior.HoldEnd`) - a `Leave` with no `Enter` re-shows its content at full opacity
+  (`TransitionTests.cs`). An `Enter` animation with no `From` starts from the value `Leave`
+  reached; with an explicit `From` it jumps there first.
 
 ```xml
 <ListBox ItemsSource="{Binding ActivityLog}"
@@ -179,10 +180,10 @@ Sample: `MainWindow.xaml` (`FadeSlideIn`/`FadeSlideOut`/`LogEnter` storyboards).
 
 - `TransitionGroup.Enter` is set on an `ItemsControl` (anything else throws) and is **enter-only**;
   leave and reorder (FLIP) animations would need a custom panel and are out of scope.
-- It plays when an item container raises `Loaded`. A virtualizing panel (the `ListBox`/`ListView`
-  default) may reuse a recycled container that never re-raises `Loaded` - turn virtualization off
-  on lists small enough to afford it. The hook stays subscribed, so containers animate again
-  whenever they are re-loaded (the list's tab or `If` coming back).
+- It plays on an item container's first `Loaded` only, then unhooks: a container loaded again
+  later (the list's tab or `If` coming back) does not replay (`TransitionGroupTests.cs`). A
+  virtualizing panel (the `ListBox`/`ListView` default) may reuse a recycled container for a new
+  item, which then gets no animation - turn virtualization off on lists small enough to afford it.
 
 ## Provide and Inject
 
@@ -200,8 +201,9 @@ Sample: `MainWindow.xaml` (provider on the root `Grid`), `ProvideInjectDemoView.
 - `Provide` stores `Value` in the element's `Resources` under `Key` (on a `FrameworkElement` only,
   else it throws); changing `Key` moves the entry. Lookup is WPF's own resource walk, so a nearer
   `Provide` shadows a farther one.
-- `{aq:Inject Key}` (or `{aq:Inject Key=ThemeColor}`) is a `DynamicResource` underneath: live
-  updates, and like any dynamic resource it targets a dependency property only. From C#:
+- `{aq:Inject ThemeColor}` (positional) or `{aq:Inject Key=ThemeColor}` is a `DynamicResource`
+  underneath: live updates, and like any dynamic resource it targets a dependency property only.
+  A key is required - `{aq:Inject}` alone throws "Inject requires a Key." when the XAML loads. From C#:
   `Inject.Get<T>(element, key, fallback)` - a one-time `TryFindResource`.
 - A string key can collide with an unrelated resource of the same name (including one in
   `App.xaml`). Collision-proof with an object sentinel:

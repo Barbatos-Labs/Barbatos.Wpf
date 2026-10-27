@@ -7,10 +7,10 @@ modeled after the official .NET API documentation.
 
 | Namespace | Description |
 |-----------|-------------|
-| **[`Barbatos.Wpf.Aquarius.Reactivity`](#barbatoswpfreactivity-namespace)** | `Ref<T>`, `Computed<T>`, `Watch`, `NextTick` - thin sugar over CommunityToolkit.Mvvm. |
-| **[`Barbatos.Wpf.Aquarius.Composition`](#barbatoswpfcomposition-namespace)** | `Lifecycle` and its nine hook interfaces, `Setup` (ViewModel wiring), `Provide`/`Inject`, plus the `AddAquarius`/`UseAquarius` DI entry points and `AquariusOptions`. |
-| **[`Barbatos.Wpf.Aquarius.Xaml`](#barbatoswpfxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, the `Component`/`KeepAlive` pair, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
-| **[`Barbatos.Wpf.Aquarius.Animation`](#barbatoswpfanimation-namespace)** | `Transition`, `TransitionGroup`. |
+| **[`Barbatos.Wpf.Aquarius.Reactivity`](#barbatoswpfaquariusreactivity-namespace)** | `Ref<T>`, `Computed<T>`, `Watch`, `NextTick` - thin sugar over CommunityToolkit.Mvvm. |
+| **[`Barbatos.Wpf.Aquarius.Composition`](#barbatoswpfaquariuscomposition-namespace)** | `Lifecycle` and its eleven hook interfaces (plus eight `*Async` counterparts), `Setup` (ViewModel wiring), `Provide`/`Inject`, plus the `AddAquarius`/`UseAquarius` DI entry points and `AquariusOptions`. |
+| **[`Barbatos.Wpf.Aquarius.Xaml`](#barbatoswpfaquariusxaml-namespace)** | The `Directives` attached-property family, `If`, `Suspense`, custom-directive extensibility (`Directive`), `Comparisons`, `BuildConfiguration`, `Teleport`, `TeleportHost`, the `Component`/`KeepAlive` pair, and the free-form-named-slots family (`Slot`/`SlotHost`/`SlotContent`/`SlotProvided`). |
+| **[`Barbatos.Wpf.Aquarius.Animation`](#barbatoswpfaquariusanimation-namespace)** | `Transition`, `TransitionGroup`. |
 
 All four map onto the single `aq:` XAML namespace - see
 [Quick Start](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#quick-start)
@@ -59,14 +59,32 @@ public sealed class Computed<T> : ObservableObject, IDisposable
 ### `WatchFlush` Enum
 
 - **`Sync`** (default) - invoke the callback immediately, synchronously.
-- **`Post`** - coalesce rapid-fire changes and invoke the callback once via `NextTick`.
+- **`Post`** - coalesce rapid-fire changes and invoke the callback once via `NextTick`. For
+  `Watch.On` that one call receives the newest value and the value from before the burst's
+  first change (`0 -> 1 -> 2 -> 3` is one `(3, 0)`); a burst ending on its starting value still
+  makes the call, with equal arguments. A change raised on a worker thread runs the callback on
+  the UI thread that created the watcher, else on `Application.Current`'s (both `On` and
+  `Effect`).
 
 ### `NextTick` Static Class
 
 - **`Run(Action callback)`** → `DispatcherOperation`
 - **`RunAsync(Action? callback = null)`** → `Task`
 
-Both schedule via `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`.
+Both schedule via `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)` on the first
+usable dispatcher (not shutting down, thread alive) of:
+
+1. the calling thread's, when that thread is a UI thread - running a dispatcher operation right
+   now, or a dedicated (non-pool) STA thread;
+2. for `Watch` and `Lifecycle` internally, the watcher's creating UI thread's or the element's;
+3. a new one for the calling thread, if it is such an STA thread with no dispatcher yet;
+4. `Application.Current.Dispatcher`;
+5. the calling thread's regardless - with no `Application` and nothing above, the callback runs
+   only if the calling thread pumps its dispatcher.
+
+A thread-pool thread never counts as a UI thread, even if it owns a dispatcher. So a call from a
+worker thread (a pool continuation, a `Task.Run` body) lands on the UI thread. See
+[Reactivity](README.md#reactivity) in the README for why.
 
 ---
 
@@ -86,13 +104,13 @@ Both schedule via `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`.
 | `IOnCreated` | `void OnCreated()` |
 | `IOnBeforeMount` | `void OnBeforeMount()` |
 | `IOnMounted` | `void OnMounted()` |
-| `IOnBeforeUpdate` | `void OnBeforeUpdate()` |
-| `IOnUpdated` | `void OnUpdated()` |
+| `IOnBeforeUpdate` | `void OnBeforeUpdate()` - always on the element's thread; a `PropertyChanged` raised on a worker is marshalled there first. |
+| `IOnUpdated` | `void OnUpdated()` - once per batch, through `NextTick`, on the element's thread. |
 | `IOnBeforeUnmount` | `void OnBeforeUnmount()` |
 | `IOnUnmounted` | `void OnUnmounted()` |
 | `IOnActivated` | `void OnActivated()` |
 | `IOnDeactivated` | `void OnDeactivated()` |
-| `IOnErrorCaptured` | `bool OnErrorCaptured(Exception exception)` - return `true` to mark handled. |
+| `IOnErrorCaptured` | `bool OnErrorCaptured(Exception exception)` - return `true` to mark handled. Raised from `Dispatcher.UnhandledException` of the element's own thread while mounted (on the main UI thread, the same event `Application.DispatcherUnhandledException` forwards to); needs no `Application`. |
 
 Async counterparts (see [Async hooks](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#async-hooks)
 in the README) - every hook above except `IOnBeforeUpdate`/`IOnUpdated`/`IOnErrorCaptured`,
@@ -137,7 +155,12 @@ in the README for why that timing matters alongside `Lifecycle`.
 public sealed class AquariusOptions
 ```
 
-- **`const string SectionName`** - `"Barbatos:Aquarius"`.
+- **`const string SectionName`** - `"Barbatos:Aquarius"`, the section this repository's
+  `Barbatos:` convention reserves. **Nothing binds it automatically** - Aquarius has no
+  configuration dependency. An app binds it itself, after `AddAquarius` so file values override
+  code values:
+  `builder.Services.AddOptions<AquariusOptions>().Bind(builder.Configuration.GetSection(AquariusOptions.SectionName));`
+  (`Bind` is from `Microsoft.Extensions.Options.ConfigurationExtensions`).
 - **`ThrowOnUnresolvedViewModels`** (`bool`) - applied to `Setup.ThrowOnUnresolved`.
 - **`ThrowOnUnresolvedExprIdentifiers`** (`bool`) - applied to `Expr.ThrowOnUnresolvedIdentifiers`.
 - **`ViewModelResolver`** (`Func<Type, Type?>?`) - replaces `Setup.Resolver` when non-`null`.
@@ -145,8 +168,9 @@ public sealed class AquariusOptions
 ### `AquariusServiceCollectionExtensions` Static Class
 
 - **`static AddAquarius(this IServiceCollection services, Action<AquariusOptions>? configure = null)`**
-  → `IServiceCollection` - registers `AquariusOptions`. Declares only; nothing is resolved and
-  no static is touched until `UseAquarius`.
+  → `IServiceCollection` - registers `AquariusOptions` (`AddOptions` plus `configure`, if given).
+  Declares only; nothing is resolved and no static is touched until `UseAquarius`. Reads no
+  configuration - see `SectionName` above.
 
 ### `AquariusServiceProviderExtensions` Static Class
 
@@ -213,11 +237,22 @@ Resolves the real two-way-bindable property by element type:
 | `PasswordBox` | throws `InvalidOperationException` (no DP for `Password`) |
 | anything else | throws `InvalidOperationException` |
 
+The `TwoWay`/`UpdateSourceTrigger=PropertyChanged` binding is applied each time the `Model`
+binding's value changes, starting with its first resolved value - `null` included, because the
+property's default is a private "unset" marker rather than `null`. `GetModel` returns `null`
+while unset. A plain value (`null` included) throws `InvalidOperationException`; clearing the
+property (`ClearValue`, `BindingOperations.ClearBinding`) does not, and leaves the binding
+already applied in place.
+
 #### `Directives.Event` Modifiers
 
 See the [Directives.Event](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#directivesevent-v-on)
 table in the README for the full modifier list (`stop`/`prevent`/`once`/`self`/mouse-
-button aliases/key aliases).
+button aliases/key aliases). `stop`/`prevent` (set `Handled`) and `once` (permanent unhook)
+act on every raise, before the `self`/button/key filters decide whether `Command` runs. The
+subscription is suspended on `Unloaded` and re-hooked on the next `Loaded`; only `once` or a
+changed `Event`/`Command` removes it for good. An unknown event name throws
+`InvalidOperationException` once both `Event` and `Command` are set.
 
 ### `Directive` Class
 
@@ -469,14 +504,22 @@ public class Transition : ContentControl
 - **`Child`** (`object?`) - the XAML content property.
 - **`Show`** (`bool`, default `true`)
 - **`Enter`** (`Storyboard?`) - played (cloned) after mounting, on a `false`→`true` toggle.
-- **`Leave`** (`Storyboard?`) - played (cloned) before unmounting; content stays mounted
-  until it completes. Without `Leave` set, behaves exactly like `If` - immediate,
+- **`Leave`** (`Storyboard?`) - played (cloned, controllable) before unmounting; content stays
+  mounted until it completes. Without `Leave` set, behaves exactly like `If` - immediate,
   unanimated detach.
+
+Both storyboards are begun on the `Transition` itself. `Show` going `true` - mid-`Leave` or
+after it finished - restores `Content`, begins `Enter` (default `SnapshotAndReplace` handoff, so
+an `Enter` animation with no `From` continues from the value `Leave` reached), then removes the
+`Leave` instance, so a property only `Leave` animated drops its held end value
+(`FillBehavior.HoldEnd`) and returns to its own value.
 
 ### `TransitionGroup` Static Class
 
 - **`EnterProperty`** (`DependencyProperty`, `Storyboard`) - `SetEnter`/`GetEnter`,
-  settable on any `ItemsControl`. Every newly-generated item container gets a one-time
-  `Loaded` hook that plays a clone of `Enter`. No `Leave`/move-animation support - see the
+  settable on any `ItemsControl` (anything else throws `InvalidOperationException`). Every
+  newly-generated item container gets a one-time `Loaded` hook that plays a clone of `Enter`
+  and then unsubscribes, so a container loaded again later does not replay it. No
+  `Leave`/move-animation support - see the
   [Transition / TransitionGroup](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/README.md#transition--transitiongroup)
   section in the README for the scope note.

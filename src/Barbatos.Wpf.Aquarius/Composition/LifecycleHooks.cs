@@ -140,6 +140,13 @@ public interface IOnMountedAsync
 /// new update batch. Fires synchronously, before the batch is flushed - see
 /// <see cref="IOnUpdated"/>.
 /// </summary>
+/// <remarks>
+/// Always called on the element's own (UI) thread. A <c>PropertyChanged</c> raised on a worker
+/// thread is first marshalled to that thread's dispatcher, so this hook then fires once the UI
+/// thread processes it rather than synchronously inside the worker's property setter.
+/// (Handling it on the worker, as an earlier version did, threw into the ViewModel's setter -
+/// the element cannot be read from another thread - and stopped update batching for good.)
+/// </remarks>
 public interface IOnBeforeUpdate
 {
     /// <inheritdoc cref="IOnBeforeUpdate"/>
@@ -153,6 +160,10 @@ public interface IOnBeforeUpdate
 /// <see cref="Barbatos.Wpf.Aquarius.Reactivity.NextTick"/> the same way Vue batches multiple
 /// synchronous mutations into a single asynchronous DOM update.
 /// </summary>
+/// <remarks>
+/// Always called on the element's own (UI) thread, including for changes raised on a worker
+/// thread - see <see cref="IOnBeforeUpdate"/>.
+/// </remarks>
 public interface IOnUpdated
 {
     /// <inheritdoc cref="IOnUpdated"/>
@@ -260,6 +271,21 @@ public interface IOnDeactivatedAsync
 /// and friends) so it behaves the way every other "did you handle this" callback in WPF
 /// already does: return <c>true</c> to mark the exception handled (suppresses the app's
 /// unhandled-exception behavior), or <c>false</c> to let it keep propagating.
+/// <para>
+/// "The dispatcher" is the element's own: while mounted, <c>Lifecycle</c> subscribes
+/// <see cref="System.Windows.Threading.Dispatcher.UnhandledException"/> of the thread the
+/// element belongs to. On the main UI thread that is the very event
+/// <see cref="System.Windows.Application.DispatcherUnhandledException"/> forwards to, so an
+/// app's own handler and this hook see each exception in subscription order, as before. It is
+/// app-wide on that thread, not scoped to the View's subtree: every mounted ViewModel
+/// implementing this sees every such exception. An element on a second UI thread sees that
+/// thread's exceptions, and no <see cref="System.Windows.Application"/> is needed. (Earlier
+/// versions subscribed <c>Application.Current.DispatcherUnhandledException</c> from whichever
+/// thread mounted the element. An element on another UI thread then missed its own thread's
+/// exceptions, and when an exception on the main thread reached its handler, the handler's read
+/// of the element from the wrong thread threw an <see cref="InvalidOperationException"/> that
+/// replaced the original and ended the main thread.)
+/// </para>
 /// </remarks>
 public interface IOnErrorCaptured
 {

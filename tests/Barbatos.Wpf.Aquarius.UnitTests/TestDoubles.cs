@@ -115,7 +115,7 @@ internal sealed class FakeAsyncLifecycleViewModel :
 /// <see cref="Lifecycle"/> observes the fault through the deferred <c>ContinueWith</c> path,
 /// not the already-completed fast path) - paired with <see cref="IOnErrorCaptured"/> on the
 /// same instance to prove a faulted async hook's exception reaches it through the existing
-/// <see cref="System.Windows.Application.DispatcherUnhandledException"/> route, with no
+/// <see cref="System.Windows.Threading.Dispatcher.UnhandledException"/> route, with no
 /// dedicated async error hook needed. <see cref="ErrorCapturedSignal"/> lets a test wait
 /// for that cross-thread routing to actually land instead of racing a dispatcher pump
 /// against a thread-pool continuation.

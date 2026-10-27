@@ -22,8 +22,7 @@ reaches all four CLR namespaces (`Barbatos.Wpf.Aquarius.Reactivity`, `.Compositi
   [Setup](../../../src/Barbatos.Wpf.Aquarius/README.md#setup),
   [Directives](../../../src/Barbatos.Wpf.Aquarius/README.md#directives),
   [Expr](../../../src/Barbatos.Wpf.Aquarius/README.md#expr---conditional-expressions) - and
-  [API-REFERENCE.md](../../../src/Barbatos.Wpf.Aquarius/API-REFERENCE.md). The README's Teleport and
-  Directives.Event paragraphs are out of date; this skill follows the code.
+  [API-REFERENCE.md](../../../src/Barbatos.Wpf.Aquarius/API-REFERENCE.md).
 - Code: `src/Barbatos.Wpf.Aquarius/` - `Reactivity/`, `Composition/` (`Setup.cs`, `Lifecycle.cs`,
   `AquariusServiceCollectionExtensions.cs`), `Xaml/` (`Directives.*.cs`, `Expr*.cs`), `Animation/`.
 - Sample: `samples/Barbatos.Wpf.Aquarius.Sample/` - one self-contained View/ViewModel pair per tab.
@@ -149,17 +148,21 @@ public ReactivityDemoViewModel(Action<string> log)
   invocation and on `Dispose()` (cancel stale async work). To watch an `[ObservableProperty]`,
   use the generated `partial void OnXxxChanged` or `Watch.Effect(effect, this)`. `Watch.Effect`
   always runs once immediately, then on every dependency change.
-- **`WatchFlush.Post` passes stale arguments**: it coalesces a burst into one callback, but the
-  `(newValue, oldValue)` it passes belong to the *first* change of the burst. Read `source.Value`
-  inside the callback.
+- **`WatchFlush.Post`** coalesces a burst of changes into one callback that gets the newest value
+  and the value from before the burst (`0 -> 1 -> 2 -> 3` is one `(3, 0)`); a burst that ends where
+  it started still calls back, with equal arguments.
 - **Lifetime**: every dependency's `PropertyChanged` holds the `Computed`/watcher and, through the
   closure, the ViewModel. When a source outlives the ViewModel (a singleton store, an app-wide
   `Ref`), `Dispose()` each `Computed<T>` and `Watch` handle in `IOnUnmounted`, or the ViewModel
   leaks. Sources owned by the same ViewModel need nothing.
-- **`NextTick.Run`/`RunAsync` post at `DispatcherPriority.Background` to
-  `Dispatcher.CurrentDispatcher`** - the calling thread's dispatcher. Call them, and raise any
-  `PropertyChanged` that feeds `WatchFlush.Post` or `IOnUpdated`, on the UI thread; from a pool
-  thread the callback is queued on a dispatcher that never runs.
+- **`NextTick.Run`/`RunAsync` post at `DispatcherPriority.Background`** to the calling thread's
+  dispatcher when it is a UI thread (inside a dispatcher operation, or a non-pool STA thread);
+  called from a worker they post to the watcher's/element's UI thread, else
+  `Application.Current`'s. So `WatchFlush.Post` callbacks and `IOnBeforeUpdate`/`IOnUpdated` run
+  on the UI thread even when the `PropertyChanged` behind them was raised on a pool thread
+  (`IOnBeforeUpdate` then fires once the UI thread gets to it, not inside the worker's setter).
+  Only an app with no `Application` at all, calling from a worker, still queues onto that worker's
+  never-pumped dispatcher.
 - Use `[ObservableProperty]` for plain state, `Computed<T>` for derived values, `Ref<T>` when the
   value itself is passed around (`Watch.On`, `Component.Is`, `Provide.Value`). They coexist.
 
@@ -206,11 +209,12 @@ of one hook. Sequences pinned by `LifecycleTests.cs`/`SetupTests.cs`:
   that ViewModel fires every hook a second time.
 - A `DataContext` replaced while mounted gets no mount hooks - only update tracking moves to it.
   `IOnUpdated` fires for any property of the ViewModel, including ones your own hooks set.
-- `IOnErrorCaptured` subscribes to `Application.Current.DispatcherUnhandledException` while
-  mounted: app-wide, not scoped to the View's subtree, so every mounted ViewModel implementing it
-  sees every dispatcher exception. Without `Application.Current` nothing is captured. A faulted
-  `*Async` hook is rethrown on the element's `Dispatcher` and arrives here - never write
-  `async void OnMounted()`.
+- `IOnErrorCaptured` subscribes to the element's own `Dispatcher.UnhandledException` while
+  mounted (on the main UI thread, the event `Application.DispatcherUnhandledException` forwards
+  to): app-wide on that thread, not scoped to the View's subtree, so every mounted ViewModel
+  implementing it sees every exception there. No `Application` is needed, and an element on a
+  second UI thread sees that thread's exceptions. A faulted `*Async` hook is rethrown on the
+  element's `Dispatcher` and arrives here - never write `async void OnMounted()`.
 - On a `Window`, focus changes (`Activated`/`Deactivated`) also raise `IOnActivated`/`IOnDeactivated`.
 - **Loading + `Suspense`**: put `Lifecycle.Enable` and the loading hook on the View that *contains*
   the `aq:Suspense` (as `LifecycleDemoView.xaml` does), never inside its `Child`. The `Child` is out
@@ -221,7 +225,7 @@ of one hook. Sequences pinned by `LifecycleTests.cs`/`SetupTests.cs`:
 
 | Attached property | Behaviour |
 | --- | --- |
-| `aq:Directives.Model="{Binding Path}"` | Re-applies the binding `TwoWay` + `UpdateSourceTrigger=PropertyChanged` to `TextBox.Text`, `ToggleButton.IsChecked`, `Selector.SelectedItem` or `RangeBase.Value`. Must be a `Binding`; `PasswordBox` and every other type throw `InvalidOperationException`. Copies only `Path`, `Converter`, `ConverterParameter`, `ConverterCulture` and the source (`Source`/`RelativeSource`/`ElementName`) - `StringFormat`, `Delay`, `ValidationRules`, `FallbackValue`, `TargetNullValue` are dropped; write a full `{Binding}` when you need them. |
+| `aq:Directives.Model="{Binding Path}"` | Re-applies the binding `TwoWay` + `UpdateSourceTrigger=PropertyChanged` to `TextBox.Text`, `ToggleButton.IsChecked`, `Selector.SelectedItem` or `RangeBase.Value`, from the first value the binding resolves - `null` included (an empty `SelectedItem`, an unset `string?`). Must be a `Binding`: a plain value, `null` too, throws `InvalidOperationException`, as do `PasswordBox` and every other type; `ClearBinding` is fine. Copies only `Path`, `Converter`, `ConverterParameter`, `ConverterCulture` and the source (`Source`/`RelativeSource`/`ElementName`) - `StringFormat`, `Delay`, `ValidationRules`, `FallbackValue`, `TargetNullValue` are dropped; write a full `{Binding}` when you need them. |
 | `Directives.Show` | `true` -> `Visible`, `false` -> `Collapsed`. Stays mounted. |
 | `Directives.Event` + `Command` (+ `CommandParameter`) | Any public instance event by name via reflection; an unknown name throws `InvalidOperationException` once both are set. Parameter defaults to the raised `EventArgs`; `CanExecute` is honoured. Suspended on `Unloaded`, re-hooked on `Loaded`. |
 | `Directives.Modifiers` | Comma-separated: `stop`/`prevent` (both set `Handled`), `once` (permanent detach), `self` (`OriginalSource` is the element), `left`/`right`/`middle` (mouse button), `enter`/`tab`/`esc`/`space`/`up`/`down`/`left`/`right`/`delete` (key; `delete` also matches Backspace). Filters apply only to the matching `EventArgs` type. No `capture` - use the `Preview{Event}` event. |
@@ -312,11 +316,10 @@ Details and verified sequences in [patterns.md](patterns.md). The rules that bit
 | View renders empty, `DataContext` is `null` with `aq:Setup.Enable` | ViewModel in another namespace, another suffix, or the View name does not end in `View`; misses are silent | `aq:Setup.ViewModel="{x:Type ...}"` or `ViewModelResolver`; turn on `ThrowOnUnresolvedViewModels` |
 | `MissingMethodException` while the View loads | ViewModel has constructor parameters but is not registered, or `UseAquarius()` never ran | Register it and call `app.Services.UseAquarius()` after `Build()` |
 | Parent's `DataContext="{Binding X}"` on a View is ignored, or wipes its ViewModel | The View also uses `aq:Setup` | Keep one: Setup or parent binding |
-| `OnMounted` never fires | No `aq:Lifecycle.Enable` (the `aq-view` template does not add it), it sits on an element whose `DataContext` is another object, or the View is a `Suspense` child still pending | Add `Enable` on the View root; move loading out of the `Suspense` child |
+| `OnMounted` never fires | No `aq:Lifecycle.Enable` on the View root (the `aq-view` template sets it; a hand-written View may not), it sits on an element whose `DataContext` is another object, or the View is a `Suspense` child still pending | Add `Enable` on the View root; move loading out of the `Suspense` child |
 | `OnMounted`/data load runs twice | A remount (`If`, tab switch, Teleport settle) or two `Lifecycle.Enable` sharing one ViewModel | Idempotent hook; one `Enable` per ViewModel |
-| `OnUpdated` stopped firing for good | A ViewModel property changed off the UI thread; `NextTick` queued onto a dispatcher that never runs, leaving the batch open until unmount | Raise property changes on the UI thread |
+| A `NextTick.Run` callback never runs, only where there is no `Application` object (WPF hosted in WinForms) | Called from a worker with no UI thread to fall back on | Call it on the UI thread |
 | Computed value is stale | The getter reads something not passed as a dependency, or the `Computed` was disposed | List every source (or `this`) in `From` |
-| `WatchFlush.Post` callback shows an old value | Arguments come from the first change of the burst | Read `source.Value` |
 | ViewModel never garbage-collected | `Watch`/`Computed` on a longer-lived source not disposed; static event subscribed on every `Loaded` | Dispose in `IOnUnmounted`; guard both `Loaded`/`Unloaded` edges |
 | `If`/`Show` content always visible | Unresolved binding or `Expr` identifier fails open | `ThrowOnUnresolvedExprIdentifiers = true` in development |
 | `Expr: '&&' requires a boolean operand` | A logical operator or `?:` got a number or `null` | Compare explicitly (`Count > 0`, `X != null`) |
@@ -335,7 +338,8 @@ Details and verified sequences in [patterns.md](patterns.md). The rules that bit
    derived values as `Computed<T>`.
 3. Decide: self-sufficient (`aq:Setup.Enable`, as the template generates) or parent-bound (remove
    it and bind `DataContext` at the usage site). Never both.
-4. Implementing any `IOn*` hook? Add `aq:Lifecycle.Enable="True"` to the View root.
+4. Implementing any `IOn*` hook? The View root needs `aq:Lifecycle.Enable="True"` - the template
+   already sets it; add it to a hand-written View, and never a second one inside that View.
 5. Constructor dependencies? Register the ViewModel (transient) and make sure `UseAquarius()` runs
    after `Build()`.
 6. Dispose `Watch` handles and `Computed<T>` built on longer-lived sources in `IOnUnmounted`.

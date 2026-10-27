@@ -14,8 +14,9 @@ public class KeepAliveTests
     [Fact]
     public void SwitchingAPlainTabControlGenuinelyDestroysAndRecreatesTheDeselectedTabsContent()
     {
-        // Disproves the README's current claim that "a plain WPF TabControl already never
-        // destroys inactive content." What actually happens: on the very first Show, *both*
+        // Pins the README's KeepAlive table row for a plain TabControl ("No"), which replaced an
+        // earlier claim that "a plain WPF TabControl already never destroys inactive content" -
+        // this test is what disproved it. What actually happens: on the very first Show, *both*
         // tabs' content mount (TabControl realizes every TabItem's content upfront, only
         // toggling Visibility for the non-selected one - confirmed via IsLoaded/IsVisible,
         // not just the hooks below). But the moment you actually switch away from a tab, its

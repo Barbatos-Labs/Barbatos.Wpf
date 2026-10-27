@@ -4,8 +4,8 @@ namespace Barbatos.Wpf.Aquarius.Sample;
 
 /// <summary>
 /// A minimal SlotHost-derived control demonstrating free-form named slots - see
-/// MainWindow.xaml's "Window.Resources" for its ControlTemplate and the "8. Slots" section
-/// for usage.
+/// SlotsDemoView.xaml: its "UserControl.Resources" holds the ControlTemplate, and the rest of
+/// that View (the "Slots" tab) uses it.
 /// </summary>
 public class Card : SlotHost
 {

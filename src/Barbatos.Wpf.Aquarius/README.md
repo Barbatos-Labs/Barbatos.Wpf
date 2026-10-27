@@ -1,6 +1,6 @@
 # Barbatos.Wpf.Aquarius
 
-![Barbatos.Wpf.Aquarius logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquarius-logo.svg?raw=true)
+![Barbatos.Wpf.Aquarius logo](https://raw.githubusercontent.com/Barbatos-Labs/Barbatos.Wpf/main/build/aquarius-logo.svg)
 
 ### *Reactivity, lifecycle hooks, directives, Teleport, and Transitions - for WPF*
 
@@ -23,6 +23,7 @@ CommunityToolkit.Mvvm.**
   * [Quick Start](#quick-start)
 * **[Reactivity](#reactivity)**
 * **[Lifecycle Hooks](#lifecycle-hooks)**
+  * [Async hooks](#async-hooks)
 * **[Setup](#setup)**
 * **[Directives](#directives)**
   * [Directives.Model (v-model)](#directivesmodel-v-model)
@@ -36,6 +37,7 @@ CommunityToolkit.Mvvm.**
   * [Build configuration (Debug-only content)](#build-configuration-debug-only-content)
   * [Already native: v-bind, v-for, v-html](#already-native-v-bind-v-for-v-html)
 * **[Teleport](#teleport)**
+  * [Several Teleports, one host](#several-teleports-one-host)
 * **[Dockable Panels](#dockable-panels)**
 * **[Transition / TransitionGroup](#transition--transitiongroup)**
 * **[Provide / Inject](#provide--inject)**
@@ -49,6 +51,7 @@ CommunityToolkit.Mvvm.**
 * **[Patterns that are already native](#patterns-that-are-already-native)**
   * [Scoped slots for lists](#scoped-slots-for-lists)
 * **[Ecosystem](#ecosystem)**
+  * [Repository layout](#repository-layout)
 * **[API Reference](#api-reference)**
 * **[Community](#community)**
 
@@ -108,9 +111,10 @@ alongside Core for the hosting/DI story, or on its own.
 
 **Scaffolding a new View + ViewModel**: an installable `dotnet new` item template (see
 [`templates/`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md)
-in the repo) generates a matching `XyzView.xaml` (with `aq:Setup.Enable="True"` already
-set) / `XyzView.xaml.cs` / `XyzViewModel.cs` trio in one step - the closest Aquarius
-equivalent of scaffolding a new Vue single-file component:
+in the repo) generates a matching `XyzView.xaml` (with `aq:Setup.Enable="True"` and
+`aq:Lifecycle.Enable="True"` already set, so a [lifecycle hook](#lifecycle-hooks) the ViewModel
+implements fires with no further wiring) / `XyzView.xaml.cs` / `XyzViewModel.cs` trio in one
+step - the closest Aquarius equivalent of scaffolding a new Vue single-file component:
 
 ```powershell
 dotnet new install ./templates/Barbatos.Wpf.Aquarius/item-templates/aquarius-view   # once
@@ -172,7 +176,11 @@ public MainViewModel()
     Add/Remove/Reset, not just wholesale replacement of `.Value` - covering the single most
     common "watch nested changes" need without a full recursive change-tracking system.
   - `flush: WatchFlush.Post` - coalesces rapid-fire changes through `NextTick` into one
-    callback (the default here, `WatchFlush.Sync`, is immediate/synchronous instead).
+    callback (the default here, `WatchFlush.Sync`, is immediate/synchronous instead). Like
+    Vue's post flush, that one callback gets the *newest* value and the value from *before the
+    burst*: `0 -> 1 -> 2 -> 3` in one go is a single `(3, 0)`. A change made on a worker thread
+    still has its callback run on a UI thread - the one that created the watcher, or
+    `Application.Current`'s if the watcher was created off a UI thread.
   - The callback can take a 3rd `onCleanup` parameter: calling it registers an action that
     runs right before the *next* invocation (or on `Dispose`) - the standard way to cancel
     stale async work before starting new work:
@@ -189,7 +197,13 @@ public MainViewModel()
   `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)`, i.e. after the current batch
   of UI updates has been processed. This is also the primitive
   [Lifecycle](#lifecycle-hooks)'s `IOnUpdated` batching and `Watch`'s `flush: Post` are
-  built on.
+  built on. Called on the UI thread it uses that thread's dispatcher; called from a worker
+  thread (a pool continuation after an `await`, a `Task.Run` body) it posts to the UI thread -
+  `Application.Current`'s dispatcher - rather than to the worker's own, which nothing ever
+  pumps: that is where the callback used to sit forever, taking every coalescing caller with
+  it. Only an app with no `Application` at all, calling from a worker, still gets the calling
+  thread's dispatcher. The exact order is in the
+  [API reference](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.Aquarius/API-REFERENCE.md#nexttick-static-class).
 
 A C# `Ref<T>` is always a concrete, statically-typed `Ref<T>` - there's no plain-value/ref/
 getter ambiguity to normalize away, so there's no `toRef`/`toRefs`/`unref`-style helper here.
@@ -225,7 +239,7 @@ interface with a plain `is` pattern.
 | `IOnCreated` | Immediately after `IOnBeforeCreate` - nothing observable happens between them in this port |
 | `IOnBeforeMount` | `Initialized` (or, if `DataContext` wasn't bound yet at that point - the common case when it's set by the parent - as a guaranteed fallback right before `IOnMounted`) |
 | `IOnMounted` | `Loaded` |
-| `IOnBeforeUpdate` | The first `PropertyChanged` from `DataContext` in a new update batch (synchronous) |
+| `IOnBeforeUpdate` | The first `PropertyChanged` from `DataContext` in a new update batch (synchronous on the UI thread; a change raised on a worker is marshalled there first) |
 | `IOnUpdated` | Once per batch, coalesced through `NextTick` |
 | `IOnBeforeUnmount` | `Unloaded`, before `IOnUnmounted` |
 | `IOnUnmounted` | `Unloaded` |
@@ -248,16 +262,30 @@ Notes:
   genuinely distinct moments.
 - `IOnUpdated`'s batching is real, not just a name: several synchronous property changes
   in a row produce exactly one `IOnUpdated` call.
+- `IOnBeforeUpdate`/`IOnUpdated` always run on the element's own (UI) thread. A ViewModel that
+  raises `PropertyChanged` from a worker thread - which WPF bindings already tolerate - has the
+  notification marshalled there first, so `IOnBeforeUpdate` then fires once the UI thread
+  processes it instead of synchronously inside the worker's setter. (Handled on the worker, the
+  element could not be read from that thread: the setter threw, and update batching stopped
+  for that element until it unmounted.)
 - `IOnErrorCaptured` follows WPF's own `Handled` convention: return `true` to mark the
   exception handled (suppresses the app's unhandled-exception behavior), `false` to let it
   keep propagating - the same polarity every other "did you handle this" callback in WPF
-  already uses.
+  already uses. The exceptions it sees are those of the element's own dispatcher
+  (`Dispatcher.UnhandledException` of the thread the element belongs to, while mounted): on the
+  main UI thread that is exactly what `Application.DispatcherUnhandledException` reports, and
+  every mounted ViewModel implementing the hook sees every one of them - it is not scoped to the
+  View's subtree. An element on a second UI thread gets that thread's exceptions, with no
+  `Application` needed. (It used to subscribe `Application.Current.DispatcherUnhandledException`
+  from whatever thread mounted it, so an element on another UI thread missed its own thread's
+  exceptions, and its handler threw a cross-thread `InvalidOperationException` - in place of the
+  real exception - whenever the main thread had one.)
 - `IOnActivated`/`IOnDeactivated` are what the [`KeepAlive`](#keepalive) control is built
   on - and why it matters that mount only reports activated when the element is genuinely
   visible (content that mounts already-hidden, like a background TabControl tab, must not
   falsely claim to be activated - see that section for why).
 
-`If` ([below](#if-v-if)) genuinely detaches/reattaches its content from the visual tree,
+`If` ([below](#if-v-if--v-else--v-else-if)) genuinely detaches/reattaches its content from the visual tree,
 so a `Lifecycle.Enable`'d child behind an `<aq:If>` really does receive
 `IOnUnmounted`/`IOnMounted` calls as the condition toggles, not just a visibility flip.
 
@@ -285,16 +313,24 @@ public sealed partial class DashboardViewModel : ObservableObject, IOnMountedAsy
 }
 ```
 ```xml
-<aq:Suspense IsPending="{Binding IsPending}">
-    <local:DashboardView />
-    <aq:Suspense.Fallback>
-        <TextBlock Text="Loading..." />
-    </aq:Suspense.Fallback>
-</aq:Suspense>
+<!-- DashboardView.xaml: Lifecycle sits on the View that *contains* the Suspense -->
+<UserControl x:Class="MyApp.DashboardView" aq:Lifecycle.Enable="True" ...>
+    <aq:Suspense IsPending="{Binding IsPending}">
+        <local:DashboardContent />
+        <aq:Suspense.Fallback>
+            <TextBlock Text="Loading..." />
+        </aq:Suspense.Fallback>
+    </aq:Suspense>
+</UserControl>
 ```
 
 No changes to `Suspense` itself were needed for this - `OnMountedAsync` toggling a plain
-`bool` property and `Suspense.IsPending` binding to it already compose on their own.
+`bool` property and `Suspense.IsPending` binding to it already compose on their own. Where
+`Lifecycle.Enable` goes is what matters: on the View that holds the `Suspense`, as
+`samples/Barbatos.Wpf.Aquarius.Sample/LifecycleDemoView.xaml` does - never on an element
+inside `Suspense`'s content. That content is out of the tree while `IsPending` is `true`, so a
+hook living there never mounts (a spinner forever, since `IsPending` starts `true`) or, if it
+started `false`, mounts again on every resolve and reloads in a loop.
 
 A few rules distinguish these from a naive `async void OnMounted()`, which is exactly what
 this exists to avoid (an unobservable, uncatchable fire-and-forget with no way to route a
@@ -373,6 +409,21 @@ Two ways to opt in, both set on the View's own XAML root:
   `Setup.ServiceProvider = host.Services` remains a perfectly good one-liner for an app that
   wants nothing else.
 
+  `AddAquarius` reads **no configuration**: Aquarius depends on the DI and Options
+  abstractions only, not on `Microsoft.Extensions.Configuration`, so that it installs into an
+  app with no configuration system. `AquariusOptions.SectionName` (`"Barbatos:Aquarius"`) is
+  the section name the repository's `Barbatos:` convention reserves; to read the two switches
+  from `appsettings.json`, bind it yourself, after `AddAquarius` so file values override code
+  values (`Bind` comes from `Microsoft.Extensions.Options.ConfigurationExtensions`, which a
+  Barbatos.Wpf.Core app already has):
+
+  ```csharp
+  builder.Services.AddAquarius(options => options.ThrowOnUnresolvedViewModels = true);
+  builder.Services.AddOptions<AquariusOptions>().Bind(builder.Configuration.GetSection(AquariusOptions.SectionName));
+  ```
+
+  `ViewModelResolver` is a delegate and can only be set from code.
+
   A ViewModel with required constructor arguments and no DI configured needs either a
   registration, a parameterless constructor, or to skip this feature for that View and keep
   setting `DataContext` by hand.
@@ -411,6 +462,14 @@ to the right real property for the element type: `TextBox.Text`,
 (`ComboBox`/`ListBox`), `RangeBase.Value` (`Slider`). `PasswordBox` throws - `Password`
 is deliberately not a `DependencyProperty` for security reasons. Any other element type
 throws too, rather than silently doing nothing.
+
+The two-way binding is applied as soon as the bound value first resolves - **including to
+`null`**, the usual starting point for a `SelectedItem` nothing is selected in yet or a
+`string?` not filled in yet. WPF only runs a property-changed callback when the effective
+value changes, so while the attached property defaulted to `null`, a binding whose first value
+was also `null` never got that far: the control looked bound, but nothing the user typed or
+selected reached the ViewModel. The default is now a private "unset" marker, which any first
+value differs from (`GetModel` still reports an unset property as `null`).
 
 ### Directives.Show (v-show)
 
@@ -605,8 +664,11 @@ directly from C# (a synchronous, non-reactive counterpart to the markup extensio
 Wires up **any** public .NET event by name via reflection - it works for events WPF gives
 no built-in `Command` for (`Border.MouseLeftButtonDown`, `TextBox.TextChanged`, ...), not
 just a fixed list. The command runs with
-`Directives.CommandParameter` if set, otherwise the raised `EventArgs` itself.
-Automatically unhooked on `Unloaded`.
+`Directives.CommandParameter` if set, otherwise the raised `EventArgs` itself. The
+subscription follows the element's lifecycle: suspended on `Unloaded` and re-hooked on the
+next `Loaded`, so an element that is detached and reattached (an `If` branch, a `Teleport`
+move, a `TabItem` switched away from and back) keeps working. Only `once`, or changing
+`Event`/`Command` themselves, removes it for good.
 
 **Modifiers** (`Directives.Modifiers`, comma-separated), each a no-op unless the raised
 `EventArgs` is actually the matching type:
@@ -614,7 +676,7 @@ Automatically unhooked on `Unloaded`.
 | Modifier | Effect |
 | --- | --- |
 | `stop`, `prevent` | Sets `RoutedEventArgs.Handled = true`. WPF collapses the DOM's separate stopPropagation/preventDefault into one flag, so these two are honestly the same operation here. |
-| `once` | Unhooks after this single invocation. |
+| `once` | Unhooks for good the first time the event is raised. |
 | `self` | Only invokes if `OriginalSource` is the element itself, not a descendant the event bubbled up from. |
 | `left` / `right` / `middle` | Only invokes for that `MouseButtonEventArgs.ChangedButton`. |
 | `enter` / `tab` / `esc` / `space` / `up` / `down` / `left` / `right` / `delete` | Only invokes for that `KeyEventArgs.Key` (`delete` matches both Delete and Backspace; `left`/`right` mean arrow keys here, resolved by `KeyEventArgs` vs. `MouseButtonEventArgs` - the same modifier name means something different depending on which event type actually fired). |
@@ -624,6 +686,13 @@ Automatically unhooked on `Unloaded`.
          aq:Directives.Command="{Binding SubmitCommand}"
          aq:Directives.Modifiers="enter" />
 ```
+
+**`stop`/`prevent` and `once` act before the filters**, on every raise of the event: the
+`self`, mouse-button and key modifiers only decide whether the command then runs. So
+`Modifiers="enter,stop"` marks *every* key `Handled`, not only Enter, and `"enter,once"`
+unhooks on the first key of any kind - even one that was not Enter and never ran the command.
+When only a match should be handled or unhook, drop the modifier and check the key inside the
+command.
 
 `capture` is intentionally not a modifier: WPF already has a more idiomatic native
 equivalent, the `Preview{EventName}` tunneling event -
@@ -749,11 +818,25 @@ While mounted and enabled, `Teleport.Content` is detached from it and added to t
 `Panel.Children` of whichever `Panel` registered itself via `TeleportHost.RegisterHost`
 under `To` - commonly an overlay `Grid` pinned at a window's root, so content declared deep
 inside some nested layout (and subject to its clipping/z-order) can still render pinned
-above everything else. `Disabled` keeps the content local instead. Because
-the moved element keeps its object identity, its own bindings/`DataContext`/
-`Lifecycle.Enable` hooks keep working after the move - it's still "the same component,"
-just rendered elsewhere. A `Teleport` that mounts before its target host does still finds
-it once the host registers, instead of silently never teleporting.
+above everything else. `Disabled` keeps the content local instead. A `Teleport` that mounts
+before its target host does still finds it once the host registers, instead of silently never
+teleporting.
+
+The moved element keeps its **object identity** - the same `TextBox` instance, whatever was
+typed into it, its own local values - but two things do not travel with it, unlike Vue's
+`<Teleport>`:
+
+- **The lifecycle.** Vue decides where a teleported node lives before committing anything to
+  the DOM; WPF has no such pre-commit step, so moving a loaded element between panels is a
+  genuine detach and reattach. Every move - including the very first settle into a host that was
+  already registered - fires a full `IOnBeforeUnmount`/`IOnUnmounted` then
+  `IOnBeforeMount`/`IOnMounted` sequence on `Lifecycle.Enable`'d content, so a teleported
+  ViewModel's `OnMounted` must be idempotent. `TeleportTests` pins the exact sequences.
+- **`DataContext`.** It is inherited from the *new* ancestors, not carried along: content that
+  lands in an overlay host under the window root binds against the window's `DataContext`, not
+  the one it was declared under. Give teleported content a `DataContext` that is right wherever
+  it lands - its own `aq:Setup`, an explicit `DataContext="{Binding}"` at the declaration site
+  (as the sample's toast does), or a host whose ancestors carry the right object.
 
 Like a DOM `id`, host names are expected to be unique app-wide; if two hosts register the
 same name, the most recently loaded one wins.
@@ -799,15 +882,17 @@ other `Teleport` move does.
 
 This is **not a new API** - it's `Teleport`/`TeleportHost` from the section above, used
 across two `Window`s instead of one. The whole thing is also a working demo in
-`samples/Barbatos.Wpf.Aquarius.Sample` (section "9." in `MainWindow.xaml`) - what follows
-is that same example, trimmed down.
+`samples/Barbatos.Wpf.Aquarius.Sample` (the Teleport tab: `TeleportDemoView.xaml` and its
+code-behind, plus `DockableToolDialog.xaml`) - what follows is that same example, trimmed down.
 
-**The idea:** one `<aq:Teleport>`, declared once in the main window, is retargeted between
-two registered hosts - a "docked" one in the main window, and a "floating" one in a
+**The idea:** one `<aq:Teleport>`, declared once in a View that stays open, is retargeted
+between two registered hosts - a "docked" one in that View, and a "floating" one in a
 separate dialog `Window`. Because `Teleport` re-parents rather than recreates, the panel's
-state (whatever the user typed, scrolled, etc.) survives every move.
+state (whatever the user typed, scrolled, etc.) survives every move - though, as above, each
+move is still a full unmount/remount as far as lifecycle hooks are concerned.
 
-**1. The docked host and the persistent `Teleport`, both in the main window's XAML:**
+**1. The docked host and the persistent `Teleport`, both in the View's XAML
+(`TeleportDemoView.xaml`):**
 
 ```xml
 <!-- The "home slot" - visibly empty while undocked: -->
@@ -850,16 +935,28 @@ private void Redock() => DockTarget.Value = "MainDock";
 ```
 
 **4. Opening/closing the actual dialog `Window` is a View concern**, so it belongs in
-`MainWindow`'s code-behind, reacting to that same `DockTarget` with `Watch.On`:
+`TeleportDemoView`'s code-behind, reacting to that same `DockTarget` with `Watch.On`. It is
+wired once the `DataContext` is actually the ViewModel - on `DataContextChanged`, not `Loaded`,
+because a `TabControl` raises `Loaded` for a tab's content before the tab is ever selected,
+and again later with no `Unloaded` in between:
 
 ```csharp
 private DockableToolDialog? _dockableDialog;
+private bool _wired;
 
-public MainWindow()
+public TeleportDemoView()
 {
     InitializeComponent();
-    var viewModel = new MainViewModel();
-    DataContext = viewModel;
+    DataContextChanged += (_, _) => TryWireDockTargetWatch();
+    TryWireDockTargetWatch();
+}
+
+private void TryWireDockTargetWatch()
+{
+    if (_wired || DataContext is not TeleportDemoViewModel viewModel)
+        return;
+
+    _wired = true;
 
     Watch.On(viewModel.DockTarget, (target, _) =>
     {
@@ -867,7 +964,8 @@ public MainWindow()
         {
             if (_dockableDialog is not null) return;
 
-            _dockableDialog = new DockableToolDialog { Owner = this };
+            // DataContext set explicitly - see the second point below.
+            _dockableDialog = new DockableToolDialog { Owner = Window.GetWindow(this), DataContext = viewModel };
             _dockableDialog.Closed += (_, _) =>
             {
                 _dockableDialog = null;
@@ -888,7 +986,7 @@ public MainWindow()
 Three things matter for this to work correctly - all visible in the wiring above:
 
 - **The `<aq:Teleport>` element itself must live somewhere that outlives both states** -
-  the main window, never inside the dialog. Content lives and dies with the `Teleport`
+  the main View, never inside the dialog. Content lives and dies with the `Teleport`
   control that wraps it; declaring that control inside the dialog instead would tear the
   content down along with it rather than "returning" it anywhere.
 - **The dialog `Window` needs its own `DataContext` set explicitly - this is the one that
@@ -937,19 +1035,33 @@ resources run; callers supply the actual animations.
 Merges what `If` does (structural mount/unmount) with animation timing: `Show` going
 `false` plays `Leave` first (if set) and only detaches the content once it completes;
 `Show` going `true` restores the content immediately (so `Loaded` fires, same
-[Lifecycle](#lifecycle-hooks) synergy `If` documents) and then plays `Enter`. A
-re-toggle mid-`Leave` stops the in-flight animation cleanly rather than letting two
-animations fight. The initial content is displayed directly rather than animated in -
-`Enter` only plays on a later `false`→`true` toggle, not on first render. Storyboards are
-cloned before each play, so sharing one `Enter`/`Leave` resource across multiple
-`Transition`s (the normal case) doesn't cross-trigger their `Completed` handlers.
+[Lifecycle](#lifecycle-hooks) synergy `If` documents) and then plays `Enter`. The initial
+content is displayed directly rather than animated in - `Enter` only plays on a later
+`false`→`true` toggle, not on first render. Storyboards are cloned before each play, so
+sharing one `Enter`/`Leave` resource across multiple `Transition`s (the normal case) doesn't
+cross-trigger their `Completed` handlers. Both run on the `Transition` control itself, so they
+animate its own properties (`Opacity` above).
+
+A finished `Storyboard` keeps holding its end value (`FillBehavior.HoldEnd`, the default), so
+`Leave` is begun *controllable* and kept until the next show. When `Show` goes back to `true` -
+mid-`Leave` or long after it finished - `Enter` starts first, taking over whatever it animates
+(an `Enter` animation with no `From` starts from where `Leave` had got to, so a half-faded panel
+fades back in from there), and then `Leave` is removed, so anything only `Leave` animated returns
+to its own value. A re-toggle mid-`Leave`
+therefore really stops the in-flight animation and keeps the content mounted, and a
+`Transition` with a `Leave` but no matching `Enter` re-shows its content at full opacity.
+(Begun non-controllable, as an earlier version did, `Leave` ignored the stop, ran to its end,
+and re-shown content could stay at `Opacity` 0.) `TransitionTests` pins both cases.
 
 ```xml
 <ListBox ItemsSource="{Binding Items}" aq:TransitionGroup.Enter="{StaticResource FadeIn}" />
 ```
 
 `TransitionGroup` covers the **enter** side only: every newly-generated item container in
-an `ItemsControl` gets a one-time `Loaded` hook that plays `Enter`. Animating items
+an `ItemsControl` gets a one-time `Loaded` hook that plays `Enter`. One-time is literal - the
+hook unsubscribes on that first `Loaded`, so a container loaded again later (the list's tab or
+`If` coming back) holds an item that is not new and does not replay; an earlier version stayed
+subscribed and replayed every container each time (`TransitionGroupTests`). Animating items
 *leaving* the list, or animating the reflow when the list reorders (each surviving item
 sliding to its new position), both require intercepting removal/reflow *before* the panel
 applies it - which for a plain `ItemsControl`/`Panel` means owning a custom panel, a
@@ -983,8 +1095,9 @@ and merges resource dictionaries at each level - `Provide.Value` is just stored 
 override-by-nesting semantics for free, and a nearer `Provide` for the same key correctly
 overrides a farther one.
 
-`{aq:Inject Key}` (or the positional shorthand `{aq:Inject}`) is the primary way to
-consume a provided value *in XAML* - it delegates internally to
+`{aq:Inject ThemeColor}` (positional, as above) or `{aq:Inject Key=ThemeColor}` is the
+primary way to consume a provided value *in XAML* - a key is required: `{aq:Inject}` with none
+fails to load ("Inject requires a Key."). It delegates internally to
 `DynamicResourceExtension`, reusing WPF's own deferred, re-evaluate-on-invalidation
 resolution (so a later `Provide.Value` change is picked up live) rather than eagerly
 walking the tree itself. For the rare case of needing an injected value from C# instead
