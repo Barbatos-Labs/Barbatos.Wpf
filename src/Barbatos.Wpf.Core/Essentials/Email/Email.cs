@@ -16,13 +16,40 @@ public interface IEmail
     /// <summary>
     /// Gets a value indicating whether composing an email is supported on this device.
     /// </summary>
+    /// <remarks>
+    /// Always <see langword="true"/> on Windows: it says Simple MAPI is the compose mechanism,
+    /// not that a mail client is installed. Whether a client answers is only known by calling
+    /// <see cref="ComposeAsync"/>, which throws <see cref="FeatureNotSupportedException"/>
+    /// when none does.
+    /// </remarks>
     bool IsComposeSupported { get; }
 
     /// <summary>
     /// Opens the default email client to allow the user to send the message.
     /// </summary>
     /// <param name="message">Instance of <see cref="EmailMessage"/> containing details of the email message to compose.</param>
-    /// <returns>A <see cref="Task"/> object with the current status of the asynchronous operation.</returns>
+    /// <returns>
+    /// A <see cref="Task"/> that completes when Simple MAPI returns: once the compose window is
+    /// open, or - for a client that only shows it modally - once it is sent or cancelled. A user
+    /// cancelling the compose window is not an error.
+    /// </returns>
+    /// <remarks>
+    /// On Windows this calls Simple MAPI's Unicode entry point (<c>MAPISendMailW</c>), so the
+    /// subject, body, recipients and attachment paths keep characters outside the system code
+    /// page. Earlier versions used the ANSI <c>MAPISendMail</c>, which turned such characters
+    /// into <c>?</c>, and discarded its result, so a machine with no mail client completed the
+    /// call without any sign of failure.
+    /// </remarks>
+    /// <exception cref="FeatureNotSupportedException">
+    /// <see cref="EmailMessage.BodyFormat"/> is <see cref="EmailBodyFormat.Html"/>; or no Simple
+    /// MAPI mail client could compose the message (none installed or set as the default, or the
+    /// client could not log on) - offer a <c>mailto:</c> link through the launcher instead.
+    /// </exception>
+    /// <exception cref="System.IO.FileNotFoundException">
+    /// An <see cref="EmailMessage.Attachments"/> entry names a file that does not exist; checked
+    /// before any client is started.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">The mail client reported any other Simple MAPI error; the message carries its code.</exception>
     Task ComposeAsync(EmailMessage? message);
 }
 
@@ -43,6 +70,10 @@ public static class EmailExtensions
     /// <param name="body">The email body.</param>
     /// <param name="to">The email recipients.</param>
     /// <returns>A <see cref="Task"/> object with the current status of the asynchronous operation.</returns>
+    /// <remarks>
+    /// Fails the way <see cref="IEmail.ComposeAsync(EmailMessage)"/> describes:
+    /// <see cref="FeatureNotSupportedException"/> when no Simple MAPI mail client answers.
+    /// </remarks>
     public static Task ComposeAsync(this IEmail email, string subject, string body, params string[] to) =>
         email.ComposeAsync(new EmailMessage(subject, body, to));
 }
@@ -52,8 +83,10 @@ public static class EmailExtensions
 /// </summary>
 /// <remarks>
 /// This is the WPF counterpart of .NET MAUI's <c>Email</c>. Composing is implemented through
-/// the classic Win32 Simple MAPI (<c>MAPISendMail</c>), which opens the user's default
-/// desktop email client (Outlook, etc.) — the same mechanism .NET MAUI itself uses on Windows.
+/// the classic Win32 Simple MAPI (<c>MAPISendMailW</c>, the Unicode entry point), which opens
+/// the user's default desktop email client (Outlook, etc.) — the same mechanism .NET MAUI
+/// itself uses on Windows. Unlike MAUI's version, a failure is reported: see
+/// <see cref="IEmail.ComposeAsync(EmailMessage)"/> for the exceptions.
 /// </remarks>
 public static class Email
 {
@@ -61,6 +94,10 @@ public static class Email
     /// Opens the default email client to allow the user to send the message.
     /// </summary>
     /// <returns>A <see cref="Task"/> object with the current status of the asynchronous operation.</returns>
+    /// <remarks>
+    /// Fails the way <see cref="IEmail.ComposeAsync(EmailMessage)"/> describes:
+    /// <see cref="FeatureNotSupportedException"/> when no Simple MAPI mail client answers.
+    /// </remarks>
     public static Task ComposeAsync() =>
         Default.ComposeAsync();
 
@@ -71,6 +108,10 @@ public static class Email
     /// <param name="body">The email body.</param>
     /// <param name="to">The email recipients.</param>
     /// <returns>A <see cref="Task"/> object with the current status of the asynchronous operation.</returns>
+    /// <remarks>
+    /// Fails the way <see cref="IEmail.ComposeAsync(EmailMessage)"/> describes:
+    /// <see cref="FeatureNotSupportedException"/> when no Simple MAPI mail client answers.
+    /// </remarks>
     public static Task ComposeAsync(string subject, string body, params string[] to) =>
         Default.ComposeAsync(subject, body, to);
 

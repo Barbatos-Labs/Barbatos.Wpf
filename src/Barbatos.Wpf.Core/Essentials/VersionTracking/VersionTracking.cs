@@ -17,6 +17,12 @@ public interface IVersionTracking
     /// <summary>
     /// Starts tracking version information.
     /// </summary>
+    /// <remarks>
+    /// The built-in implementation already records the launch when it is constructed (first
+    /// access to <see cref="VersionTracking.Default"/>, or the first resolve of this
+    /// interface), so calling this is never required and a second call is a no-op. It is kept
+    /// for parity with .NET MAUI.
+    /// </remarks>
     void Track();
 
     /// <summary>

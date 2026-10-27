@@ -18,39 +18,85 @@ namespace Barbatos.Wpf.Devices;
 /// carried over almost verbatim (it was already pure Win32, not WinRT); the active window is
 /// obtained from WPF's <see cref="Application.Windows"/> instead of MAUI's WinUI
 /// <c>WindowStateManager</c>, <see cref="IDeviceDisplay.KeepScreenOn"/> uses
-/// <c>SetThreadExecutionState(ES_DISPLAY_REQUIRED)</c> instead of the WinRT
-/// <c>DisplayRequest</c>, and display-change notifications come from
+/// <c>SetThreadExecutionState(ES_DISPLAY_REQUIRED)</c> on a thread of its own instead of the
+/// WinRT <c>DisplayRequest</c>, and display-change notifications come from
 /// <see cref="SystemEvents.DisplaySettingsChanged"/> instead of window-message subclassing.
 /// </summary>
 sealed class DeviceDisplayImplementation : DeviceDisplayImplementationBase
 {
     readonly object locker = new();
 
-    bool keepScreenOn;
+    // Completing it releases the display request held by the current KeepScreenOn thread;
+    // null while KeepScreenOn is false.
+    TaskCompletionSource? keepScreenOnRelease;
 
     protected override bool GetKeepScreenOn()
     {
         lock (locker)
         {
-            return keepScreenOn;
+            return keepScreenOnRelease is not null;
         }
     }
 
+    /// <remarks>
+    /// <c>SetThreadExecutionState(ES_CONTINUOUS | ...)</c> state belongs to the calling thread,
+    /// and each call replaces that thread's previous state. Applied on the caller's thread - as
+    /// it used to be - turning <see cref="IDeviceDisplay.KeepScreenOn"/> off on the UI thread
+    /// also cancelled whatever else that thread held, notably the keep-awake feature's
+    /// <c>ES_SYSTEM_REQUIRED</c>, which is applied on the UI thread too; and clearing it from a
+    /// different thread than the one that set it left the display request in force. The
+    /// request is therefore held by a dedicated background thread that exists only while
+    /// <see cref="IDeviceDisplay.KeepScreenOn"/> is <see langword="true"/>: Windows combines
+    /// every thread's execution state, so it adds to other requests instead of overwriting
+    /// them, and releasing it touches nothing else.
+    /// </remarks>
     protected override void SetKeepScreenOn(bool value)
     {
         lock (locker)
         {
-            if (keepScreenOn == value)
+            if ((keepScreenOnRelease is not null) == value)
                 return;
 
-            keepScreenOn = value;
-
-            var flags = NativeMethods.ES_CONTINUOUS;
             if (value)
-                flags |= NativeMethods.ES_DISPLAY_REQUIRED;
-
-            NativeMethods.SetThreadExecutionState(flags);
+            {
+                keepScreenOnRelease = HoldDisplayRequired();
+            }
+            else
+            {
+                keepScreenOnRelease!.TrySetResult();
+                keepScreenOnRelease = null;
+            }
         }
+    }
+
+    /// <summary>
+    /// Starts the thread that holds <c>ES_DISPLAY_REQUIRED</c> and returns once the request is
+    /// in force, so the setter keeps its synchronous meaning.
+    /// </summary>
+    static TaskCompletionSource HoldDisplayRequired()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var applied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var thread = new Thread(() =>
+        {
+            NativeMethods.SetThreadExecutionState(NativeMethods.ES_CONTINUOUS | NativeMethods.ES_DISPLAY_REQUIRED);
+            applied.SetResult();
+
+            release.Task.Wait();
+
+            // Cleared explicitly instead of being left to the thread's teardown.
+            NativeMethods.SetThreadExecutionState(NativeMethods.ES_CONTINUOUS);
+        })
+        {
+            IsBackground = true,
+            Name = "Barbatos.Wpf DeviceDisplay.KeepScreenOn",
+        };
+
+        thread.Start();
+        applied.Task.Wait();
+
+        return release;
     }
 
     protected override DisplayInfo GetMainDisplayInfo()

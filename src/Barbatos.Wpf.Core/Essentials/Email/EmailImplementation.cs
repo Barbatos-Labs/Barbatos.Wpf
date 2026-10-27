@@ -3,6 +3,7 @@
 // Copyright (C) Barbatos Labs | Pham The Hung and Barbatos.Wpf Contributors.
 // All Rights Reserved.
 
+using System.IO;
 using Barbatos.Wpf.ApplicationModel;
 
 namespace Barbatos.Wpf.ApplicationModel.Communication;
@@ -14,6 +15,10 @@ namespace Barbatos.Wpf.ApplicationModel.Communication;
 /// </summary>
 class EmailImplementation : IEmail
 {
+    // Stays true: Simple MAPI is always the mechanism, and whether a client answers is only
+    // known by calling it. Probing Software\Clients\Mail in the registry instead was rejected -
+    // it would be a guess at what the MAPI stub resolves, and a wrong false would disable
+    // compose on machines where it works today. ComposeAsync reports a missing client instead.
     public bool IsComposeSupported => true;
 
     public Task ComposeAsync(EmailMessage? message)
@@ -44,10 +49,19 @@ class EmailImplementation : IEmail
         if (message?.Attachments?.Count > 0)
         {
             foreach (var attachment in message.Attachments)
+            {
+                // Checked before any mail client is involved, so the caller gets the offending
+                // path instead of a bare MAPI_E_ATTACHMENT_NOT_FOUND from whichever client is
+                // the default (or, before failures were surfaced, a compose that silently
+                // dropped the file).
+                if (!File.Exists(attachment.FullPath))
+                    throw new FileNotFoundException("The email attachment does not exist.", attachment.FullPath);
+
                 platformEmailMessage.Attachments.Add(attachment.FullPath);
+            }
         }
 
-        await EmailHelper.ShowComposeNewEmailAsync(platformEmailMessage);
+        await EmailHelper.ShowComposeNewEmailAsync(platformEmailMessage).ConfigureAwait(false);
     }
 
     static void Sync(List<string>? recipients, IList<PlatformEmailRecipient> nativeRecipients)

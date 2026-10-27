@@ -293,13 +293,13 @@ container by `UseEssentials()`, part of the builder defaults:
 | Secure storage | `SecureStorage` | `ISecureStorage` | DPAPI (`ProtectedData`, current-user scope) instead of the WinRT `DataProtectionProvider` |
 | Version tracking | `VersionTracking` | `IVersionTracking` | Pure C#, no platform-specific code (built on `Preferences` + `AppInfo`) |
 | Connectivity | `Connectivity` | `IConnectivity` | `System.Net.NetworkInformation` instead of the WinRT `NetworkInformation` API |
-| Device display | `DeviceDisplay` | `IDeviceDisplay` | A Win32 monitor-info P/Invoke block against the active WPF window; `KeepScreenOn` via `SetThreadExecutionState`; change notifications via `SystemEvents.DisplaySettingsChanged` |
-| Email | `Email` | `IEmail` | Simple MAPI (`MAPISendMail`) |
-| Launcher | `Launcher` | `ILauncher` | `Process.Start(UseShellExecute: true)` instead of the WinRT `Windows.System.Launcher`; `CanOpenAsync` checks `HKEY_CLASSES_ROOT` for a registered scheme handler |
+| Device display | `DeviceDisplay` | `IDeviceDisplay` | A Win32 monitor-info P/Invoke block against the active WPF window; `KeepScreenOn` via `SetThreadExecutionState`, held on a thread of its own; change notifications via `SystemEvents.DisplaySettingsChanged` |
+| Email | `Email` | `IEmail` | Simple MAPI, Unicode entry point (`MAPISendMailW`); a missing mail client is reported as `FeatureNotSupportedException` |
+| Launcher | `Launcher` | `ILauncher` | `Process.Start(UseShellExecute: true)` instead of the WinRT `Windows.System.Launcher`, `true` whenever the shell accepts the target; `CanOpenAsync` checks `HKEY_CLASSES_ROOT` for a registered scheme handler |
 | Contacts | `Contacts` | `IContacts` | Throws `FeatureNotSupportedException` — see note below |
 | Geolocation | `Geolocation` | `IGeolocation` | Throws `FeatureNotSupportedException` — see note below; `Location`'s distance math is fully functional |
 | App actions | `AppActions` | `IAppActions` | The taskbar Jump List (`System.Windows.Shell.JumpList`) instead of the WinRT `Windows.UI.StartScreen.JumpList` |
-| Permissions | `Permissions.CheckStatusAsync<T>()` / `RequestAsync<T>()` | *(none — generic static API, no DI)* | Most permissions report `Granted` (no manifest/capability concept for an unpackaged app); `ContactsRead`/`ContactsWrite`/`LocationWhenInUse`/`LocationAlways`/`Microphone`/`Sensors` throw `FeatureNotSupportedException` — see [Permissions](#permissions) below |
+| Permissions | `Permissions.CheckStatusAsync<T>()` / `RequestAsync<T>()` | *(none — generic static API, no DI)* | Most permissions report `Granted` without checking anything (no manifest/capability concept for an unpackaged app); `ContactsRead`/`ContactsWrite`/`LocationWhenInUse`/`LocationAlways`/`Microphone`/`Sensors` throw `FeatureNotSupportedException` — see [Permissions](#permissions) below |
 
 ```csharp
 var name = AppInfo.Name;
@@ -312,6 +312,50 @@ await SecureStorage.SetAsync("api_token", token);
 await Email.ComposeAsync("Subject", "Body", "someone@example.com");
 await Launcher.OpenAsync("https://example.com");
 ```
+
+A few modules behave differently from their .NET MAUI originals on purpose, or have limits
+worth knowing before you rely on them:
+
+**`Email` reports failure.** `ComposeAsync` calls Simple MAPI's Unicode entry point
+`MAPISendMailW`, so a subject or body outside the system code page (Vietnamese on an
+English-locale machine, for one) reaches the mail client intact; the ANSI `MAPISendMail` the
+MAUI port uses turned those characters into `?`. When no mail client answers (none installed,
+or none set as the default), the call throws `FeatureNotSupportedException` instead of
+completing as if a compose window had opened; an attachment that does not exist throws
+`FileNotFoundException` before any client starts; a user closing the compose window is not an
+error. `IsComposeSupported` stays `true` — it says Simple MAPI is the mechanism, and only
+calling it tells whether a client answers — so offer a `mailto:` fallback:
+
+```csharp
+try
+{
+    await Email.ComposeAsync(subject, body, supportAddress);
+}
+catch (FeatureNotSupportedException)
+{
+    await Launcher.OpenAsync($"mailto:{supportAddress}?subject={Uri.EscapeDataString(subject)}");
+}
+```
+
+**`Launcher` returns `true` when the shell accepts the target.** `Process.Start` with shell
+execution returns no `Process` when the shell hands the target to an application that is
+already running or to a COM-activated handler, although the target opens. Counting that as a
+failure made a working browser hand-off look like an error, so `OpenAsync` now returns `false`
+only when the shell refuses (no handler, a missing file).
+
+**`DeviceDisplay.KeepScreenOn` stacks with keep-awake.** The
+`SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)` request is held by a background
+thread of its own for as long as the property is `true`. That state is per thread and each
+call replaces the calling thread's previous one, so applying it on the caller's thread — as
+earlier versions did — cancelled `ConfigureKeepAwake`'s `ES_SYSTEM_REQUIRED` (held on the UI
+thread) the moment the screen request was turned off. Windows combines every thread's request,
+so the two now add up, and `KeepScreenOn` can be set and cleared from any thread. For a
+persisted "keep the display on" setting prefer `KeepAwakeOptions.KeepDisplayOn`; use
+`KeepScreenOn` for a temporary "while presenting" request.
+
+**`Permissions` and `AppActions`** have Windows-specific limits of their own:
+[`Granted` means "not checked"](#permissions), and a Jump List click is
+[not reported while the app is already running under single instance](#app-actions-and-version-tracking).
 
 ### Configuring AppInfo and PublisherInfo
 
@@ -328,7 +372,7 @@ settings involved:
 ```xml
 <PropertyGroup>
   <OutputType>WinExe</OutputType>
-  <TargetFramework>net8.0-windows</TargetFramework>
+  <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
   <UseWPF>true</UseWPF>
 
   <!-- AppInfo.Name / PublisherInfo.Name / AppInfo.Version / PublisherInfo.Copyright -->
@@ -348,9 +392,23 @@ need:
 | Property | Standard fallback | Standard csproj property |
 | --- | --- | --- |
 | `AppInfo.Name` | `AssemblyProductAttribute`, then `AssemblyTitleAttribute` (`<Title>`), then the assembly name | `<Product>` |
-| `AppInfo.Version`/`VersionString` | The assembly's own `Version` | `<Version>` (or `<AssemblyVersion>` for finer control) |
+| `AppInfo.Version`/`VersionString` | The entry assembly's `AssemblyName.Version` (always four parts) | `<Version>` (or `<AssemblyVersion>` for finer control) |
 | `PublisherInfo.Name` | `AssemblyCompanyAttribute` | `<Company>` |
 | `PublisherInfo.Copyright` | `AssemblyCopyrightAttribute` | `<Copyright>` |
+
+**`AppInfo.Version` always has four parts.** It reads the entry assembly's
+`AssemblyName.Version`, so `<Version>1.2.3</Version>` reads back as `1.2.3.0` — show
+`AppInfo.Version.ToString(3)` in an About box. The SDK derives `AssemblyVersion` from
+`<Version>` with any prerelease suffix stripped (`<Version>1.3.0-beta.1</Version>` gives
+`1.3.0.0`; verified by building a probe project), and `FileVersion` defaults to that same
+value, so `<Version>` alone is enough for a prerelease too. Set `<AssemblyVersion>` only to a
+purely numeric value: `<AssemblyVersion>$(Version)</AssemblyVersion>` with a prerelease
+`<Version>` fails the build with `CS7034`. The one case that needs an explicit value is a shared
+`Directory.Build.props` that already sets `<AssemblyVersion>` (this repository's does, which is
+why its samples override it) — override it with the numeric part. The
+`Barbatos.Wpf.ApplicationModel.AppInfo.Version` metadata override below goes through
+`Version.Parse`, so it must be numeric as well; a value such as `1.2.0-beta` throws
+`FormatException` on every read.
 
 `AppInfo.AppId` and `PublisherInfo.Website`/`SupportUrl`/`SupportEmail` have no standard
 MSBuild-property equivalent — there is no built-in "app id"/"website"/"support URL"/"support
@@ -449,11 +507,13 @@ AppPublisher={#Publisher}
 > `GetVersionNumbers()` (used above to auto-extract `AppVersion` from the built `.exe`) reads
 > the Win32 `FileVersion` resource embedded in the PE file, not .NET's `AssemblyVersion` —
 > these are two different concepts that usually carry the same value only because the SDK
-> defaults `<FileVersion>` from `<Version>`. If you ever set `<AssemblyVersion>` to something
-> fixed (a common practice to avoid binding-redirect churn) while letting `<Version>`/
-> `<FileVersion>` increment per build, `AppInfo.VersionString` (which reads `AssemblyVersion`)
-> and what your installer reports from the `.exe` file will diverge — set `Barbatos.Wpf.ApplicationModel.AppInfo.Version` explicitly if you need them to
-> stay in lockstep.
+> defaults `<FileVersion>` to the `AssemblyVersion` it derives from `<Version>`. If you ever set
+> `<AssemblyVersion>` to something fixed (a common practice to avoid binding-redirect churn)
+> while letting `<Version>` increment per build (and setting `<FileVersion>` explicitly, since it
+> otherwise follows the fixed `AssemblyVersion`), `AppInfo.VersionString` (which
+> reads `AssemblyVersion`) and what your installer reports from the `.exe` file will diverge —
+> set `Barbatos.Wpf.ApplicationModel.AppInfo.Version` explicitly if you need them to stay in
+> lockstep.
 
 ### Reading back InstallDate and InstallLocation
 
@@ -513,14 +573,25 @@ rather than something an app typically needs to read back about itself, so they 
 through `ConfigureEssentials`:
 
 ```csharp
+// WpfProgram.cs
 builder.ConfigureEssentials(essentials => essentials
-    .AddAppAction("open", "Open", "Show the main window")
-    .OnAppAction(action =>
-    {
-        if (action.Id == "open")
-            App.ShowMainWindow();
-    })
+    .AddAppAction("new-note", "New note", "Start a blank note")
+    .OnAppAction(action => App.LaunchActionId = action.Id)
     .UseVersionTracking());
+
+// App.xaml.cs
+internal static string? LaunchActionId { get; set; }
+
+protected override void OnStartup(StartupEventArgs e)
+{
+    base.OnStartup(e);                  // a Jump List activation is raised in here
+
+    MainWindow = Services.GetRequiredService<MainWindow>();
+    MainWindow.Show();
+
+    if (LaunchActionId == "new-note")
+        Services.GetRequiredService<MainViewModel>().NewNote();   // the app's own command
+}
 ```
 
 Clicking a Jump List entry launches a new process with an encoded command-line argument;
@@ -531,14 +602,34 @@ List API instead of `Windows.UI.StartScreen.JumpList`. Because
 (unlike WinRT's `JumpList.LoadCurrentAsync()`), `AppActions.GetAsync()` returns the actions
 last set by `SetAsync()` in this process rather than querying the OS.
 
+That event fires inside `WpfApplication.OnStartup` — that is, inside your override's
+`base.OnStartup(e)` call, before any main window exists. Hence the shape above: the handler
+only records the id, and the app acts on it once `MainWindow` is shown. A handler that tries
+to show or activate the main window itself finds no window on a cold start, and an
+`AppActions.OnAppAction +=` placed *after* `base.OnStartup(e)` never sees the activation at all
+(the Core sample subscribes before it, in `App.xaml.cs`). Two further limits follow from a
+click being a relaunch:
+
+- **Under `ConfigureSingleInstance()`, only cold starts are reported.** While the app is
+  already running, the relaunched process exits inside `Build()` — before the startup event —
+  and the running instance receives only `ISingleInstanceService.SecondInstanceLaunched`,
+  which carries no command-line arguments. The action id is lost; the running instance can
+  bring its window forward (the default `ActivateMainWindow` behaviour), not tell which entry
+  was clicked.
+- **Actions must be declared at startup to be recognised.** The relaunched process matches
+  the clicked id against the actions set *in that process* before its startup event, which
+  `ConfigureEssentials` does during `Build()`. An action added later with
+  `AppActions.SetAsync(...)` appears in the Jump List but raises nothing after a restart unless
+  the next launch declares it the same way.
+
 ### Contacts and Geolocation
 
 A real Windows implementation of `Contacts`/`Geolocation` needs WinRT contracts
 (`Windows.ApplicationModel.Contacts.ContactPicker`,
-`Windows.Devices.Geolocation.Geolocator`) that require a TargetFramework with WinRT
-projections (`net8.0-windows10.0.19041.0`-style) and, for some APIs, MSIX packaging —
-neither of which this plain `net8.0-windows`/`net9.0-windows`/`net10.0-windows` WPF library
-uses. Rather than pull in that machinery, both modules still ship their full type surface
+`Windows.Devices.Geolocation.Geolocator`) and, for some APIs, MSIX packaging. Although this
+package targets `net*-windows10.0.17763.0`, it uses those WinRT projections only for toast
+notifications and keeps every Essentials module on Win32/.NET APIs. Rather than pull in that
+machinery, both modules still ship their full type surface
 (`IContacts`/`Contact`/`ContactEmail`/`ContactPhone`,
 `IGeolocation`/`Location`/`GeolocationRequest`/...) — useful if you share code with a .NET
 MAUI project, since it compiles unchanged either way — but every member of the Windows
@@ -578,10 +669,15 @@ Every permission type below is present as a nested type of `Permissions`: `Batte
 `PostNotifications`, `Reminders`, `Sensors`, `Sms`, `Speech`, `StorageRead`/`StorageWrite`,
 `Vibrate`. Two behaviors on WPF:
 
-- **Most permissions report `PermissionStatus.Granted`.** An unpackaged desktop WPF app has
-  no `AppxManifest.xml` capability declarations to check, and Windows itself doesn't gate
-  `Camera`, `CalendarRead`, `Phone`, `StorageRead`, etc. behind a runtime consent prompt
-  outside a packaged/store app — `EnsureDeclared()` is a no-op for the same reason.
+- **Most permissions report `PermissionStatus.Granted` without checking anything.** An
+  unpackaged desktop WPF app has no `AppxManifest.xml` capability declarations to check and no
+  runtime consent prompt to show, so `EnsureDeclared()` is a no-op and `RequestAsync` returns
+  what `CheckStatusAsync` does. Read `Granted` as "not gated by this API, not checked", not as
+  "Windows allows it": the Windows privacy settings (Settings ▸ Privacy & security ▸ Camera)
+  can still block a desktop app's camera, and `PostNotifications` is `Granted` even when the
+  user or a policy has turned this app's toasts off — read
+  `INotificationService.Availability` (from `ConfigureNotifications()`) before relying on a
+  toast.
 - **`ContactsRead`, `ContactsWrite`, `LocationWhenInUse`, `LocationAlways`, `Microphone`, and
   `Sensors` throw `FeatureNotSupportedException`.** A real check for these six needs WinRT
   device-access contracts (`ContactManager`, `Geolocator`, `DeviceAccessInformation`,
@@ -591,8 +687,20 @@ Every permission type below is present as a nested type of `Permissions`: `Batte
   honest about it instead.
 
 If you need a real permission check (for example reading the Windows privacy consent
-registry, or a custom capability broker), subclass `Permissions.BasePlatformPermission` and
-pass your subclass as `TPermission`.
+registry, or a custom capability broker), subclass `Permissions.BasePlatformPermission` (or
+one of the nested types), override `CheckStatusAsync()` — `RequestAsync()` forwards to it —
+and pass your subclass as `TPermission`:
+
+```csharp
+sealed class CameraPrivacyPermission : Permissions.BasePlatformPermission
+{
+    // ReadCameraConsent() is the app's own check, e.g. of the Windows privacy settings.
+    public override Task<PermissionStatus> CheckStatusAsync() =>
+        Task.FromResult(ReadCameraConsent() ? PermissionStatus.Granted : PermissionStatus.Denied);
+}
+
+var status = await Permissions.RequestAsync<CameraPrivacyPermission>();
+```
 
 ### License enforcement: DeviceIdentity
 
@@ -615,10 +723,19 @@ string installId = await DeviceIdentity.GetInstanceIdAsync();
 string fingerprint = await DeviceIdentity.GetHardwareFingerprintAsync();
 ```
 
-| Member | What it is | Survives reinstall? |
+| Member | What it is | Changes when |
 | --- | --- | --- |
-| `GetInstanceIdAsync()` | A random GUID generated on first use, persisted via `SecureStorage`. Identifies "this install", not the physical machine. | No |
-| `GetHardwareFingerprintAsync()` | A SHA-256 hash of a few motherboard/BIOS/CPU identifiers (read via WMI), salted with `AppInfo.AppId`. | Yes |
+| `GetInstanceIdAsync()` | A random GUID generated on first use, persisted via `SecureStorage` under the key `Barbatos.Wpf.DeviceIdentity.InstanceId`. Identifies this app's data for this Windows user, not the physical machine. | `%LocalAppData%\{Publisher}\{AppId}\Settings\securestorage.dat` is lost (deleted, a new Windows user profile or machine); `SecureStorage.RemoveAll()` runs; `AppInfo.AppId` or `PublisherInfo.Name` changes |
+| `GetHardwareFingerprintAsync()` | A SHA-256 hash of a few motherboard/BIOS/CPU identifiers (read via WMI), salted with `AppInfo.AppId`. | The hardware is replaced, or `AppInfo.AppId` changes |
+
+The instance id does **not** reset on an ordinary reinstall: uninstallers (Inno Setup, MSI)
+remove what they installed and, unless told otherwise, leave the per-user `%LocalAppData%`
+data behind — and the id lives there. To reset it on purpose, remove the
+`Barbatos.Wpf.DeviceIdentity.InstanceId` key from `SecureStorage` (an uninstaller can delete
+`securestorage.dat`, at the cost of every other secret stored there). Concurrent first calls
+within one process are serialized, so a startup licence check and a background job asking at
+the same moment receive the same id; two processes starting at the same moment can still each
+create one, and the last write wins on disk.
 
 Two design choices keep this narrower than the raw hardware-ID approach a lot of licensing
 code reaches for by default:
@@ -631,10 +748,11 @@ code reaches for by default:
   `IdentifierForVendor` is scoped to a developer rather than being a single ID usable to
   correlate a device across unrelated apps.
 
-Use `GetInstanceIdAsync()` alone if you don't need to survive a reinstall (the least invasive
-option). Use `GetHardwareFingerprintAsync()` (or both, keyed together) if a user should not be
-able to reset a per-machine activation count by simply reinstalling — this is the same
-technique commercial license managers (FlexNet, Reprise, ...) use.
+Use `GetInstanceIdAsync()` alone if an activation may reset along with the app's data (the
+least invasive option). Use `GetHardwareFingerprintAsync()` (or both, keyed together) if a
+user should not be able to reset a per-machine activation count by deleting that data or
+signing in as another Windows user — this is the same technique commercial license managers
+(FlexNet, Reprise, ...) use.
 
 **Network address:** for the same purpose (e.g. flagging one license activating from an
 unusual number of locations), resist the urge to call a third-party IP-lookup service (like

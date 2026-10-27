@@ -84,8 +84,8 @@ public class GreetingService : IGreetingService
         $"Device: {_deviceInfo.Manufacturer} {_deviceInfo.Model} \"{_deviceInfo.Name}\" ({_deviceInfo.Platform}, {_deviceInfo.Idiom}, {_deviceInfo.DeviceType}, OS {_deviceInfo.VersionString})";
 
     // Only resolves once an installer (matching this app's AppId) has actually run on this
-    // machine - see "Publishing with an installer" in the root README.md. Always null when
-    // launched from the IDE/dotnet run, which is the expected case for this sample.
+    // machine - see "Publishing with an installer" in src/Barbatos.Wpf.Core/README.md. Always
+    // null when launched from the IDE/dotnet run, which is the expected case for this sample.
     public string GetInstallInfoDescription() =>
         _appInfo.InstallDate is { } installDate
             ? $"Installed: {installDate:yyyy-MM-dd} at {_appInfo.InstallLocation ?? "(unknown location)"}"
@@ -95,7 +95,7 @@ public class GreetingService : IGreetingService
     // <Company>/<Version>/<Copyright> csproj properties; AppInfo.AppId and
     // PublisherInfo.Website/SupportEmail have no standard equivalent, so they come from the
     // explicit Barbatos.Wpf.ApplicationModel.* assembly metadata instead — see this sample's
-    // .csproj and "Configuring AppInfo and PublisherInfo" in the root README.md.
+    // .csproj and "Configuring AppInfo and PublisherInfo" in src/Barbatos.Wpf.Core/README.md.
     public string GetPublisherDescription() =>
         $"Publisher: {_publisherInfo.Name} | Website: {_publisherInfo.Website ?? "(not set)"} | " +
         $"Support: {_publisherInfo.SupportUrl ?? "(not set)"} / {_publisherInfo.SupportEmail ?? "(not set)"} | " +
@@ -121,13 +121,15 @@ public class GreetingService : IGreetingService
     }
 
     // Loaded on demand (not at startup) since GetHardwareFingerprintAsync() does real WMI
-    // I/O the first time it runs - see "License enforcement: DeviceIdentity" in the root
-    // README.md for what these are for and the privacy/compliance considerations.
+    // I/O the first time it runs - see "License enforcement: DeviceIdentity" in
+    // src/Barbatos.Wpf.Core/README.md for what these are for and the privacy/compliance
+    // considerations. The instance id lives in this app's %LocalAppData% data, which an
+    // uninstaller normally leaves behind, so the labels say what each value really follows.
     public async Task<string> GetDeviceIdentityDescriptionAsync()
     {
         var instanceId = await _deviceIdentity.GetInstanceIdAsync();
         var fingerprint = await _deviceIdentity.GetHardwareFingerprintAsync();
 
-        return $"InstanceId (resets on reinstall): {instanceId} | HardwareFingerprint (survives reinstall, salted with AppId): {fingerprint}";
+        return $"InstanceId (changes when this app's local data is lost): {instanceId} | HardwareFingerprint (survives that, salted with AppId): {fingerprint}";
     }
 }

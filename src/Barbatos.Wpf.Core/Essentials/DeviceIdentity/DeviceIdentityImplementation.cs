@@ -22,15 +22,29 @@ class DeviceIdentityImplementation : IDeviceIdentity
     // reused - mirroring how AppInfoImplementation caches its installed-app registry lookup.
     readonly Lazy<Task<string>> _hardwareFingerprint = new(ComputeHardwareFingerprintAsync);
 
+    // Serializes the read-or-mint below. Unguarded, two first calls racing (a startup licence
+    // check plus a background job) could both read "no id", mint two different GUIDs and hand
+    // one of them to a licence server that then never sees it again. Static, because the id
+    // lives in the one SecureStorage.Default whichever instance asks.
+    static readonly SemaphoreSlim InstanceIdGate = new(1, 1);
+
     public async Task<string> GetInstanceIdAsync()
     {
-        var existing = await SecureStorage.Default.GetAsync(InstanceIdKey).ConfigureAwait(false);
-        if (!string.IsNullOrEmpty(existing))
-            return existing;
+        await InstanceIdGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var existing = await SecureStorage.Default.GetAsync(InstanceIdKey).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(existing))
+                return existing;
 
-        var instanceId = Guid.NewGuid().ToString();
-        await SecureStorage.Default.SetAsync(InstanceIdKey, instanceId).ConfigureAwait(false);
-        return instanceId;
+            var instanceId = Guid.NewGuid().ToString();
+            await SecureStorage.Default.SetAsync(InstanceIdKey, instanceId).ConfigureAwait(false);
+            return instanceId;
+        }
+        finally
+        {
+            InstanceIdGate.Release();
+        }
     }
 
     public Task<string> GetHardwareFingerprintAsync() => _hardwareFingerprint.Value;

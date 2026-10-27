@@ -375,8 +375,8 @@ Essentials exception types.
 
 | Type | Description |
 |------|-------------|
-| [`AppInfo`](#appinfo--ipublisherinfo) / `IAppInfo` | App identity: `AppId`, `Name`, `Version`, `VersionString`, `BuildString`, `RequestedTheme`, `PackagingModel`, `RequestedLayoutDirection`, `InstallDate`, `InstallLocation`, `ShowSettingsUI()`. (`AppGuid` is the deprecated former name of `AppId`.) |
-| [`PublisherInfo`](#appinfo--ipublisherinfo) / `IPublisherInfo` | Publisher identity: `Name`, `Website`, `SupportUrl`, `SupportEmail`, `Copyright`. |
+| [`AppInfo`](#appinfo--publisherinfo) / `IAppInfo` | App identity: `AppId`, `Name`, `Version`, `VersionString`, `BuildString`, `RequestedTheme`, `PackagingModel`, `RequestedLayoutDirection`, `InstallDate`, `InstallLocation`, `ShowSettingsUI()`. (`AppGuid` is the deprecated former name of `AppId`.) |
+| [`PublisherInfo`](#appinfo--publisherinfo) / `IPublisherInfo` | Publisher identity: `Name`, `Website`, `SupportUrl`, `SupportEmail`, `Copyright`. |
 | [`DeviceIdentity`](#deviceidentity--ideviceidentity) / `IDeviceIdentity` | License-enforcement identifiers: `GetInstanceIdAsync()`, `GetHardwareFingerprintAsync()`. |
 | `AppTheme` | `Unspecified`, `Light`, `Dark`. |
 | `AppPackagingModel` | `Packaged`, `Unpackaged`. |
@@ -392,7 +392,7 @@ Essentials exception types.
 | `Permissions.BasePermission` | Abstract base for every permission type; `Permissions.BasePlatformPermission` is the WPF platform base (`CheckStatusAsync`, `RequestAsync`, `EnsureDeclared`, `ShouldShowRationale`). |
 | `Permissions.Battery` / `Bluetooth` / `CalendarRead` / `CalendarWrite` / `Camera` / `ContactsRead` / `ContactsWrite` / `Flashlight` / `LaunchApp` / `LocationWhenInUse` / `LocationAlways` / `Maps` / `Media` / `Microphone` / `NearbyWifiDevices` / `NetworkState` / `Phone` / `Photos` / `PhotosAddOnly` / `PostNotifications` / `Reminders` / `Sensors` / `Sms` / `Speech` / `StorageRead` / `StorageWrite` / `Vibrate` | Nested marker permission types — see [Permissions](#permissions). |
 | `PermissionException` | Thrown for APIs requiring a permission (`UnauthorizedAccessException` subclass). |
-| `FeatureNotSupportedException` | Thrown by a feature unsupported on this platform (`NotSupportedException` subclass) — used by `Contacts`, `Geolocation`, and six of the `Permissions` types. |
+| `FeatureNotSupportedException` | Thrown by a feature unsupported on this platform (`NotSupportedException` subclass) — used by `Contacts`, `Geolocation`, six of the `Permissions` types, and `Email.ComposeAsync` (HTML body, or no Simple MAPI mail client). |
 | `FeatureNotEnabledException` | Thrown by a feature that exists but is not currently enabled (`InvalidOperationException` subclass). |
 
 ### `AppInfo` / `PublisherInfo`
@@ -404,6 +404,14 @@ Their properties resolve from the standard SDK-generated assembly attributes —
 needs a different value (or, for `AppId`, has no standard property at all). See
 [Configuring AppInfo and PublisherInfo](README.md#configuring-appinfo-and-publisherinfo) in
 the README for the full property table and fallback chain.
+
+`AppInfo.Version` (`Version`) is the `...AppInfo.Version` metadata parsed with
+`Version.Parse` (a non-numeric value throws `FormatException` on every read), else the entry
+assembly's `AssemblyName.Version` — always four parts, so `VersionString` reads `"1.2.3.0"`
+for `<Version>1.2.3</Version>` — else `0.0`. The SDK derives `AssemblyVersion` from
+`<Version>` with any prerelease suffix stripped (`1.3.0-beta.1` → `1.3.0.0`), while an explicit
+`<AssemblyVersion>$(Version)</AssemblyVersion>` with a prerelease `<Version>` fails the build
+with `CS7034`. `BuildString` (`string`) is `Version.Revision`, the fourth part.
 
 `AppInfo.AppId` (`string`) is the app's stable identifier; it does *not* have to be a GUID —
 any stable string works. It was previously called `AppGuid`; `AppInfo.AppGuid` and
@@ -432,8 +440,13 @@ License-enforcement identifiers. Has no .NET MAUI counterpart — see
 README for the full rationale and privacy/compliance notes (not legal advice).
 
 - **`GetInstanceIdAsync()`** → `Task<string>` — a random GUID generated on first use and
-  persisted via `ISecureStorage`. Identifies this app installation, not the physical machine;
-  resets on reinstall or if local app data is cleared.
+  persisted via `SecureStorage.Default` under the key `Barbatos.Wpf.DeviceIdentity.InstanceId`,
+  i.e. in `%LocalAppData%\{PublisherInfo.Name}\{AppInfo.AppId}\Settings\securestorage.dat`.
+  Identifies this app's data for this Windows user, not the physical machine. Changes when that
+  file is lost (deleted, a new user profile or machine), on `SecureStorage.RemoveAll()`, or when
+  `AppId` or `PublisherInfo.Name` changes; an ordinary uninstall/reinstall leaves the file, and
+  the id, in place. Concurrent calls within a process are serialized, so first calls racing
+  each other all receive the same id.
 - **`GetHardwareFingerprintAsync()`** → `Task<string>` — a 64-character uppercase hex SHA-256
   hash of a few motherboard/BIOS/CPU identifiers (read via WMI: `Win32_BaseBoard.SerialNumber`,
   `Win32_BIOS.SerialNumber`, `Win32_Processor.ProcessorId`), salted with `AppInfo.AppId` so
@@ -446,11 +459,19 @@ README for the full rationale and privacy/compliance notes (not legal advice).
 
 Pure C#, built entirely on `IPreferences` + `IAppInfo`, no platform-specific code.
 
-- **`Track()`** — call once (typically via `ConfigureEssentials(e => e.UseVersionTracking())`) to snapshot the current version/build into history.
-- **`IsFirstLaunchEver`**, **`IsFirstLaunchForCurrentVersion`**, **`IsFirstLaunchForCurrentBuild`** (`bool`)
-- **`CurrentVersion`**, **`CurrentBuild`**, **`PreviousVersion`**, **`PreviousBuild`**, **`FirstInstalledVersion`**, **`FirstInstalledBuild`** (`string?`)
-- **`VersionHistory`**, **`BuildHistory`** (`IReadOnlyList<string>`)
-- **`IsFirstLaunchForVersion(string)`**, **`IsFirstLaunchForBuild(string)`**
+The launch is recorded when the implementation is constructed — on the first access to
+`VersionTracking.Default` or the first resolve of `IVersionTracking` — because its constructor
+calls `Track()`. `ConfigureEssentials(e => e.UseVersionTracking())` forces that construction
+during `Build()`, so a run that never reads version tracking is still recorded. The history
+lives in `Preferences` (see [`Barbatos.Wpf.Storage`](#barbatoswpfstorage-namespace)).
+
+- **`Track()`** — idempotent: a no-op once the launch has been recorded, which construction
+  already did. Kept for MAUI parity.
+- **`IsFirstLaunchEver`**, **`IsFirstLaunchForCurrentVersion`**, **`IsFirstLaunchForCurrentBuild`** (`bool`) — computed once per process.
+- **`CurrentVersion`**, **`CurrentBuild`** (`string`) — `AppInfo.VersionString` / `AppInfo.BuildString`.
+- **`PreviousVersion`**, **`PreviousBuild`**, **`FirstInstalledVersion`**, **`FirstInstalledBuild`** (`string?`) — `null` when there is no such entry.
+- **`VersionHistory`**, **`BuildHistory`** — `IReadOnlyList<string>` on `IVersionTracking`; `IEnumerable<string>` on the static `VersionTracking` facade.
+- **`IsFirstLaunchForVersion(string)`**, **`IsFirstLaunchForBuild(string)`** → `bool`
 
 ### `AppActions` / `IAppActions`
 
@@ -458,10 +479,10 @@ Windows implementation backed by `System.Windows.Shell.JumpList` (the taskbar ri
 menu) instead of WinRT's `Windows.UI.StartScreen.JumpList`. See
 [App actions and version tracking](README.md#app-actions-and-version-tracking) in the README.
 
-- **`IsSupported`** (`bool`)
+- **`IsSupported`** (`bool`) — always `true`.
 - **`GetAsync()`** → `Task<IEnumerable<AppAction>>` — returns the actions last set by `SetAsync` in this process (no OS read-back API exists for `JumpList`).
-- **`SetAsync(IEnumerable<AppAction>)`** / **`SetAsync(params AppAction[])`**
-- **`OnAppAction`** (`event EventHandler<AppActionEventArgs>?`)
+- **`SetAsync(IEnumerable<AppAction>)`** / **`SetAsync(params AppAction[])`** — replaces the Jump List (hiding the Recent/Frequent categories) on `Application.Current`, so it needs a running WPF `Application`. Only actions set in a process before its startup event are recognised when clicked: an action added only at runtime shows in the Jump List but raises nothing after a restart unless the next launch declares it again (`ConfigureEssentials(e => e.AddAppAction(...))` does, during `Build()`).
+- **`OnAppAction`** (`event EventHandler<AppActionEventArgs>?`; `IAppActions.AppActionActivated` on the interface) — raised once, from the relaunched process's `WpfLifecycle.OnStartup` event, which runs inside `WpfApplication.OnStartup` before any main window exists. A handler added after `base.OnStartup(e)` never sees it. Under `ConfigureSingleInstance()` with an instance already running, the relaunched process exits inside `Build()` and the running instance receives only `ISingleInstanceService.SecondInstanceLaunched` (no arguments): the activation is not reported.
 
 ### `Launcher` / `ILauncher`
 
@@ -469,8 +490,8 @@ Windows implementation backed by `Process.Start(UseShellExecute: true)` instead 
 `Windows.System.Launcher`.
 
 - **`CanOpenAsync(Uri | string)`** → `Task<bool>` — looks up the URI's scheme under `HKEY_CLASSES_ROOT` for a registered `"URL Protocol"` value or a `shell\open\command` subkey.
-- **`OpenAsync(Uri | string)`** → `Task<bool>`
-- **`OpenAsync(OpenFileRequest)`** → `Task<bool>` — opens a file by full path with its associated application.
+- **`OpenAsync(Uri | string)`** → `Task<bool>` — `true` when `Process.Start` did not throw, including when the shell handed the URI to an already-running or COM-activated handler and returned no `Process`; `false` when the shell refused it (any exception is caught). The `string` overload builds a `Uri`, so a relative path throws `UriFormatException`.
+- **`OpenAsync(OpenFileRequest)`** → `Task<bool>` — opens a file by full path with its associated application; same `true`/`false` rule (`false` for a missing file). Throws `ArgumentNullException` for a `null` request or an empty `FullPath`.
 - **`TryOpenAsync(Uri | string)`** → `Task<bool>` — `CanOpenAsync` then `OpenAsync`.
 
 ```csharp
@@ -493,12 +514,17 @@ if (status != PermissionStatus.Granted)
     status = await Permissions.RequestAsync<Permissions.Camera>();
 ```
 
-Most permission types report `PermissionStatus.Granted` unconditionally (no manifest/capability
-concept for an unpackaged app, and Windows itself doesn't gate these behind a runtime consent
-prompt outside a packaged/store app). `ContactsRead`, `ContactsWrite`, `LocationWhenInUse`,
-`LocationAlways`, `Microphone`, and `Sensors` throw `FeatureNotSupportedException` instead,
-since a real check for these six needs WinRT device-access contracts this library opts out of
-(same reasoning as [`Contacts`/`Geolocation`](#barbatoswpfapplicationmodelcommunication-namespace)).
+Most permission types report `PermissionStatus.Granted` unconditionally, without consulting the
+OS (no manifest/capability concept or consent prompt for an unpackaged app); `RequestAsync`
+returns what `CheckStatusAsync` does and `EnsureDeclared()` is a no-op. `Granted` therefore
+means "not checked", not "Windows allows it": the Windows privacy settings can still block a
+desktop app's camera, and `PostNotifications` is `Granted` even when toasts are turned off
+(use `INotificationService.Availability`). Override `CheckStatusAsync()` in a subclass of
+`Permissions.BasePlatformPermission` for a real check. `ContactsRead`, `ContactsWrite`,
+`LocationWhenInUse`, `LocationAlways`, `Microphone`, and `Sensors` throw
+`FeatureNotSupportedException` instead, since a real check for these six needs WinRT
+device-access contracts this library opts out of (same reasoning as
+[`Contacts`/`Geolocation`](#barbatoswpfapplicationmodelcommunication-namespace)).
 
 ---
 
@@ -510,7 +536,7 @@ Email composition and contacts.
 
 | Type | Description |
 |------|-------------|
-| `Email` / `IEmail` | `IsComposeSupported`, `ComposeAsync(EmailMessage?)` — backed by Simple MAPI (`MAPISendMail`). |
+| `Email` / `IEmail` | `IsComposeSupported` (always `true`: Simple MAPI is the mechanism, not proof a client is installed), `ComposeAsync(EmailMessage?)` — backed by Simple MAPI's Unicode `MAPISendMailW`, on a thread-pool thread. Completes once the compose window is open (or, for a modal-only client, sent or cancelled); a user cancelling is not an error. Throws `FeatureNotSupportedException` for an HTML body or when no Simple MAPI client answers (none installed or set as the default, logon failure), `FileNotFoundException` for an attachment that does not exist (checked before any client starts), and `InvalidOperationException` carrying the MAPI code for any other MAPI error. |
 | `EmailMessage` | `Subject`, `Body`, `BodyFormat`, `To`, `Cc`, `Bcc`, `Attachments`. |
 | `EmailBodyFormat` | `PlainText`, `Html` (HTML throws — Simple MAPI is plain-text only). |
 | `EmailAttachment` | `FullPath` — the file to attach, referenced by path. |
@@ -533,7 +559,7 @@ Device info and device display.
 
 ### `DeviceDisplay` / `IDeviceDisplay`
 
-- **`KeepScreenOn`** (`bool`, settable) — via `SetThreadExecutionState(ES_DISPLAY_REQUIRED)`.
+- **`KeepScreenOn`** (`bool`, settable from any thread) — a `SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)` request held by a dedicated background thread while `true`; the setter returns once the request is in force. Because the request is not made on the caller's thread, it combines with `IKeepAwakeService` (which holds `ES_SYSTEM_REQUIRED` on the UI thread) and with the app's own requests instead of replacing them, and turning it off releases only the display request.
 - **`MainDisplayInfo`** (`DisplayInfo`) — `Width`, `Height`, `Density`, `Orientation`, `Rotation`, `RefreshRate`; computed against the active WPF window via a Win32 monitor-info P/Invoke block.
 - **`MainDisplayInfoChanged`** (`event EventHandler<DisplayInfoChangedEventArgs>`) — backed by `Microsoft.Win32.SystemEvents.DisplaySettingsChanged`; the listener starts on first subscription and stops when the last handler is removed.
 

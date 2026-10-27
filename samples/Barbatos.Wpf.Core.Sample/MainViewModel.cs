@@ -7,6 +7,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using Barbatos.Wpf.ApplicationModel;
 using Barbatos.Wpf.ApplicationModel.Communication;
 using Barbatos.Wpf.Apsu;
 using Barbatos.Wpf.Devices;
@@ -582,7 +583,17 @@ public class MainViewModel : INotifyPropertyChanged
     public async void ComposeTestEmail()
     {
         LogLifecycleEvent("Email.ComposeAsync(...)");
-        await _email.ComposeAsync("Hello from Barbatos.Wpf.Core", "Sent via Simple MAPI.", []);
+        try
+        {
+            await _email.ComposeAsync("Hello from Barbatos.Wpf.Core", "Sent via Simple MAPI.", []);
+        }
+        catch (FeatureNotSupportedException ex)
+        {
+            // No Simple MAPI client answered (common on machines with only webmail or the new
+            // Outlook): fall back to the default mailto: handler, as the README recommends.
+            LogLifecycleEvent($"Email.ComposeAsync: {ex.Message} - falling back to mailto:");
+            await Launcher.OpenAsync($"mailto:?subject={Uri.EscapeDataString("Hello from Barbatos.Wpf.Core")}");
+        }
     }
 
     public void ShowAbout()

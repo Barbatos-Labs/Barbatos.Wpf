@@ -24,7 +24,17 @@ public interface ILauncher
     /// Opens the app specified by the URI scheme.
     /// </summary>
     /// <param name="uri">URI to open.</param>
-    /// <returns><see langword="true"/> if the URI was opened, otherwise <see langword="false"/>.</returns>
+    /// <returns>
+    /// <see langword="true"/> if the shell accepted the URI, otherwise <see langword="false"/>
+    /// (no handler, or the shell refused it).
+    /// </returns>
+    /// <remarks>
+    /// On Windows <see langword="true"/> means the shell took the request, whether it started
+    /// a new process or handed the URI to an application that was already running (a browser
+    /// window, a COM-activated or packaged handler). Earlier versions returned
+    /// <see langword="false"/> for those hand-offs because no new process came back, even
+    /// though the target had opened.
+    /// </remarks>
     /// <exception cref="UriFormatException">Thrown when <paramref name="uri"/> is malformed.</exception>
     Task<bool> OpenAsync(Uri uri);
 
@@ -32,7 +42,14 @@ public interface ILauncher
     /// Requests to open a file in an application based on content type.
     /// </summary>
     /// <param name="request">Request that contains information on the file to open.</param>
-    /// <returns><see langword="true"/> if the file was opened, otherwise <see langword="false"/>.</returns>
+    /// <returns>
+    /// <see langword="true"/> if the shell accepted the file, otherwise <see langword="false"/>
+    /// (the file does not exist, or nothing is associated with it).
+    /// </returns>
+    /// <remarks>
+    /// As with <see cref="OpenAsync(Uri)"/>, a hand-off to an application that is already
+    /// running counts as opened.
+    /// </remarks>
     Task<bool> OpenAsync(OpenFileRequest request);
 
     /// <summary>
