@@ -856,7 +856,13 @@ Notes:
   `Application.MainWindow` until it closes (checked in dotnet/wpf's `Window.cs`), so a
   reference check would hide the splash instead of closing it whenever the tray icon is
   already visible at startup.
-- `RunOnStartup` state is persisted by the OS registry; the other toggles can be
+- `RunOnStartup` state is persisted by the OS registry. Its `IsEnabled` reflects only the `Run`
+  value the service writes, not the switch in Task Manager's Startup tab or Settings > Apps >
+  Startup: Windows stores that one separately (`StartupApproved`) and keeps the `Run` value, so
+  after a user turns the app off there, `IsEnabled` still reads `true` and Windows does not
+  start it. The service leaves that key alone on purpose (it is undocumented, and it records a
+  choice the user made in the OS's own UI); a settings screen can say so next to its checkbox.
+  The other toggles can be
   persisted by writing their configuration sections back to a user settings file that is
   loaded via `builder.Configuration.AddJsonFile(...)` — see `SettingsStore` in the sample.
 - Notifications are pushed as full adaptive Windows toast notifications (via the Windows

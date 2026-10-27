@@ -7,7 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Anthropic" Version="13.3.0" />
-    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="Barbatos.i18n" Version="1.2.0" />
     <PackageVersion Include="Barbatos.i18n.DependencyInjection" Version="1.2.0" />
     <PackageVersion Include="Barbatos.i18n.Json" Version="1.2.0" />

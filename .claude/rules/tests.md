@@ -30,10 +30,12 @@ A failure is real only once it reproduces with that class alone, on that one TFM
 
 - WPF objects need STA. In the Aquarius-family projects use `StaThread.Run(...)` for plain
   controls and `TestApplication.Invoke(...)` for anything that touches `Application.Current` —
-  they are not interchangeable. Each of those projects carries its own copy (Aquarius and Router
-  also have `GcProbe`; Valee does not). For a new suite copy `TestApplication` from the Router or
-  Valee project: the Aquarius copy lacks `ShutdownMode.OnExplicitShutdown`, so a test that closes
-  the last window shuts the shared `Application` down for every later test.
+  they are not interchangeable. Each of those projects carries its own copy, plus `GcProbe`. For
+  a new suite copy the Aquarius `TestApplication`: like every copy it sets
+  `ShutdownMode.OnExplicitShutdown` (without it, a test that closes the last window shuts the
+  shared `Application` down for every later test), and it also fails fast on a stray exception.
+- A control a test leaves loaded keeps its static-event subscriptions after the test's thread
+  exits; library handlers on static events check `CheckAccess()` (`barbatos-wpf-testing`).
 - `Barbatos.Wpf.Core.UnitTests` has none of these helpers. A Core `Window` test uses a file-local
   `RunOnStaThread` (see `DialogServiceTests.cs`); timer tests pump
   `Barbatos.Wpf.Dispatching.Dispatcher.GetForCurrentThread()` with a `DispatcherFrame`

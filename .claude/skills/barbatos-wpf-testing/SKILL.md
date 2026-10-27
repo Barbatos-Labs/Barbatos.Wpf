@@ -58,8 +58,10 @@ dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -f net8.0-windows --filter "Fu
   correctly fails under `-c Release`.
 - net9.0 is built by every library but tested by no project: a `#if NET9_0_OR_GREATER` branch is
   only exercised through the net10 run.
-- CI never runs tests: the release workflow strips the `/tests/` folder out of
-  `Barbatos.Wpf.slnx` before building. A green release says nothing about tests.
+- `.github/workflows/barbatos-wpf-ci.yml` runs every project on both of its TFMs, one step each,
+  on pull requests and pushes to `main`, with `--blame-crash` and an 8-minute hang collector. The
+  release workflow strips `/tests/` and runs none, so a green release says nothing about tests:
+  look at the CI run for that commit.
 - When the test host dies mid-run, rerun that project and TFM with `--blame-crash` to name the
   test that was executing (how the crash behind `AssemblyInfo.cs` was confirmed).
 
@@ -80,9 +82,21 @@ dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -f net8.0-windows --filter "Fu
   `StaThread.Run` body never pumps continuously.
 - **`TestApplication` is shared by every test in the process.** Unsubscribe
   `DispatcherUnhandledException` handlers in `finally`, raise `Unloaded` on Lifecycle-enabled
-  elements before returning (Lifecycle subscribes `Application.Current.DispatcherUnhandledException`
-  while mounted and would intercept a later test's exception), and set `e.Handled = true` in an
-  observer so the host survives.
+  elements before returning (Lifecycle subscribes its element's own `Dispatcher.UnhandledException`
+  while mounted - for a `TestApplication` element that is the shared dispatcher - and would
+  intercept a later test's exception), and set `e.Handled = true` in an observer so the host
+  survives. All three copies use `ShutdownMode.OnExplicitShutdown`; the Aquarius copy also fails
+  the next `Invoke` fast, naming a stray exception an earlier test left queued, instead of letting
+  it kill the pump thread.
+- **A control left loaded outlives its test's thread.** Each `StaThread.Run` body gets a fresh
+  thread, and a window it never closes keeps its controls' subscriptions to static events after
+  that thread exits. A later test raising that event then runs the old control's handler on the
+  new thread - `"The calling thread cannot access this object"` from inside a `Loaded` handler,
+  which aborted the whole Aquarius run on CI (`Teleport` on `TeleportHost.HostRegistered`; fixed
+  by ignoring events from another thread). A library handler on a static event checks
+  `CheckAccess()` first; a test that leaves a control loaded on purpose (`AssertAlive` controls)
+  is fine once it does. `StaThread.Run` fails a body that runs past two minutes rather than
+  hanging the run.
 - **Wait outside `TestApplication.Invoke`**, with a timeout (`signal.Wait(TimeSpan.FromSeconds(5))`).
   Waiting inside blocks the very dispatcher that has to deliver the signal - a deadlock.
 - Core has no `StaThread`, `TestApplication` or `GcProbe`, and no Core test touches
@@ -99,7 +113,9 @@ dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -f net8.0-windows --filter "Fu
   it returns once everything queued at `Background` or higher has run, including WPF's own
   `Loaded`-priority tree-connection work. Every deferral in `src/` posts at `Background` or higher
   (`NextTick.Run`/`RunAsync`, `WatchFlush.Post`, Lifecycle's `IOnUpdated` batching, `FormMeta`
-  change notifications, `Valee` mask at `Input`), so one pump flushes them. Pump after
+  change notifications, `Valee` mask at `Input`), so one pump flushes them. Work scheduled from
+  a worker thread lands on the watcher's or element's UI thread, else `Application.Current`'s -
+  so pump that thread, not the worker (`NextTickTests`). Pump after
   `window.Show()`, after anything deferred, after changing `Component.Is` or the route, and after
   `window.Close()`. Inside `TestApplication.Invoke` it pumps the shared dispatcher.
 - **It does not let time pass.** Storyboards (`Transition`), dispatcher timers, chord
@@ -159,8 +175,8 @@ dotnet test tests/Barbatos.Wpf.Aquarius.UnitTests -f net8.0-windows --filter "Fu
 ## Leak tests with GcProbe
 
 `GcProbe.AssertCollected(WeakReference reference, string what)` and
-`GcProbe.AssertAlive(WeakReference reference, string what)` exist in the Aquarius and Router
-suites. `AssertCollected` makes up to five attempts - full blocking compacting collection,
+`GcProbe.AssertAlive(WeakReference reference, string what)` exist in the Aquarius, Router and
+Valee suites. `AssertCollected` makes up to five attempts - full blocking compacting collection,
 finalizer drain, second collection - with a `PumpDispatcher()` between, because WPF can still hold
 the graph in queued work on the first pass; a real leak fails all five. Call both on the thread
 that built the subject (inside `StaThread.Run`/`TestApplication.Invoke`), since the retry pumps
@@ -238,8 +254,8 @@ the platform interfaces and `Router`'s window-free pipeline exist partly so test
 ## Conventions
 
 - Plain xUnit assertions (`Assert.Equal`, `Assert.Same`, `Assert.Throws`, `Assert.Single`,
-  `Record.Exception`); `[Theory]` + `[InlineData]` for tables. `AwesomeAssertions` is referenced but
-  used nowhere - do not introduce `.Should()`.
+  `Record.Exception`); `[Theory]` + `[InlineData]` for tables. No assertion library is referenced -
+  do not introduce `.Should()`.
 - A class per type under test, `<Type>Tests`, or `<Type><Concern>Tests` for a focused concern
   (`LifecycleLeakTests`, `RouterNavigationGuardOrderTests`, `AsyncValidationRaceTests`). Method
   names are sentences describing the behaviour (`SettingTheSameValueDoesNotRaisePropertyChanged`);
@@ -263,7 +279,8 @@ the platform interfaces and `Router`'s window-free pipeline exist partly so test
 | Run stops partway, fewer tests reported, host crashed | Concurrent STA windows (parallelism), or a synchronous throw from `Loaded` inside WPF's render pipeline | Keep `ParallelMode.None` in WPF suites; `--blame-crash`; the library must defer that throw with `BeginInvoke` and a test must pin it ([pattern](patterns.md#a-deferred-failure-through-dispatcherunhandledexception)) |
 | `InvalidOperationException`: "The calling thread must be STA" | WPF object built on the xUnit thread | `StaThread.Run` |
 | Only the first `Application` test works; later ones never see posted work | `Application.Current` created on a short-lived `StaThread.Run` thread | `TestApplication.Invoke` for every `Application`-touching test |
-| Later tests fail with "The Application object is being shut down" | A test closed the last window on the shared `Application` without `ShutdownMode.OnExplicitShutdown` | Use the Router/Valee `TestApplication` copy |
+| Later tests fail with "The Application object is being shut down" | A test closed the last window on the shared `Application` without `ShutdownMode.OnExplicitShutdown` | Every shipped `TestApplication` copy sets it; a new suite's copy must too |
+| `[FATAL ERROR] System.InvalidOperationException: The calling thread cannot access this object`, then the run hangs | A handler on a static event, subscribed by a control an earlier test left loaded (its thread now gone), ran on the raising thread | The library handler checks `CheckAccess()`; see "A control left loaded outlives its test's thread" |
 | Assertion sees the old value | Deferred work not flushed | `StaThread.PumpDispatcher()` before asserting |
 | Animation/timer/chord assertion fails although the logic is right | `PumpDispatcher` does not advance time | Bounded `PumpFor`/`PumpUntil` |
 | Test hangs | Waiting inside `TestApplication.Invoke`; `ShowDialog()` never closed; unbounded `PushFrame`; `GetResult()` on real async on the STA thread | Wait outside with a timeout; close from the inner `Loaded`; bound every wait; make it an `async Task` test |
@@ -286,18 +303,21 @@ the platform interfaces and `Router`'s window-free pipeline exist partly so test
 - `.csproj`: `TargetFrameworks` `net8.0-windows;net10.0-windows` (SDK-suffixed
   `…windows10.0.17763.0` when it references Core), `UseWPF`, `IsPackable=false`,
   `IsTestProject=true`, `OutputType=Exe` with the existing comment (xUnit.net v3 test projects are
-  self-hosting executables). `PackageReference`s without versions: `AwesomeAssertions`,
-  `coverlet.collector`, `Microsoft.NET.Test.Sdk`, `xunit.v3.mtp-off`, `xunit.runner.visualstudio`,
-  plus `CommunityToolkit.Mvvm` / `Microsoft.Extensions.DependencyInjection` when needed. One
+  self-hosting executables). `PackageReference`s without versions: `coverlet.collector`,
+  `Microsoft.NET.Test.Sdk`, `xunit.v3.mtp-off`, `xunit.runner.visualstudio`, plus
+  `CommunityToolkit.Mvvm` / `Microsoft.Extensions.DependencyInjection` when needed. One
   `ProjectReference` to the package; `<Using Include="Xunit" />` plus its namespaces. Do not set
   `Nullable`, `ImplicitUsings` or `LangVersion`.
 - The trim/AOT analyzers from `Directory.Build.targets` apply to test projects too; a suppression
   carries a comment, as Valee's `IL2026` does.
 - Copy the helpers and change the namespace: `StaThread.cs` (Valee's has `Run<T>`),
-  `TestApplication.cs` from Router or Valee (Aquarius's lacks `ShutdownMode.OnExplicitShutdown`),
+  `TestApplication.cs` (the Aquarius copy is the most defensive: it also fails fast on a stray
+  exception),
   `GcProbe.cs` if it will have leak tests, and `AssemblyInfo.cs` whole (`ParallelMode.None` plus
   `ThemeInfo`) if it creates windows.
-- Add it to `Barbatos.Wpf.slnx` inside the `/tests/` folder, which CI strips.
+- Add it to `Barbatos.Wpf.slnx` inside the `/tests/` folder (which the release workflow strips),
+  and give it one step per TFM in `.github/workflows/barbatos-wpf-ci.yml`, copied from a
+  neighbouring step.
 - Add its `-f` values to the table in `.claude/rules/tests.md` and the examples in `CLAUDE.md` §2.
 
 ## Checklist: adding or changing a test

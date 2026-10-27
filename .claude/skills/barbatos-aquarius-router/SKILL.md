@@ -169,9 +169,10 @@ await router.Back();                                              // Go(-1); For
   pipeline as an *update* (same instance). `Go`/`Back`/`Forward` run the guards but skip steps 1-2
   below; out of range is a silent `null` with no `AfterEach`.
 - **Navigate on the UI thread.** `Push` constructs Views synchronously. Marshal callbacks from
-  toasts (`INotificationService.Activated`), thread-pool timers or `Task.Run` through the
-  Dispatcher first. Input-system actions, global hotkeys included, are raised on the UI thread
-  in a normal startup, so the sample's `ShortcutRouting` pushes directly.
+  thread-pool timers or `Task.Run` through the Dispatcher first. `INotificationService.Activated`
+  and `IPushNotificationService.RouteRequested` already arrive on the UI thread, so a toast
+  handler can `Push` directly; so are input-system actions, global hotkeys included, in a normal
+  startup, which is why the sample's `ShortcutRouting` pushes directly.
 
 ## Guards
 

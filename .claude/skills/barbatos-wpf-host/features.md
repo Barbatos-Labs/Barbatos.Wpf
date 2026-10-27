@@ -321,7 +321,11 @@ _dialogService.Show(dialog, owner: someWindow, key: "customer-42", closeOthers: 
 - `RunOnStartupOptions`: `Enabled`, `EntryName` (default: entry-assembly name), `ExecutablePath`
   (default `Environment.ProcessPath`), `Arguments` (appended after the quoted path - e.g. a flag
   your app reads to start hidden in the tray).
-- The OS persists this one; `IsEnabled` reads the registry live.
+- The OS persists this one; `IsEnabled` reads the registry live - but only the `Run` value. The
+  Task Manager / Settings "Startup apps" switch is a separate `StartupApproved` entry that keeps
+  `Run` in place, so a user who switched the app off there sees `IsEnabled == true` while Windows
+  never launches it, and `SetEnabled(true)` cannot undo it. Do not write `StartupApproved` (it is
+  undocumented and is the user's OS-level choice); say so in the settings UI instead.
 - `Enabled = false` leaves an existing entry untouched, so the user's earlier choice survives.
   Unregister with `SetEnabled(false)`.
 - `SetEnabled(true)` is a no-op while an entry with that name exists, even if it points at an old
@@ -338,6 +342,7 @@ _dialogService.Show(dialog, owner: someWindow, key: "customer-42", closeOthers: 
 | Periodic job runs as soon as the app starts | No `StartTime` on `Once`/`Hourly`/`Custom`, or neither `TimeOfDay` nor `StartTime` on a calendar schedule | Set `StartTime`/`TimeOfDay` |
 | `Once` job runs on every launch | Run history is per process | Persist "already done" yourself (`barbatos-wpf-essentials` Preferences) |
 | UI freezes every N minutes | `ExecuteAsync` runs on the UI thread | `await Task.Run(..., cancellationToken)` |
+| "Run on startup" is checked but the app does not start with Windows | The user switched it off in Task Manager / Settings > Startup apps (`StartupApproved`), which `IsEnabled` does not read | Tell the user to switch it back on there; do not write that key |
 | Schedule description blank after restart | A config override replaces the whole schedule | Restate `Description` in the override |
 | `Build()` throws `ArgumentException`/`InvalidOperationException` with periodic services | Duplicate service `Name`, or an invalid schedule | Unique names; `Validate()` |
 | Run-on-startup launches an old executable | `SetEnabled(true)` keeps an existing entry | `SetEnabled(false)` then `SetEnabled(true)` |

@@ -64,7 +64,8 @@ dotnet new aq-view -n Dashboard --namespace MyApp.Features.Dashboard
 ```
 
 Generates, in the current directory:
-- `DashboardView.xaml` - a `UserControl` with `aq:Setup.Enable="True"` already set.
+- `DashboardView.xaml` - a `UserControl` with `aq:Setup.Enable="True"` and
+  `aq:Lifecycle.Enable="True"` already set, so the ViewModel's lifecycle hooks fire.
 - `DashboardView.xaml.cs` - just `InitializeComponent()`.
 - `DashboardViewModel.cs` - an `ObservableObject` with one example `[ObservableProperty]`,
   picked up automatically by `Setup`'s naming convention (`DashboardView` ->

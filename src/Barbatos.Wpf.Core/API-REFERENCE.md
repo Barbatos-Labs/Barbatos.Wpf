@@ -493,6 +493,9 @@ Windows implementation backed by `Process.Start(UseShellExecute: true)` instead 
 - **`OpenAsync(Uri | string)`** → `Task<bool>` — `true` when `Process.Start` did not throw, including when the shell handed the URI to an already-running or COM-activated handler and returned no `Process`; `false` when the shell refused it (any exception is caught). The `string` overload builds a `Uri`, so a relative path throws `UriFormatException`.
 - **`OpenAsync(OpenFileRequest)`** → `Task<bool>` — opens a file by full path with its associated application; same `true`/`false` rule (`false` for a missing file). Throws `ArgumentNullException` for a `null` request or an empty `FullPath`.
 - **`TryOpenAsync(Uri | string)`** → `Task<bool>` — `CanOpenAsync` then `OpenAsync`.
+- **`LauncherExtensions`** — the `string` overloads of `CanOpenAsync`, `OpenAsync` and
+  `TryOpenAsync` for an injected `ILauncher`, which itself takes only `Uri`; each builds the
+  `Uri` the same way, so a relative path throws `UriFormatException`.
 
 ```csharp
 await Launcher.OpenAsync("https://example.com");
@@ -540,6 +543,7 @@ Email composition and contacts.
 | `EmailMessage` | `Subject`, `Body`, `BodyFormat`, `To`, `Cc`, `Bcc`, `Attachments`. |
 | `EmailBodyFormat` | `PlainText`, `Html` (HTML throws — Simple MAPI is plain-text only). |
 | `EmailAttachment` | `FullPath` — the file to attach, referenced by path. |
+| `EmailExtensions` | On an injected `IEmail`: `ComposeAsync()` (an empty compose window, the same as `ComposeAsync(null)`) and `ComposeAsync(string subject, string body, params string[] to)`. Both fail exactly as `ComposeAsync(EmailMessage?)` does. |
 | `Contacts` / `IContacts` | `PickContactAsync()`, `GetAllAsync(CancellationToken)` — both throw `FeatureNotSupportedException` on Windows (see the README's [Contacts and Geolocation](README.md#contacts-and-geolocation) note). |
 | `Contact` | `Id`, `NamePrefix`, `GivenName`, `MiddleName`, `FamilyName`, `NameSuffix`, `DisplayName`, `Emails`, `Phones`. |
 | `ContactEmail` / `ContactPhone` | `Type` and value fields for a contact's email/phone entries. |
@@ -561,6 +565,8 @@ Device info and device display.
 
 - **`KeepScreenOn`** (`bool`, settable from any thread) — a `SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)` request held by a dedicated background thread while `true`; the setter returns once the request is in force. Because the request is not made on the caller's thread, it combines with `IKeepAwakeService` (which holds `ES_SYSTEM_REQUIRED` on the UI thread) and with the app's own requests instead of replacing them, and turning it off releases only the display request.
 - **`MainDisplayInfo`** (`DisplayInfo`) — `Width`, `Height`, `Density`, `Orientation`, `Rotation`, `RefreshRate`; computed against the active WPF window via a Win32 monitor-info P/Invoke block.
+  - `Orientation` is a `DisplayOrientation`: `Unknown`, `Portrait`, `Landscape`.
+  - `Rotation` is a `DisplayRotation`: `Unknown`, `Rotation0`, `Rotation90`, `Rotation180`, `Rotation270`.
 - **`MainDisplayInfoChanged`** (`event EventHandler<DisplayInfoChangedEventArgs>`) — backed by `Microsoft.Win32.SystemEvents.DisplaySettingsChanged`; the listener starts on first subscription and stops when the last handler is removed.
 
 ---
@@ -575,7 +581,8 @@ Every member throws `FeatureNotSupportedException` on Windows — see
 
 - **`GetLastKnownLocationAsync()`**, **`GetLocationAsync(...)`** → `Task<Location?>`
 - **`StartListeningForegroundAsync(GeolocationListeningRequest)`** → `Task<bool>`, **`StopListeningForeground()`**
-- **`LocationChanged`**, **`ListeningFailed`** events
+- **`LocationChanged`** (`EventHandler<GeolocationLocationChangedEventArgs>`, carrying `Location`) and **`ListeningFailed`** (`EventHandler<GeolocationListeningFailedEventArgs>`, carrying `Error`) events — never raised, since listening cannot start
+- **`GeolocationExtensions`** — `GetLocationAsync()` and `GetLocationAsync(GeolocationRequest)` on an injected `IGeolocation`, filling in a default request and no cancellation token; they throw like the interface method
 
 `Location`, `GeolocationRequest`, `GeolocationAccuracy`, `GeolocationListeningRequest`,
 `GeolocationError`, `DistanceUnits`, and `AltitudeReferenceSystem` retain their full type
@@ -709,8 +716,11 @@ the default.
 Registers/unregisters the app in the current user's `Run` registry key
 (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
 
-- **`IsEnabled`** (`bool`) — read from the registry on every access, so it reflects the OS state
-  (the OS persists it across restarts).
+- **`IsEnabled`** (`bool`) — read from the registry on every access, so it reflects the `Run`
+  value (the OS persists it across restarts). It does not see the Task Manager / Settings
+  "Startup apps" switch, which Windows stores separately under `…\Explorer\StartupApproved\Run`
+  while leaving the `Run` value in place: an app the user switched off there reads `true` here
+  but does not start, and `SetEnabled(true)` does not switch it back on.
 - **`SetEnabled(bool)`** — writes or removes the entry; a no-op when `IsEnabled` already matches,
   so it does not rewrite an existing entry that points at an old executable path.
 - **`IsEnabledChanged`** (event) — raised when `SetEnabled` changes the state.

@@ -216,8 +216,9 @@ The prose records decisions and evidence, not mechanics.
   as `**Thing** - reason`, plus what to do instead.
 - **Callouts only where it bites.** Only `> [!IMPORTANT]` is used, only in the Core docs: the
   SDK-suffixed TFM, the DeviceIdentity not-legal-advice note, synchronous splash-screen work, the
-  pre-DI static facades, and Apsu's "call `next` first" rule. Other asides are bold-led
-  blockquotes (`> **Prerequisites**`, `> **Familiar with Vue Router?**`). No `[!NOTE]`.
+  pre-DI static facades, and Apsu's sync-action deadlock note (README and API reference). Other
+  asides are bold-led blockquotes (`> **Prerequisites**`, `> **Familiar with Vue Router?**`). No
+  `[!NOTE]`.
 - **Dashes follow the file:** the Core README and API reference mostly use `—`; Aquarius,
   Router, Valee, the root README and `templates/README.md` use only ` - `.
 - Prose wraps at about 95 characters; table rows and long link lines stay on one line.
@@ -266,7 +267,7 @@ The prose records decisions and evidence, not mechanics.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| A menu or "see below" link goes nowhere | Anchor guessed or heading renamed (Aquarius README's `(#if-v-if)`) | Slug the real heading; run `check-docs.mjs` |
+| A menu or "see below" link goes nowhere | Anchor guessed or heading renamed (the Aquarius README once linked `(#if-v-if)` for `### If (v-if / v-else / v-else-if)`) | Slug the real heading; run `check-docs.mjs` |
 | The namespace table's links do nothing | Anchor missing a segment (`#barbatoswpfreactivity-namespace` for `Barbatos.Wpf.Aquarius.Reactivity`) | `#barbatoswpfaquariusreactivity-namespace` |
 | Link works on GitHub, dead on nuget.org | Relative link in a package README | Absolute `https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/...` URL |
 | Logo blank on nuget.org, fine on GitHub | Image host not on NuGet's allow-list (`github.com/...?raw=true`) | `raw.githubusercontent.com/...` |
@@ -278,41 +279,9 @@ The prose records decisions and evidence, not mechanics.
 
 ## Known drift (measured with check-docs.mjs)
 
-Fix these when you are next in the file; drop a line once fixed.
-
-- **Menu gaps** (`###` with no entry). Core: Loading important data before the main window ever
-  appears; Registering services after startup; Hosted servers that need a sign-in (OAuth);
-  Models (`IAiModelCatalog`); Attachments (images, documents); Maintainers / Support / License.
-  Aquarius: Async hooks; Several Teleports, one host; Repository layout. Router: Choosing;
-  Searching in more than one language; Repository layout; and "Pairing a View with its
-  ViewModel" is listed under The Route Table but lives under The Router. Valee: `FieldMeta`;
-  `FormMeta`; Focusing the first invalid field on submit; The schema-mode equivalent
-  (`PropertyRangeAttribute` / `IDependsOnProperties`); `Valee.Mask`; `Valee.Numeric`;
-  `FieldTemplateSelector`; `SafeMessageConverter`; `PatternAttribute`; A full review of
-  `System.ComponentModel.DataAnnotations`; Repository layout.
-- **Broken anchors.** Aquarius README `(#if-v-if)` -> `#if-v-if--v-else--v-else-if`. Aquarius
-  API reference: all four namespace-table anchors lack `aquarius`. Core API reference
-  `ApplicationModel` table: `#appinfo--ipublisherinfo` -> `#appinfo--publisherinfo`. Valee API
-  reference: `...whats-custom-whats-doesnt-apply` -> `...whats-custom-what-doesnt-apply`. Valee
-  README: `API-REFERENCE.md#rules` and `API-REFERENCE.md#field` match no heading, and they and
-  `API-REFERENCE.md#form-sealed-class--...` are relative, so all three are dead on nuget.org.
-- **nuget.org:** all four package README logos use `github.com/.../build/<x>-logo.svg?raw=true`
-  and render blank there.
-- **Root `API-REFERENCE.md`:** says "all three packages" and has no AquariusValee entry; Core's
-  list lacks `ApplicationModel.Communication`, `Devices.Sensors`, `PushNotifications`, `Apsu`,
-  `Mcp`; Router's lacks `Searching`.
-- **Root `README.md`:** says every package targets `net8.0-windows`/`net9.0-windows`/
-  `net10.0-windows` (Core is `net*-windows10.0.17763.0`, and its consumers need the suffix); the
-  Templates paragraph says the packages are not on NuGet.org yet, while `templates/README.md`
-  says every referenced package is; the AquariusRouter row uses `build/nuget.png` although
-  `build/aquariusrouter-logo.png` exists.
-- **Router README Quick Start** lists the `aqr:` namespaces as `.Matching`, `.Routing`, `.Xaml`;
-  `AssemblyInfo.cs` also maps `.Searching` (its Ecosystem sentence omits Searching too).
-- **Core API reference** never names several public types - the platform seams
-  `IHotkeyPlatform`, `INotificationPlatform`, `IPowerManager`, `IStartupRegistrar`,
-  `ITrayIconPlatform`, the `DisplayOrientation`/`DisplayRotation` enums, the
-  `GeolocationLocationChangedEventArgs`/`GeolocationListeningFailedEventArgs` types,
-  `LifecycleEventService`, `DispatcherProvider`; `--types` prints the full list.
+None open: `check-docs.mjs` and `check-docs.mjs --types` both report "No problems". When a run
+reports something you cannot fix in the same change, list it here, one bullet per file, and
+drop the bullet once it is fixed.
 
 ## Related skills
 
