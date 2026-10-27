@@ -29,9 +29,12 @@ public class TeleportThreadingTests
     public void AHostLoadingOnAnotherThreadNeitherThrowsNorReachesThisThreadsTeleport()
     {
         var hostName = $"Host-{Guid.NewGuid()}";
-        using var teleportLoaded = new ManualResetEventSlim();
-        using var hostLoaded = new ManualResetEventSlim();
-        using var teleportChecked = new ManualResetEventSlim();
+
+        // Not disposed: if a Join below timed out, the other thread's finally would still Set them,
+        // and an ObjectDisposedException escaping that bare thread ends the test host.
+        var teleportLoaded = new ManualResetEventSlim();
+        var hostLoaded = new ManualResetEventSlim();
+        var teleportChecked = new ManualResetEventSlim();
 
         Exception? otherThreadFailure = null;
         var stayedLocal = false;
@@ -70,6 +73,8 @@ public class TeleportThreadingTests
             }
         });
 
+        // Background, so a thread stuck past its Join below cannot keep the test host alive.
+        otherThread.IsBackground = true;
         otherThread.SetApartmentState(ApartmentState.STA);
         otherThread.Start();
 
@@ -126,14 +131,14 @@ public class TeleportThreadingTests
     {
         var hostName = $"Host-{Guid.NewGuid()}";
 
-        // The CI case exactly: never closed, so its Teleport stays subscribed to HostRegistered
-        // after its thread is gone. (It stays pinned for the rest of the run too, which is the
-        // price LifecycleLeakTests already pays for its AssertAlive control.)
+        // The CI case exactly, shaped like LifecycleLeakTests' AssertAlive control: loaded and
+        // never unloaded, so this Teleport stays subscribed to HostRegistered after its thread is
+        // gone. (The event pins it for the rest of the run, the price that control already pays.)
+        // A synthetic Loaded rather than a window, which would be left open on an exited thread.
         StaThread.Run(() =>
         {
-            var window = new Window { Content = new Teleport { To = hostName, Content = new Border() }, Width = 200, Height = 200 };
-            window.Show();
-            StaThread.PumpDispatcher();
+            var teleport = new Teleport { To = hostName, Content = new Border() };
+            teleport.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent, teleport));
         });
 
         StaThread.Run(() =>
@@ -163,8 +168,10 @@ public class TeleportThreadingTests
     public void TheSameHostNameOnTwoThreadsGivesEachThreadItsOwnHost()
     {
         var hostName = $"Host-{Guid.NewGuid()}";
-        using var firstLoaded = new ManualResetEventSlim();
-        using var secondDone = new ManualResetEventSlim();
+
+        // Not disposed, for the same reason as in the first test.
+        var firstLoaded = new ManualResetEventSlim();
+        var secondDone = new ManualResetEventSlim();
 
         Exception? firstThreadFailure = null;
         Panel? firstThreadsHost = null;
@@ -200,6 +207,7 @@ public class TeleportThreadingTests
             }
         });
 
+        firstThread.IsBackground = true;
         firstThread.SetApartmentState(ApartmentState.STA);
         firstThread.Start();
 

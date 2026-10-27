@@ -19,8 +19,9 @@ namespace Barbatos.Wpf.Aquarius.UnitTests;
 /// <c>DataContext</c> - the whole ViewModel graph never become collectable.
 /// <para>
 /// These are this project's GC-based assertions (AquariusRouter's <c>RouterLeakTests</c> and
-/// <c>RouterDialogWindowTests</c> use that project's own copy of the same probe); see <see cref="GcProbe"/> for why they are written the way they
-/// are, and why the object under test is always built inside a separate non-inlined method.
+/// <c>RouterDialogWindowTests</c> use that project's own copy of the same probe); see
+/// <see cref="GcProbe"/> for why they are written the way they are, and why the object under test
+/// is always built inside a separate non-inlined method.
 /// </para>
 /// </remarks>
 public class LifecycleLeakTests
