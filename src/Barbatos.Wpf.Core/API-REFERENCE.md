@@ -1487,9 +1487,9 @@ public sealed class InterceptorHandle
 - **`Eject()`** — removes the associated interceptor from every chain it applies to, from that
   point on. Idempotent. Does not shrink or rebuild the chain — the interceptor's slot stays in
   place but becomes a transparent pass-through straight to the next interceptor (or the action
-  itself), as if it had never been registered. A call already in flight when `Eject()` runs
-  keeps using the interceptor, since its own pipeline was already built by the time `Eject()`
-  ran; every call that starts afterward skips it. One-way: there is no "re-attach", and
+  itself), as if it had never been registered. Each call checks `IsEjected` when it reaches that
+  slot: a call already inside the interceptor finishes with it, one still in an interceptor
+  further out skips it when it gets there, and so does every call that starts afterward. One-way: there is no "re-attach", and
   registering the interceptor again does not help — `Build()` makes the service collection
   read-only, and each store reads its chain once, at its first resolution — so the behavior
   comes back only with a new container. For an on/off

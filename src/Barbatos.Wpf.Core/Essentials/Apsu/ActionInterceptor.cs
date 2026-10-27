@@ -38,7 +38,18 @@ internal sealed class ActionInterceptor : IInterceptor
             && original.Method == invocation.Method)
         {
             _directCallOf = null;
-            invocation.Proceed();
+            try
+            {
+                invocation.Proceed();
+            }
+            finally
+            {
+                // Reflection, which made this call, copies ref/out values back into the original
+                // invocation's arguments only when the call returns normally; a direct call keeps
+                // a value written before a throw. Copying here keeps that on this path too.
+                Array.Copy(invocation.Arguments, original.Arguments, original.Arguments.Length);
+            }
+
             return;
         }
 
@@ -94,12 +105,19 @@ internal sealed class ActionInterceptor : IInterceptor
         return pipeline;
     }
 
-    static async Task<object?> AwaitAndBoxResultAsync(Task task)
+    static async Task<object?> AwaitAndBoxResultAsync(Task task, Type declaredReturnType)
     {
         // Deliberately not ConfigureAwait(false): this resumes on whatever context called the
         // action (typically a WPF UI thread), since an interceptor further out in the chain may
         // itself read or write UI-bound store state after awaiting `next()`.
         await task;
+
+        // The declared type decides, not the runtime one: an `async Task` method returns a
+        // Task<VoidTaskResult> under the hood, which next() would otherwise hand back boxed
+        // instead of the null StoreActionDelegate documents.
+        if (declaredReturnType == typeof(Task))
+            return null;
+
         var taskType = task.GetType();
         return taskType.IsGenericType ? taskType.GetProperty(nameof(Task<object>.Result))!.GetValue(task) : null;
     }
@@ -138,18 +156,24 @@ internal sealed class ActionInterceptor : IInterceptor
         readonly int _threadId = Environment.CurrentManagedThreadId;
         volatile bool _interceptRunning = true;
 
+        // Set while ProceedInPlace runs the body (only ever touched on _threadId): a next() the
+        // body itself reaches - a stored next called from inside the action - must not proceed
+        // the invocation again from inside its own Proceed, which Castle rejects ("Cannot proceed
+        // past the end of the interception pipeline"), so it goes through the proxy instead.
+        bool _proceedingInPlace;
+
         public InterceptedCall(IInvocation invocation) => _invocation = invocation;
 
         public void InterceptReturned() => _interceptRunning = false;
 
         public Task<object?> ProceedAsync()
         {
-            var returnValue = _interceptRunning && Environment.CurrentManagedThreadId == _threadId
+            var returnValue = _interceptRunning && Environment.CurrentManagedThreadId == _threadId && !_proceedingInPlace
                 ? ProceedInPlace()
                 : CallThroughProxy();
 
             return returnValue is Task task
-                ? AwaitAndBoxResultAsync(task)
+                ? AwaitAndBoxResultAsync(task, _invocation.Method.ReturnType)
                 : Task.FromResult(returnValue);
         }
 
@@ -157,8 +181,16 @@ internal sealed class ActionInterceptor : IInterceptor
         {
             // ReturnValue is read straight after Proceed, on the thread that set it, so each call
             // (a synchronous retry included) sees its own result.
-            _invocation.Proceed();
-            return _invocation.ReturnValue;
+            _proceedingInPlace = true;
+            try
+            {
+                _invocation.Proceed();
+                return _invocation.ReturnValue;
+            }
+            finally
+            {
+                _proceedingInPlace = false;
+            }
         }
 
         object? CallThroughProxy()

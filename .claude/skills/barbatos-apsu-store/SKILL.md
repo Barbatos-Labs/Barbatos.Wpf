@@ -274,7 +274,8 @@ the action from any continuation and any thread
 ### Ejecting
 
 `handle.Eject()` (idempotent; `handle.IsEjected` reports it) turns that slot into a pass-through
-from the next call on; the chain is not rebuilt. A call already in flight keeps the interceptor.
+for every call that reaches it from then on; the chain is not rebuilt. A call already inside the
+interceptor finishes with it; one still in an outer interceptor skips it when it gets there.
 Ejecting before the first call works; ejecting a short-circuiting interceptor lets later calls
 reach the action. There is no re-attach, and a store's chain is fixed once the store exists, so
 getting the behaviour back means a new container. For an on/off setting, give the interceptor

@@ -15,10 +15,11 @@ namespace Barbatos.Wpf.Apsu;
 /// <remarks>
 /// Ejecting does not shrink or rebuild any store's interceptor chain - the interceptor's slot
 /// stays in place, but becomes a transparent pass-through straight to the next interceptor (or
-/// the action itself), as if it had never been registered. A call already in flight when
-/// <see cref="Eject"/> is invoked keeps running with the interceptor still active, since its
-/// own pipeline was already built by the time <see cref="Eject"/> ran; every call that starts
-/// afterward skips it.
+/// the action itself), as if it had never been registered. Each call checks
+/// <see cref="IsEjected"/> at the moment it reaches that slot: a call already inside the
+/// interceptor when <see cref="Eject"/> runs finishes with it, while a call still in an
+/// interceptor further out (one awaiting before <c>next()</c>, say) skips it when it gets there,
+/// as does every call that starts afterward.
 /// <para>
 /// Ejecting is one-way. There is no "re-attach", and registering the interceptor again is no
 /// way back either: <see cref="Hosting.WpfAppBuilder.Build"/> makes the service collection

@@ -1627,8 +1627,10 @@ loggingHandle.Eject();
 
 Ejecting doesn't remove the interceptor from the chain structurally - its slot just becomes a
 transparent pass-through straight to the next interceptor (or the action itself) from that call
-onward, as if it had never been registered. A call already in flight when `Eject()` runs keeps
-using the interceptor; every call that starts afterward skips it. Most interceptors don't need
+onward, as if it had never been registered. Each call checks at the moment it reaches that slot:
+a call already inside the interceptor when `Eject()` runs finishes with it, while a call still in
+an interceptor further out (awaiting before `next()`, say) skips it when it gets there, as does
+every call that starts afterward. Most interceptors don't need
 this - it's opt-in per interceptor, not automatic.
 
 Ejecting is one-way. There's no "re-attach", and registering the interceptor again is no way back

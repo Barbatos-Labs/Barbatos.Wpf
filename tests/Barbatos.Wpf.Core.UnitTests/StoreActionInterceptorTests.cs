@@ -347,6 +347,56 @@ public class StoreActionInterceptorTests
     }
 
     [Fact]
+    public async Task ARefValueWrittenBeforeASynchronousActionThrowsSurvivesWhenNextRunsOnAnotherThread()
+    {
+        // A direct call keeps what the body wrote to a ref parameter before it threw, and so does
+        // next() in place. The second call through the proxy is made with reflection, which copies
+        // by-ref values back only on a normal return, so without copying them itself the caller
+        // read its own value back unchanged.
+        var store = BuildStore<InterceptedStore>(new NextOnAnotherThreadMiddleware());
+
+        var total = await Task.Run(() =>
+            {
+                var value = 1;
+                Assert.Throws<InvalidOperationException>(() => store.AccumulateThenFail(ref value));
+                return value;
+            })
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(6, total);
+    }
+
+    [Fact]
+    public void NextCalledFromInsideTheRunningActionBodyRunsTheBodyAgainInsteadOfThrowing()
+    {
+        // Outside the documented "one attempt at a time" shape, but it used to fail with Castle's
+        // "Cannot proceed past the end of the interception pipeline": the nested next() tried to
+        // proceed the invocation from inside its own Proceed.
+        var middleware = new ExposeNextMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+        store.NextFromInside = () => middleware.Next;
+
+        var runs = store.RunAgainFromInside();
+
+        Assert.Equal(2, runs);
+        Assert.Equal(2, store.ReentrantRuns);
+    }
+
+    [Fact]
+    public async Task NextReturnsNullForAnAsyncTaskAction()
+    {
+        // StoreActionDelegate documents null for a Task action. An async Task method's task is a
+        // Task<VoidTaskResult> at runtime, so next() used to hand back that boxed internal value.
+        var middleware = new ResultCapturingMiddleware();
+        var store = BuildStore<InterceptedStore>(middleware);
+
+        await store.IncrementAsync();
+
+        Assert.True(middleware.Called);
+        Assert.Null(middleware.Result);
+    }
+
+    [Fact]
     public void MultipleGlobalInterceptorsNestLikeMiddlewareInRegistrationOrder()
     {
         var log = new List<string>();
@@ -787,6 +837,28 @@ public class StoreActionInterceptorTests
             doubled = value * 2;
             return true;
         }
+
+        [Action]
+        public virtual void AccumulateThenFail(ref int total)
+        {
+            total += 5;
+            throw new InvalidOperationException("failed after writing the ref value");
+        }
+
+        /// <summary>Hands <see cref="RunAgainFromInside"/> the <c>next</c> of its own call.</summary>
+        public Func<StoreActionDelegate?>? NextFromInside { get; set; }
+
+        public int ReentrantRuns { get; private set; }
+
+        [Action]
+        public virtual int RunAgainFromInside()
+        {
+            ReentrantRuns++;
+            if (ReentrantRuns == 1 && NextFromInside?.Invoke() is { } next)
+                next().GetAwaiter().GetResult();
+
+            return ReentrantRuns;
+        }
     }
 
     public class OtherStore : StoreBase
@@ -1046,6 +1118,33 @@ public class StoreActionInterceptorTests
                 CancellationToken.None,
                 TaskCreationOptions.LongRunning,
                 TaskScheduler.Default).Unwrap();
+        }
+    }
+
+    /// <summary>Keeps the <c>next</c> of the call in progress where the action body can reach it.</summary>
+    sealed class ExposeNextMiddleware : IStoreActionInterceptor
+    {
+        public StoreActionDelegate? Next { get; private set; }
+
+        public Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Next = next;
+            return next();
+        }
+    }
+
+    /// <summary>Records what <c>next()</c> handed back.</summary>
+    sealed class ResultCapturingMiddleware : IStoreActionInterceptor
+    {
+        public bool Called { get; private set; }
+
+        public object? Result { get; private set; }
+
+        public async Task<object?> InterceptAsync(StoreActionContext context, StoreActionDelegate next)
+        {
+            Result = await next();
+            Called = true;
+            return Result;
         }
     }
 
