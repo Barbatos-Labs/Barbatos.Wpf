@@ -86,8 +86,12 @@ public partial class DirectivesModelTests
             BindingOperations.SetBinding(textBox, Directives.ModelProperty, new Binding(nameof(TestViewModel.Nickname)));
 
             // DataContext arriving after the binding is what an inherited DataContext looks like
-            // while the XAML loader builds the tree.
+            // while the XAML loader builds the tree. WPF does not resolve a binding that had no
+            // context when it was set until the dispatcher runs its deferred data-binding work, so
+            // pump before typing - as a real window does before anyone can type. (CI showed that
+            // without the pump the two-way binding does not exist yet, fixed or not.)
             textBox.DataContext = vm;
+            StaThread.PumpDispatcher();
 
             textBox.Text = "typed";
 
