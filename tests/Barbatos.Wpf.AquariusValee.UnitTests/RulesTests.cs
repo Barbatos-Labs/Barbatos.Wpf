@@ -298,11 +298,15 @@ public class RulesTests
     public void AValeeRuleStillFallsBackToItsDefaultMessageAndANamedErrorMessageStillWins()
     {
         // The default now travels through the base constructor, so ErrorMessage itself reads null
-        // until set - the same as on the BCL's own attributes.
+        // until set. That is ValidationAttribute's own getter on .NET 8 and 10 alike - it returns
+        // the explicitly set message or an internal default only EmailAddress/Phone/Url-style BCL
+        // attributes can fill - and RequiredAttribute, which passes its default the same way,
+        // reads null too; the docs promise that parity, so it is pinned here.
         var byDefault = new DigitsAttribute(6);
         var custom = new DigitsAttribute(6) { ErrorMessage = "Enter the {0} from the text message." };
 
         Assert.Null(byDefault.ErrorMessage);
+        Assert.Null(new RequiredAttribute().ErrorMessage);
         Assert.Equal("The PIN field must be exactly 6 digits.", byDefault.FormatErrorMessage("PIN"));
         Assert.Equal("Enter the PIN from the text message.", custom.FormatErrorMessage("PIN"));
     }

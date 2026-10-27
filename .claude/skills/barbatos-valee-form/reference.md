@@ -79,10 +79,11 @@ BCL behaviour that bites:
 ### Valee `Rules` attributes
 
 Namespace `Barbatos.Wpf.AquariusValee.Rules`. Each constructor passes a default message
-(`{0}` = display name) to the base `ValidationAttribute(string)` constructor, as BCL attributes
-do: a named `ErrorMessage = "..."` replaces it, `ErrorMessageResourceType`/`ErrorMessageResourceName`
+(`{0}` = display name) to the base `ValidationAttribute(string)` constructor, as `[Required]` and
+`[Range]` do: a named `ErrorMessage = "..."` replaces it, `ErrorMessageResourceType`/`ErrorMessageResourceName`
 replace it with a resx string (not both - the BCL throws), and `ErrorMessage` reads `null` until
-set (`RulesTests`).
+set, on .NET 8 and 10 alike (`RulesTests`) - unlike `[EmailAddress]`/`[Phone]`/`[Url]`, which use an
+internal BCL setter.
 
 | Attribute | Construction | Passes when | `null` / `""` | Non-string value |
 | --- | --- | --- | --- | --- |

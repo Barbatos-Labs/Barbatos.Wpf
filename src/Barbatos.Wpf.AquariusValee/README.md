@@ -477,13 +477,15 @@ consistent:
 - **The exception reaches whoever awaits the pass** - `ValidateAsync()`, `ValidateAllAsync()`,
   `RevalidateValidatedAsync()`, or the `HandleSubmit` command. A pass nobody awaits (typing, blur,
   a `DependsOn` source changing, the silent pass a constructor or `Reset` runs) rethrows it on the
-  `Dispatcher` of the thread that started the pass, so it reaches
+  `Dispatcher` of the UI thread that started the pass, so it reaches
   `Application.DispatcherUnhandledException` like any other UI-thread failure instead of
   disappearing with a discarded `Task` - the same "observe the fault, rethrow through the
-  Dispatcher" route Aquarius's async lifecycle hooks take. A pass started on a thread-pool
-  thread (a value set after `ConfigureAwait(false)`, say) or a thread with no `Dispatcher` has no
-  pumping dispatcher to go to, so there the exception stays on the task, for
-  `TaskScheduler.UnobservedTaskException`.
+  Dispatcher" route Aquarius's async lifecycle hooks take. A pass started off a UI thread - on a
+  thread-pool thread (a value set after `ConfigureAwait(false)`, say), or on a worker that is
+  neither STA nor running a dispatcher operation - has no pumping dispatcher to go to, even if it
+  owns one, so there the exception stays on the task, for `TaskScheduler.UnobservedTaskException`.
+  That is the same test Aquarius's `NextTick` uses to decide whether the calling thread is a UI
+  thread.
 - **Only Valee's own cancellation is swallowed.** A pass superseded by a newer one ends quietly
   whatever its rule then throws, since its result would be discarded anyway (and not every client
   library reports cancellation as an `OperationCanceledException`). An
@@ -825,12 +827,15 @@ and all but one treat an empty string as valid too. Two differences are worth kn
   or use `[Range]` on the number. `PatternAttribute` instead matches a non-string value's
   `ToString()`.
 
-Every one of them, `PropertyRangeAttribute` included, supplies its default message the way the
-BCL's own attributes do - through the protected `ValidationAttribute(string)` constructor - so a
-named `ErrorMessage` replaces it, and
+Every one of them, `PropertyRangeAttribute` included, supplies its default message the way
+`[Required]`, `[Range]` and `[Compare]` do - through the protected `ValidationAttribute`
+constructor - so a named `ErrorMessage` replaces it, and
 `ErrorMessageResourceType`/`ErrorMessageResourceName` work for resx-based localization (setting
 `ErrorMessage` *and* a resource name is rejected, as on any BCL attribute). `ErrorMessage` itself
-therefore reads `null` until you set it.
+therefore reads `null` until you set it, exactly as `new RequiredAttribute().ErrorMessage` does
+(verified on .NET 8 and .NET 10). `[EmailAddress]`, `[Phone]` and `[Url]` do read their default
+back through `ErrorMessage`, but only through an internal setter a third-party attribute cannot
+use.
 
 `PropertyRangeAttribute` (documented under
 [Cross-field validation](#the-schema-mode-equivalent-propertyrangeattribute-and-idependsonproperties))
@@ -931,8 +936,8 @@ than forced into this package's scope.
   attributes support too. What it does **not** give you is localized *default* text: the shared
   framework that contains `System.ComponentModel.Annotations` ships no satellite resource
   assemblies, so `[Required]`'s "The {0} field is required." stays English whatever
-  `CurrentUICulture` is (checked on .NET 10 under `fr-FR`, `de-DE`, `vi-VN` and `ja-JP`). Give
-  every attribute whose message a user can see an explicit key or resource.
+  `CurrentUICulture` is (checked on .NET 8 and .NET 10 under `fr-FR`, `de-DE`, `vi-VN` and
+  `ja-JP`). Give every attribute whose message a user can see an explicit key or resource.
 
 ---
 

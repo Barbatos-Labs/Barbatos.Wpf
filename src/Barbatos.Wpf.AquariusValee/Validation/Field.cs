@@ -54,12 +54,13 @@ namespace Barbatos.Wpf.AquariusValee.Validation;
 /// <see cref="Form.HandleSubmit"/> command. A pass nobody awaits (<see cref="HandleChange"/>,
 /// <see cref="HandleBlur"/>, a <see cref="DependsOn{TSource}"/> source changing, the silent pass a
 /// constructor or <see cref="Reset()"/> runs) rethrows it on the <see cref="Dispatcher"/> of the
-/// thread that started the pass, where it surfaces as
+/// UI thread that started the pass, where it surfaces as
 /// <see cref="System.Windows.Application.DispatcherUnhandledException"/> instead of disappearing
-/// with a discarded <see cref="Task"/>; a pass started on a thread-pool thread, or on a thread with
-/// no <see cref="Dispatcher"/>, leaves it on that task for
+/// with a discarded <see cref="Task"/>. A pass started off a UI thread - on a thread-pool thread
+/// (a value set after <c>ConfigureAwait(false)</c>), or on a worker that is not STA and is not
+/// running a dispatcher operation - leaves it on that task for
 /// <see cref="TaskScheduler.UnobservedTaskException"/>, since nothing pumps such a thread's
-/// dispatcher. The one thing swallowed is the cancellation of a pass Valee
+/// dispatcher, if it has one at all. The one thing swallowed is the cancellation of a pass Valee
 /// itself superseded; an <see cref="OperationCanceledException"/> from anywhere else (an
 /// <c>HttpClient</c> timeout raises <see cref="TaskCanceledException"/>) is a failure like any
 /// other. A rule whose failure should read as a message - "could not check right now" - catches
@@ -376,27 +377,18 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
     /// started the pass, right after starting it.
     /// </summary>
     /// <remarks>
-    /// The fault is rethrown on the <see cref="Dispatcher"/> of the thread that started the pass -
-    /// the same "observe the fault, rethrow through the Dispatcher" shape Aquarius's
+    /// The fault is rethrown on the <see cref="Dispatcher"/> of the UI thread that started the
+    /// pass - the same "observe the fault, rethrow through the Dispatcher" shape Aquarius's
     /// <c>Lifecycle</c> uses for async hooks - so it reaches
     /// <see cref="System.Windows.Application.DispatcherUnhandledException"/> like any other
-    /// failure on the UI thread. A thread with no <see cref="Dispatcher"/> has nowhere to route
-    /// it, and neither has a thread-pool thread, so there the fault stays on the task, where
+    /// failure on the UI thread. A pass started anywhere else has no dispatcher that is known to
+    /// run, so there the fault stays on the task, where
     /// <see cref="TaskScheduler.UnobservedTaskException"/> is the only remaining observer.
     /// </remarks>
     private static void FireAndForget(Task pass)
     {
-        // A pool thread is never a UI thread, even when it owns a Dispatcher: one is created on any
-        // thread that merely reads Dispatcher.CurrentDispatcher - FormMeta's NextTick does, in the
-        // very HandleChange that starts this pass, for a form field changed off the UI thread - and
-        // nothing ever pumps it. Posting there would mark the fault observed and then never run it,
-        // which loses it more thoroughly than leaving it on the task.
-        if (pass.IsCompletedSuccessfully
-            || Thread.CurrentThread.IsThreadPoolThread
-            || Dispatcher.FromThread(Thread.CurrentThread) is not { } dispatcher)
-        {
+        if (pass.IsCompletedSuccessfully || CurrentUiDispatcher() is not { } dispatcher)
             return;
-        }
 
         if (pass.IsCompleted)
         {
@@ -410,6 +402,35 @@ public sealed class Field<T> : ObservableObject, IField, IDisposable
             CancellationToken.None,
             TaskContinuationOptions.NotOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// The calling thread's dispatcher when that thread is a UI thread and its dispatcher has not
+    /// begun shutting down, or <see langword="null"/>. Never creates a dispatcher.
+    /// </summary>
+    /// <remarks>
+    /// The same test Aquarius's <c>NextTick</c> applies before posting to the calling thread (that
+    /// helper is internal to Aquarius). Owning a dispatcher proves nothing: one is created on any
+    /// thread that merely reads <see cref="Dispatcher.CurrentDispatcher"/> or builds a
+    /// <see cref="DispatcherObject"/>, and a worker never pumps it - posting the fault there would
+    /// mark it observed and then never run it, losing it more thoroughly than leaving it on the
+    /// task. A pool thread is therefore never a UI thread; any other thread is one while a
+    /// dispatcher operation or frame is running on it (WPF installs a
+    /// <see cref="DispatcherSynchronizationContext"/> for each), or when it is STA, as every WPF UI
+    /// thread is - which covers code that runs before the dispatcher starts, such as a ViewModel
+    /// built in <c>Main</c>.
+    /// </remarks>
+    private static Dispatcher? CurrentUiDispatcher()
+    {
+        var thread = Thread.CurrentThread;
+
+        if (thread.IsThreadPoolThread)
+            return null;
+
+        if (SynchronizationContext.Current is not DispatcherSynchronizationContext && thread.GetApartmentState() != ApartmentState.STA)
+            return null;
+
+        return Dispatcher.FromThread(thread) is { HasShutdownStarted: false } dispatcher ? dispatcher : null;
     }
 
     private static void RethrowOn(Dispatcher dispatcher, Task pass)

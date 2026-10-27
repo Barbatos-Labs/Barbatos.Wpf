@@ -36,7 +36,9 @@ namespace Barbatos.Wpf.AquariusValee.Rules;
 /// hand-written ad-hoc rule closure, this cannot resolve a string-localizer key at validation time.
 /// <see cref="ValidationAttribute.ErrorMessage"/> is a plain <see cref="string.Format(IFormatProvider?, string, object?[])"/>
 /// template instead - <c>{0}</c> is the display name, <c>{1}</c> the min bound's current value,
-/// <c>{2}</c> the max bound's current value.
+/// <c>{2}</c> the max bound's current value. A resource string named by
+/// <see cref="ValidationAttribute.ErrorMessageResourceType"/>/<see cref="ValidationAttribute.ErrorMessageResourceName"/>
+/// is the same kind of template, which is how this message is localized without losing the bounds.
 /// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]

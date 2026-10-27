@@ -100,7 +100,7 @@ and `Meta.Validated` keep what the previous pass wrote, and `Meta.Pending` is lo
 | Pass | The exception |
 | --- | --- |
 | `ValidateAsync()`, `Form.ValidateAllAsync()`, `Form.RevalidateValidatedAsync()`, a `Form.HandleSubmit` command | Propagates from the returned task. |
-| `HandleChange` / the `Value` setter, `HandleBlur`, a `DependsOn` source changing, the silent pass of a constructor or `Reset` | Rethrown with `Dispatcher.BeginInvoke` on the `Dispatcher` of the thread that started the pass, reaching `Application.DispatcherUnhandledException`. On a thread-pool thread, or a thread with no `Dispatcher`, it stays on the discarded task (`TaskScheduler.UnobservedTaskException`) - nothing pumps such a thread's dispatcher. |
+| `HandleChange` / the `Value` setter, `HandleBlur`, a `DependsOn` source changing, the silent pass of a constructor or `Reset` | Rethrown with `Dispatcher.BeginInvoke` on the `Dispatcher` of the UI thread that started the pass, reaching `Application.DispatcherUnhandledException`. Started off a UI thread - a thread-pool thread, or a thread that is neither STA nor running a dispatcher operation (the test Aquarius's `NextTick` applies) - it stays on the discarded task (`TaskScheduler.UnobservedTaskException`): nothing pumps such a thread's dispatcher, if it has one. |
 | A pass already superseded by a newer pass, `Reset` or `Dispose` | Swallowed, whatever was thrown - the pass's result is discarded anyway. |
 
 Only Valee's own cancellation counts as supersession: an `OperationCanceledException` thrown in a
@@ -209,12 +209,14 @@ valid too, except for `OneOfAttribute` (see its row). `PropertyRangeAttribute` i
 kind of attribute entirely - property-only, and `ValidationContext`-aware.
 
 Every attribute here, `PropertyRangeAttribute` included, passes its default message to the
-protected `ValidationAttribute(string)` constructor, as the BCL's own attributes do: a named
-`ErrorMessage` replaces it, `ErrorMessageResourceType`/`ErrorMessageResourceName` replace it with
-a resource string (setting `ErrorMessage` and a resource name together throws
-`InvalidOperationException` when the message is formatted, as on any `ValidationAttribute`), and
-the inherited `ErrorMessage` property reads `null` until set. `{0}` in every default is the
-display name.
+protected `ValidationAttribute(string)` constructor, as `RequiredAttribute`, `RangeAttribute` and
+`CompareAttribute` pass theirs: a named `ErrorMessage` replaces it,
+`ErrorMessageResourceType`/`ErrorMessageResourceName` replace it with a resource string (setting
+`ErrorMessage` and a resource name together throws `InvalidOperationException` when the message
+is formatted, as on any `ValidationAttribute`), and the inherited `ErrorMessage` property reads
+`null` until set - as it does on those three, on .NET 8 and .NET 10 alike (`EmailAddressAttribute`,
+`PhoneAttribute` and `UrlAttribute` return their default from it through an internal setter that
+is not available outside the BCL). `{0}` in every default is the display name.
 
 | Attribute | Constructor | `AsciiOnly`? | Notes |
 | --- | --- | --- | --- |

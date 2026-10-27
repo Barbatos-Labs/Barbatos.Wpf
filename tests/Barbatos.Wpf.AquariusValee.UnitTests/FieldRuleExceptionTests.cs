@@ -22,8 +22,8 @@ namespace Barbatos.Wpf.AquariusValee.UnitTests;
 /// for Valee's own supersession and silently swallowed, leaving <c>Pending</c> stuck as well.
 /// <para>
 /// The plain <c>async</c> tests here only ever await their passes, and add the throwing rule with
-/// <c>AddRule</c> after construction, so no unawaited pass faults on the xUnit thread - whose
-/// dispatcher (created on first use by <c>FormMeta</c>'s <c>NextTick</c>) never runs.
+/// <c>AddRule</c> after construction, so no unawaited pass faults on an xUnit thread - which may own
+/// a dispatcher that nothing pumps.
 /// </para>
 /// </remarks>
 public class FieldRuleExceptionTests
@@ -213,11 +213,11 @@ public class FieldRuleExceptionTests
     [Fact]
     public async Task APassNobodyAwaitsOnAThreadPoolThreadLeavesItsFaultOnTheTask()
     {
-        // A form field changed on a pool thread gets a Dispatcher for that thread from FormMeta's
-        // NextTick in the same HandleChange, and nothing ever pumps it. Routing the rethrow there
-        // observed the fault (so UnobservedTaskException never fired) and queued it where it would
-        // never run. Pumping that dispatcher here is only a probe: anything Valee posted to it would
-        // throw out of the pump.
+        // A pool thread can own a Dispatcher - any code that reads Dispatcher.CurrentDispatcher there
+        // creates one, as FormMeta's NextTick used to in the very HandleChange that starts the pass -
+        // and nothing ever pumps it. Routing the rethrow there observed the fault (so
+        // UnobservedTaskException never fired) and queued it where it would never run. Pumping that
+        // dispatcher here is only a probe: anything Valee posted to it would throw out of the pump.
         var marker = $"offline {Guid.NewGuid():N}";
         using var reported = new ManualResetEventSlim();
 
@@ -240,6 +240,67 @@ public class FieldRuleExceptionTests
                 ChangeAFormFieldWhoseRuleThrows(marker);
                 poolDispatcher.Invoke(() => { }, DispatcherPriority.Background);
             });
+
+            for (var attempt = 0; attempt < 5 && !reported.IsSet; attempt++)
+            {
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+                GC.WaitForPendingFinalizers();
+            }
+
+            Assert.True(reported.IsSet, "Expected the fault to stay on the discarded task, for TaskScheduler.UnobservedTaskException.");
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+    }
+
+    [Fact]
+    public void APassNobodyAwaitsOnAWorkerThatNeverPumpsLeavesItsFaultOnTheTask()
+    {
+        // The same hole on a dedicated (not pool) MTA thread: owning a Dispatcher does not make a
+        // thread a UI thread. A pass started outside any dispatcher operation on a non-STA thread
+        // used to post its rethrow to that thread's dispatcher regardless; now it is judged the way
+        // Aquarius's NextTick judges the calling thread, and the fault stays on the task. The pump
+        // is the same probe as above - a posted rethrow would throw out of it.
+        var marker = $"offline {Guid.NewGuid():N}";
+        using var reported = new ManualResetEventSlim();
+        Exception? workerFailure = null;
+
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            if (e.Exception.InnerExceptions.Any(inner => inner.Message == marker))
+            {
+                e.SetObserved();
+                reported.Set();
+            }
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+
+        try
+        {
+            var worker = new Thread(() =>
+            {
+                try
+                {
+                    var workerDispatcher = Dispatcher.CurrentDispatcher;
+                    ChangeAFormFieldWhoseRuleThrows(marker);
+                    workerDispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                }
+                catch (Exception exception)
+                {
+                    workerFailure = exception;
+                }
+            })
+            {
+                IsBackground = true,
+            };
+            worker.SetApartmentState(ApartmentState.MTA);
+            worker.Start();
+
+            Assert.True(worker.Join(TimeSpan.FromSeconds(10)), "The worker thread did not finish.");
+            Assert.Null(workerFailure);
 
             for (var attempt = 0; attempt < 5 && !reported.IsSet; attempt++)
             {

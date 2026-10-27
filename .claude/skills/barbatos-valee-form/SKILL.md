@@ -216,8 +216,9 @@ Username.AddRule(async (value, cancellationToken) =>
   lowered. The exception propagates from `ValidateAsync`/`ValidateAllAsync`/
   `RevalidateValidatedAsync` and the `HandleSubmit` command (`IsSubmitting` still clears, neither
   callback runs); a pass nobody awaits - typing, blur, `DependsOn`, the silent constructor/`Reset`
-  pass - rethrows it on the starting thread's `Dispatcher`, i.e. `Application.DispatcherUnhandledException`
-  (a pass started on a thread-pool thread leaves it on the task, for `UnobservedTaskException`).
+  pass - rethrows it on the starting UI thread's `Dispatcher`, i.e. `Application.DispatcherUnhandledException`
+  (a pass started off a UI thread - a pool thread, or one neither STA nor inside a dispatcher
+  operation - leaves it on the task, for `UnobservedTaskException`).
   Catch inside the rule, as above, when a failed check should read as an error under the field.
 - **Only Valee's own cancellation is swallowed**: a superseded pass ends quietly whatever it
   throws. An `OperationCanceledException` in a live pass - an `HttpClient` timeout's
@@ -321,10 +322,15 @@ strings must be `string?` defaulting to `null`: those accept `null` but fail `""
 
 ## Hard rules
 
-- **Create and mutate forms on the UI thread.** `FormMeta` queues its notification with `NextTick`
-  on `Dispatcher.CurrentDispatcher`; on a worker thread that dispatcher never runs, its
-  "scheduled" flag never resets, and `Form.Meta` bindings freeze for good. Build the `Form` in the
-  ViewModel constructor and never touch a field or form after `ConfigureAwait(false)` in `onValid`.
+- **Create and mutate forms on the UI thread.** `Field<T>` and `Form` are not thread-safe (a
+  worker's change races the UI's keystrokes over the same pass state), raise every notification on
+  the calling thread, and a pass started off the UI thread leaves a rule's exception on its task
+  instead of `DispatcherUnhandledException`. Build the `Form` in the ViewModel constructor and
+  never touch a field or form after `ConfigureAwait(false)` in `onValid`. `Form.Meta` bindings no
+  longer freeze when a worker does touch one: Aquarius `NextTick`, which `FormMeta` coalesces its
+  notification through, posts from a worker to `Application.Current`'s dispatcher (earlier
+  versions posted to the worker's own, which nothing pumps). With no `Application` - a test or
+  console host - it still falls back to that worker's dispatcher.
 - Never gate submit on `Meta.Valid`; never `AddRule(attribute)` on a `FromModel` field; always
   `DependsOn` a `[Compare]` source; build the `Form` before the View loads; never put
   `[DataType(...)]` beside `[Phone]`/`[CreditCard]`/`[EmailAddress]`/`[Url]`/`[EnumDataType]`
@@ -351,7 +357,7 @@ strings must be `string?` defaulting to `null`: those accept `null` but fail `""
 | `IValidatableObject` message never appears | no member names, a failing class-level attribute, or only per-keystroke validation ran | name members; it runs on submit/`ValidateAllAsync` once class-level attributes pass |
 | Unhandled exception (`DispatcherUnhandledException`) while typing or on blur; submit throws | a rule threw or timed out - rethrown from a pass nobody awaits, propagated from an awaited one | catch inside the rule and return a message |
 | "checking..." never clears, `Form.Meta.Pending` stuck | a rule that never completes (ignores the token and awaits forever) | forward the token; give the call a timeout |
-| Field bindings update but `Form.Meta.*` bindings are frozen | form created or mutated off the UI thread | UI thread only |
+| `Form.Meta` never raises `PropertyChanged` in a test or a host with no `Application` | the form was mutated on a worker thread: with no `Application.Current`, `NextTick` falls back to that thread's own dispatcher, which nothing pumps | mutate on the UI (STA) thread and pump its dispatcher |
 | Unhandled `InvalidOperationException` mentioning `Valee.For` | `Form` null at `Loaded`, misspelt field name, or element inside a `Popup` | construct the form in the constructor; fix the name; use `Valee.Field` |
 | `PasswordBox` keeps its dots after `ResetForm()` | `Valee.PasswordField` is one-way | clear `PasswordBox.Password` in the View |
 | `TargetInvocationException` (inner `AmbiguousMatchException`) / `InvalidOperationException` from `Form.FromModel` | two `DataTypeAttribute`s on a property / an `IDependsOnProperties` name that does not exist | drop the explicit `[DataType]` / use `nameof` |
