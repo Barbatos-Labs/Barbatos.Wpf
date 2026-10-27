@@ -83,6 +83,11 @@
 <!--#if (IncludeDialogs) -->
         <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="12,4" Margin="16,16,16,0" HorizontalAlignment="Center" />
 <!--#endif -->
+<!--#if (IncludeRunOnStartup) -->
+        <!-- Nothing registers the app with Windows startup until this is ticked - see
+             MainViewModel.RunOnStartupEnabled for why. -->
+        <CheckBox Content="Launch when Windows starts" IsChecked="{Binding RunOnStartupEnabled}" Margin="0,16,0,0" HorizontalAlignment="Center" />
+<!--#endif -->
 <!--#if (IncludeValee && !IncludeAquariusRouter) -->
         <!-- With AquariusRouter also enabled, this same View is reached as the "/signup" route
              instead of being hosted inline here - see AppRoutes.cs. Either way its ViewModel is

@@ -12,6 +12,9 @@ using Barbatos.Wpf.AquariusRouter.Searching;
 #if (IncludeDialogs)
 using Barbatos.Wpf.Dialogs;
 #endif
+#if (IncludeRunOnStartup)
+using Barbatos.Wpf.Startup;
+#endif
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -19,9 +22,9 @@ namespace BarbatosWpfApp;
 
 #if (AquariusEffective)
 // Constructed through Barbatos.Wpf.Core's DI container - MainWindow.xaml's
-// aq:Setup.ViewModel="{x:Type local:MainViewModel}" resolves this via Setup.ServiceProvider
-// (see WpfProgram.cs), not Activator.CreateInstance, so a constructor dependency on any
-// other registered Core service would just work.
+// aq:Setup.ViewModel="{x:Type local:MainViewModel}" resolves this through the container that
+// UseAquarius points Setup at (see WpfProgram.cs), not Activator.CreateInstance, so a
+// constructor dependency on any other registered Core service would just work.
 #endif
 public sealed partial class MainViewModel : ObservableObject
 {
@@ -35,7 +38,10 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly Router _router;
     private readonly RouteSearchIndex _searchIndex;
 #endif
-#if (IncludeI18n || IncludeDialogs || IncludeAquariusRouter)
+#if (IncludeRunOnStartup)
+    private readonly IRunOnStartupService _runOnStartup;
+#endif
+#if (IncludeI18n || IncludeDialogs || IncludeAquariusRouter || IncludeRunOnStartup)
     public MainViewModel(
 #if (IncludeI18n)
         ILocalizationCultureManager cultureManager
@@ -52,6 +58,12 @@ public sealed partial class MainViewModel : ObservableObject
 #if (IncludeAquariusRouter)
         Router router
 #endif
+#if ((IncludeI18n || IncludeDialogs || IncludeAquariusRouter) && IncludeRunOnStartup)
+        ,
+#endif
+#if (IncludeRunOnStartup)
+        IRunOnStartupService runOnStartup
+#endif
         )
     {
 #if (IncludeI18n)
@@ -63,6 +75,9 @@ public sealed partial class MainViewModel : ObservableObject
 #if (IncludeAquariusRouter)
         _router = router;
         _searchIndex = new RouteSearchIndex(router);
+#endif
+#if (IncludeRunOnStartup)
+        _runOnStartup = runOnStartup;
 #endif
     }
 #endif
@@ -99,6 +114,25 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ShowAbout() => _dialogService.Show<AboutWindow>();
 #endif
+#if (IncludeRunOnStartup)
+
+    // Bound to the "Launch when Windows starts" checkbox in MainWindow.xaml, and the only thing
+    // in this app that registers it: WpfProgram.cs leaves RunOnStartupOptions.Enabled false so
+    // a first run never adds itself to Windows startup unasked. Read straight from the service
+    // rather than cached - the registration is a value under the current user's Run registry
+    // key, which outlives this process, so the box shows what is registered right now. It does
+    // not see the on/off switch in Task Manager's or Settings' Startup apps list: Windows stores
+    // that separately and leaves the Run value in place.
+    public bool RunOnStartupEnabled
+    {
+        get => _runOnStartup.IsEnabled;
+        set
+        {
+            _runOnStartup.SetEnabled(value);
+            OnPropertyChanged();
+        }
+    }
+#endif
 #if (IncludeAquariusRouter)
 
     // Typed into the search box in MainWindow.xaml. Re-querying on every keystroke is fine:
@@ -117,8 +151,10 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task GoToSearchResult(RouteSearchResult result)
     {
         SearchQuery = "";
-        // RouteSearchResult.To prefers the record's Name over its Path, so a route whose path
-        // later changes keeps working without touching its search entries.
+        // RouteSearchResult.To always navigates by the record's Name, never its Path, so a route
+        // whose path later changes keeps working without touching its search entries. A
+        // searchable route with no Name makes To throw InvalidOperationException - every route
+        // with Search entries in AppRoutes.cs needs a Name.
         await _router.Push(result.To);
     }
 #endif

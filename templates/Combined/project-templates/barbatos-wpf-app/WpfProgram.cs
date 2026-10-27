@@ -80,6 +80,10 @@ public static class WpfProgram
         builder.ConfigureSingleInstance();
 #endif
 #if (IncludeRunOnStartup)
+        // RunOnStartupOptions.Enabled is left at its default, false: setting it would add this
+        // app to Windows startup on its very first run, before the user has been asked. The
+        // "Launch when Windows starts" checkbox in MainWindow registers it instead, through
+        // IRunOnStartupService (see MainViewModel.RunOnStartupEnabled).
         builder.ConfigureRunOnStartup();
 #endif
 #if (IncludeKeepAwake)
@@ -88,11 +92,19 @@ public static class WpfProgram
 #if (IncludeTrayIcon)
         builder.ConfigureTrayIcon(options =>
         {
+            // The library registers the tray icon hidden (TrayIconOptions.Enabled defaults to
+            // false) so an app can offer it as an opt-in setting; this starter asked for one, so
+            // it is shown from launch. Barbatos:TrayIcon:Enabled in configuration overrides this
+            // line, and ITrayIconService.SetVisible toggles the icon at runtime.
+            options.Enabled = true;
             options.MenuItems.Add(new TrayMenuItem("Open", () =>
             {
                 if (IWpfPlatformApplication.Current?.Application.MainWindow is Window window)
                 {
                     window.Show();
+                    // Activate() alone leaves a minimized window minimized.
+                    if (window.WindowState == WindowState.Minimized)
+                        window.WindowState = WindowState.Normal;
                     window.Activate();
                 }
             }) { IsDefault = true });
@@ -183,21 +195,35 @@ public static class WpfProgram
         // whatever the last visit left in it. Resolved by SignUpView's own aq:Setup.Enable.
         builder.Services.AddTransient<SignUpViewModel>();
 #endif
+#if (AquariusEffective)
+        // Declares Aquarius's options; UseAquarius below applies them once the container exists.
+        // Pass a delegate to tighten them while developing, e.g.
+        // AddAquarius(options => options.ThrowOnUnresolvedViewModels = true).
+        builder.Services.AddAquarius();
+#endif
 #if (IncludeAquariusRouter)
-        builder.Services.AddSingleton(_ => new Router(AppRoutes.Build()));
+        // Registers the Router singleton with an in-memory history. The route table is a factory
+        // over the container, called once when the Router is first resolved, so a route guard
+        // can close over a registered service: sp => AppRoutes.Build(sp.GetRequiredService<X>()).
+        builder.Services.AddAquariusRouter(_ => AppRoutes.Build());
 #endif
 
         var app = builder.Build();
 
 #if (AquariusEffective)
-        // The actual Aquarius + Core integration: Setup.ViewModel (see MainWindow.xaml)
-        // resolves a ViewModel through *this* same DI container instead of always
-        // Activator.CreateInstance-ing a fresh one - so a ViewModel can take
-        // constructor-injected Core services exactly like MainViewModel/MainWindow above do.
-        Setup.ServiceProvider = app.Services;
+        // The actual Aquarius + Core integration: UseAquarius points Aquarius's markup-driven
+        // resolution at *this* same DI container, so Setup.ViewModel (see MainWindow.xaml)
+        // resolves a ViewModel through it instead of always Activator.CreateInstance-ing a
+        // fresh one - a ViewModel can take constructor-injected Core services exactly like
+        // MainViewModel/MainWindow above do. XAML has no constructor to inject into, which is
+        // why this ambient wiring step exists at all.
+        app.Services.UseAquarius();
 #endif
 #if (IncludeAquariusRouter)
-        Router.Current = app.Services.GetRequiredService<Router>();
+        // Publishes the registered Router as Router.Current, the default every RouterView and
+        // RouterLink falls back to: what lets MainWindow.xaml's <aqr:RouterView/> and nav bar
+        // work with no further wiring, and what MainWindow.OnSourceInitialized starts.
+        app.Services.UseAquariusRouter();
 #endif
 #if (IncludeI18n)
         // Bridges the DI-built localization container into Barbatos.i18n.Wpf's markup

@@ -64,14 +64,14 @@
       "datatype": "bool",
       "defaultValue": "false",
       "displayName": "Run on Windows startup",
-      "description": "Registers/unregisters the app to launch when Windows starts."
+      "description": "Adds a 'Launch when Windows starts' checkbox that registers/unregisters the app through IRunOnStartupService. Nothing is registered until the user ticks it."
     },
     "IncludeTrayIcon": {
       "type": "parameter",
       "datatype": "bool",
       "defaultValue": "false",
       "displayName": "System tray icon",
-      "description": "Adds a tray icon with Open/Exit menu items."
+      "description": "Shows a tray icon with Open/Exit menu items from launch (WpfProgram.cs sets TrayIconOptions.Enabled, which defaults to false)."
     },
     "IncludeKeepAwake": {
       "type": "parameter",

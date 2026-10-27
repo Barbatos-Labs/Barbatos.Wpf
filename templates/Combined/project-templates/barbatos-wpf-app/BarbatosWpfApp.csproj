@@ -9,17 +9,17 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- One source of truth, two derived values. The SDK does NOT derive these from <Version>:
-         AssemblyVersion defaults to $(VersionPrefix) and FileVersion defaults to
-         $(AssemblyVersion), so bumping <Version> alone leaves the version Windows Explorer,
-         installers and crash reporters actually read sitting at 1.0.0 forever. Keep all three
-         wired together like this.
+    <!-- The one version number to bump. The SDK derives the others from it: AssemblyVersion and
+         FileVersion become its numeric part (1.0.0 -> 1.0.0.0, and a prerelease 1.1.0-beta.1 ->
+         1.1.0.0), while InformationalVersion keeps the full string. AppInfo.Version reads the
+         assembly version, so it moves with this line, and so does the file version Windows
+         Explorer, installers and crash reporters show.
 
-         AssemblyVersion/FileVersion take numeric parts only - for a prerelease, write
-         <Version>1.1.0-beta.1</Version> and set the two below to the bare 1.1.0. -->
+         Do not add <AssemblyVersion>$(Version)</AssemblyVersion>: it changes nothing for 1.0.0,
+         and with a prerelease Version the build fails with CS7034, because an assembly version
+         takes numeric parts only. Set AssemblyVersion or FileVersion explicitly only to make
+         them differ from Version on purpose. -->
     <Version>1.0.0</Version>
-    <AssemblyVersion>$(Version)</AssemblyVersion>
-    <FileVersion>$(Version)</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup>

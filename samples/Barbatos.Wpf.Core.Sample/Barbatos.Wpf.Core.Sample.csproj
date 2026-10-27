@@ -15,10 +15,14 @@
     <Product>Barbatos.Wpf.Core Sample</Product>
     <Company>Barbatos Labs</Company>
     <Version>1.0.0</Version>
-    <!-- Both are needed: the SDK derives AssemblyVersion from $(VersionPrefix) rather than from
-         <Version>, and FileVersion from $(AssemblyVersion). Without them this sample inherits
-         Directory.Build.props' library AssemblyVersion and reports *that* to File Explorer,
-         installers and crash reporters, while only NuGet and AppInfo.VersionString see 1.0.0. -->
+    <!-- Needed only because this sample lives in the library repo. A standalone app sets just
+         <Version>: the SDK derives AssemblyVersion and FileVersion from it, minus any prerelease
+         suffix. Here Directory.Build.props pins <AssemblyVersion> to the libraries' own version,
+         this project inherits that pin, and FileVersion defaults to AssemblyVersion - so without
+         these two lines AppInfo.Version (which reads the assembly version), File Explorer,
+         installers and crash reporters would all report the library version instead of 1.0.0.
+         Keep <Version> numeric while these lines exist: a prerelease suffix is not a valid
+         assembly version and fails the build with CS7034. -->
     <AssemblyVersion>$(Version)</AssemblyVersion>
     <FileVersion>$(Version)</FileVersion>
     <Copyright>Copyright (c) 2026 Barbatos Labs</Copyright>

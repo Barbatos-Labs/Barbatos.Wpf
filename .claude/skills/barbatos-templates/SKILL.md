@@ -28,7 +28,9 @@ calls belong to the feature skills, and the version bump itself to `barbatos-pac
   `AddAquarius`/`UseAquarius` wiring), `samples/Barbatos.Wpf.AquariusValee.Sample/` (i18n).
 - **No test and no CI step builds a template.** The template folders are not in
   `Barbatos.Wpf.slnx`, and `barbatos-wpf-app`'s `MainWindow.xaml` is not even well-formed XAML
-  before the template engine runs. The only check is instantiating and building on Windows.
+  before the template engine runs. The only check is instantiating and building the output,
+  which works on any OS with `-p:EnableWindowsTargeting=true` (see the loop below); running it
+  needs Windows.
 
 ## The map
 
@@ -88,9 +90,11 @@ dotnet new aqv-form -n Checkout --namespace MyApp.Features.Checkout
   `IDependsOnProperties` attributes get automatic re-validation and without it fixing the
   password leaves a stale "don't match" error. `HandleSubmit(onValid, onInvalid)` gates only on
   `IsSubmitting`, never validity, so an untouched submit surfaces every error.
-- The consuming project needs the package (`Barbatos.Wpf.Aquarius` / `Barbatos.Wpf.AquariusValee`)
-  and, for the `[ObservableProperty]` / `[RelayCommand]` generators, a direct
-  `CommunityToolkit.Mvvm` reference - see the symptom table.
+- The consuming project needs only the package (`Barbatos.Wpf.Aquarius` /
+  `Barbatos.Wpf.AquariusValee`). `CommunityToolkit.Mvvm` and its `[ObservableProperty]` /
+  `[RelayCommand]` generators arrive transitively: `aq-view` and `aqv-form` output generated
+  into a `barbatos-wpf-app` project (which has no direct `CommunityToolkit.Mvvm` reference)
+  builds with 0 warnings, and the generated members are in the assembly.
 
 ### `barbatos-wpf-app`
 
@@ -115,8 +119,13 @@ dotnet new barbatos-wpf-app -n MyApp --dry-run     # the file list, nothing writ
 - Visual Studio's new-project wizard renders each `Include*` symbol as a checkbox, driven by
   `ide.host.json` `symbolInfo[].isVisible` plus the symbol's `displayName` / `description`.
   Rider shows only a raw extra-parameters field, so pass the same flags there by hand.
-- Tray icon, run on startup and keep awake are **registered but off** in the generated app:
-  their options default `Enabled` to `false` and the template neither sets it nor adds a toggle.
+- `IncludeTrayIcon` shows the icon from launch: `TrayIconOptions.Enabled` defaults to `false`,
+  so the generated `ConfigureTrayIcon` sets `options.Enabled = true` (`Barbatos:TrayIcon:Enabled`
+  in configuration still overrides it). `IncludeRunOnStartup` deliberately leaves
+  `RunOnStartupOptions.Enabled` off - setting it would register the app with Windows startup on
+  its first run, unasked - and adds a "Launch when Windows starts" `CheckBox` bound to
+  `MainViewModel.RunOnStartupEnabled`, which calls `IRunOnStartupService.SetEnabled`.
+  `IncludeKeepAwake` is registered but off, with no toggle.
 
 ## Editing a template
 
@@ -151,11 +160,15 @@ Rules that bite:
 
 ## Testing a change (the loop)
 
-dotnet and WPF run on Windows only. In a Linux session, read and grep, then say the template
-was not instantiated or built.
+A WPF app runs on Windows only, but it compiles anywhere the .NET SDK does: in a Linux session,
+steps 1, 2 and 4 work as written with `dotnet build -p:EnableWindowsTargeting=true` (XAML
+included). Only step 3's `dotnet run` and the click-through need Windows - say so when you
+could not do them.
 
 1. `dotnet new uninstall <folder>` then `dotnet new install <folder>` after every edit -
    `dotnet new` caches installed templates, so an edit is not reliably picked up otherwise.
+   On a machine other sessions share, add `--debug:custom-hive <scratch folder>` to every
+   `dotnet new` call (install and instantiate) so the install stays out of the user-wide cache.
 2. Instantiate **outside the repo clone**. Inside it, MSBuild picks up the repo's
    `Directory.Build.props` and `Directory.Packages.props`: central package management rejects
    the template's `Version=` attributes (`NU1008`) and the app inherits the library's packaging
@@ -165,7 +178,9 @@ was not instantiated or built.
    defaults; `--IncludeAquarius false --IncludeI18n false` (the no-`Setup` constructor path);
    `--IncludeAquarius false --IncludeAquariusRouter true` (`AquariusEffective` via Router);
    `--IncludeValee true` alone (inline `SignUpView`); Router + Valee + Dialogs with i18n on (the
-   `/signup` route and the full constructor ladder); every flag on; `--dry-run` for file lists.
+   `/signup` route); `--IncludeRunOnStartup true` alone with `--IncludeAquarius false
+   --IncludeI18n false` and again with Router or Dialogs (the last rung of `MainViewModel`'s
+   constructor ladder); every flag on; `--dry-run` for file lists.
 5. Against unreleased `src/` changes: pack each package to a local folder under a fresh
    prerelease version (`dotnet pack src/<Package> -c Release -o <feed> -p:Version=<next>-dev.<n>`),
    add a `nuget.config` beside the generated project listing that folder (and mapping
@@ -183,12 +198,12 @@ Templates are documentation that compiles, so they rot silently - nothing builds
 - **API changes:** before changing or obsoleting a public member, `grep -rn "<Member>" templates/`.
   Move the template to the replacement in the same change (a generated app must not start life
   with `[Obsolete]` warnings), and update `templates/README.md` if the scaffolded shape changed.
-- **Known lag to fix when you next touch `WpfProgram.cs`:** it still wires Aquarius and the router
-  by hand (`Setup.ServiceProvider = app.Services`, `AddSingleton(_ => new Router(AppRoutes.Build()))`,
-  `Router.Current = ...`). The library's path, already in the version the template pins, is `builder.Services.AddAquarius()` + `AddAquariusRouter(_ => AppRoutes.Build())`
-  before `Build()` and `app.Services.UseAquarius()` + `UseAquariusRouter()` after - mirror
-  `samples/Barbatos.Wpf.AquariusRouter.Sample/WpfProgram.cs`, and update the `templates/README.md`
-  paragraph that describes the bridge.
+- **`WpfProgram.cs` wires Aquarius and the router through the library's two-call pattern**:
+  `builder.Services.AddAquarius()` + `AddAquariusRouter(_ => AppRoutes.Build())` before
+  `Build()`, `app.Services.UseAquarius()` + `UseAquariusRouter()` after, mirroring
+  `samples/Barbatos.Wpf.AquariusRouter.Sample/WpfProgram.cs`. Keep it that way - never go back to
+  assigning `Setup.ServiceProvider` or `Router.Current` by hand - and when that wiring changes,
+  update the `templates/README.md` paragraph that describes the bridge.
 - **Versions the project template pins** - `grep -rn "<old version>" templates/ README.md` before
   committing:
   - the four `Barbatos.Wpf.*` `Version="..."` attributes in `BarbatosWpfApp.csproj`, the
@@ -250,8 +265,8 @@ Templates are documentation that compiles, so they rot silently - nothing builds
 | `NU1008` when building a generated app | Instantiated inside the repo; central package management applies | Instantiate outside the clone |
 | Restore fails to find `Barbatos.Wpf.*` | `--PackageVersion` (or the pinned default) not on any configured feed | Use a published version, or the local-feed loop |
 | `The tag 'RouteTo' does not exist in XML namespace ...` against a local pack | Global packages cache still holds an older build of the same version | New `-dev.<n>` version, or delete the cached folder |
-| `CS0103` for `CurrentCultureName` / `StatusMessage`, or bindings to `Greeting` / `...Command` show nothing | Likely the MVVM source generators are not running: `CommunityToolkit.Mvvm` arrives only transitively, and every published `Barbatos.Wpf.*` package declares it with `exclude="Build,Analyzers"` | Add a direct `CommunityToolkit.Mvvm` `PackageReference`, as the Aquarius, Router and Valee samples do |
-| `--IncludeTrayIcon true` but no tray icon | `TrayIconOptions.Enabled` defaults to `false` | `options.Enabled = true` in `ConfigureTrayIcon`, `Barbatos:TrayIcon:Enabled`, or `ITrayIconService.SetVisible(true)` |
+| `--IncludeTrayIcon true` but no tray icon | `Barbatos:TrayIcon:Enabled` is `false` in configuration (it overrides code), or `options.Enabled = true` was removed from `ConfigureTrayIcon` - the option defaults to `false` | Remove the configuration value or restore the line; `ITrayIconService.SetVisible(true)` shows it at runtime |
+| "Launch when Windows starts" is ticked but the app does not start at sign-in | The user switched it off in Task Manager's (or Settings') Startup apps list: Windows records that apart from the `HKCU\...\Run` value, which `IRunOnStartupService.IsEnabled` reads, so the box still shows ticked | Switch it back on there; the box cannot see or change that switch |
 | Clicking a search result throws `InvalidOperationException` ("is searchable but its RouteRecord has no Name") | A route added to `AppRoutes.cs` with `Search` entries but no `Name` | Give every searchable route a `Name` |
 
 ## Related skills

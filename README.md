@@ -70,7 +70,7 @@ install it standalone or alongside.
 <tr>
 <td width="72" align="center">
 <a href="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/src/Barbatos.Wpf.AquariusRouter/README.md">
-<img src="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/nuget.png?raw=true" width="64" height="64" alt="Barbatos.Wpf.AquariusRouter" />
+<img src="https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquariusrouter-logo.png?raw=true" width="64" height="64" alt="Barbatos.Wpf.AquariusRouter" />
 </a>
 </td>
 <td>
@@ -115,10 +115,17 @@ the schema mechanism, `INotifyDataErrorInfo`-native error display, and
 </tr>
 </table>
 
-All packages share the same `Barbatos.Wpf` root C# namespace and target
-`net8.0-windows`/`net9.0-windows`/`net10.0-windows`. `Barbatos.Wpf.AquariusRouter` and
-`Barbatos.Wpf.AquariusValee` both additionally depend on `Barbatos.Wpf.Aquarius` itself (the same
-way `vue-router`/`vee-validate` each depend on `vue`) - install Aquarius alongside either one.
+All packages share the same `Barbatos.Wpf` root C# namespace and target .NET 8, 9 and 10.
+`Barbatos.Wpf.Aquarius`, `Barbatos.Wpf.AquariusRouter` and `Barbatos.Wpf.AquariusValee` target
+`net8.0-windows`/`net9.0-windows`/`net10.0-windows`. `Barbatos.Wpf.Core` targets the SDK-suffixed
+`net8.0-windows10.0.17763.0`/`net9.0-windows10.0.17763.0`/`net10.0-windows10.0.17763.0`, and an
+app that references it must use the suffixed form too (`net10.0-windows10.0.17763.0`): the bare
+`net10.0-windows` resolves to the `windows7.0` baseline, which has no WinRT projections (Core's
+toast notifications need them) and no Core asset, so restoring Core fails (`NU1202` through a
+`PackageReference`, `NU1201` through a `ProjectReference`).
+`Barbatos.Wpf.AquariusRouter` and `Barbatos.Wpf.AquariusValee` both additionally depend on
+`Barbatos.Wpf.Aquarius` itself (the same way `vue-router`/`vee-validate` each depend on `vue`) -
+install Aquarius alongside either one.
 
 ```powershell
 dotnet add package Barbatos.Wpf.Core
@@ -174,8 +181,8 @@ CLI form above always works, including from each IDE's own integrated terminal.
 
 See [`templates/README.md`](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/templates/README.md) for the full list, folder layout, and
 per-template details (including why `--namespace` has to be passed explicitly for the item
-template, and why the project template uses `PackageReference` rather than a path into this
-repo even though neither package is published to NuGet.org yet).
+templates, and why the project template references the published NuGet.org packages rather
+than a path into this repo, so a generated app restores anywhere).
 
 ## Repository layout
 
