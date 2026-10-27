@@ -131,7 +131,7 @@ restore as-is), showing them working together, not just coexisting:
 
 Every package the template references is published on NuGet.org, so a freshly generated
 project restores as-is. It references `Barbatos.Wpf.Core`/`Aquarius`/`AquariusRouter`/
-`AquariusValee` 2.5.1 by default - pass `--PackageVersion` (see the template's own
+`AquariusValee` 2.5.2 by default - pass `--PackageVersion` (see the template's own
 `.template.config/template.json`) to target another release.
 
 To try the template against unreleased changes in this repo, pack its `src/` projects and
