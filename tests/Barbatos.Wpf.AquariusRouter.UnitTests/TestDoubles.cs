@@ -82,6 +82,50 @@ internal sealed class RecordingViewModel(List<string> log, string label) :
 }
 
 /// <summary>
+/// A routed View whose constructor always throws - a navigation that fails while it is still
+/// building the entering Views must not leave the ones it already built behind.
+/// </summary>
+internal sealed class ThrowingConstructorView : ContentControl
+{
+    public ThrowingConstructorView() => throw new InvalidOperationException("View constructor failed.");
+}
+
+/// <summary>
+/// An enter guard that throws instead of answering. Parameterless, so a test pairs it through
+/// <see cref="RouteRecord.ViewModel"/> and <see cref="Setup.Resolve"/>'s
+/// <c>Activator.CreateInstance</c> fallback with no service provider involved.
+/// </summary>
+internal sealed class ThrowingEnterGuardViewModel : IOnBeforeRouteEnter
+{
+    public Task<NavigationGuardResult> OnBeforeRouteEnter(RouteLocation to, RouteLocation from) =>
+        throw new InvalidOperationException("Enter guard failed.");
+}
+
+/// <summary>
+/// A leave guard a test can switch between allowing and refusing - an unsaved-changes prompt
+/// answered "yes" or "no" - counting how often it was asked. Parameterless for the same reason
+/// as <see cref="ThrowingEnterGuardViewModel"/>; a test reads the instance back from
+/// <see cref="RouteRecord.Instances"/>.
+/// </summary>
+internal sealed class SwitchableLeaveGuardViewModel : IOnBeforeRouteLeave
+{
+    public NavigationGuardResult LeaveResult { get; set; } = NavigationGuardResult.Continue;
+
+    /// <summary>When set, the guard fails with this instead of answering - a guard with a bug in it.</summary>
+    public Exception? LeaveException { get; set; }
+
+    public int LeaveCalls { get; private set; }
+
+    public Task<NavigationGuardResult> OnBeforeRouteLeave(RouteLocation to, RouteLocation from)
+    {
+        LeaveCalls++;
+        return LeaveException is { } exception
+            ? Task.FromException<NavigationGuardResult>(exception)
+            : Task.FromResult(LeaveResult);
+    }
+}
+
+/// <summary>
 /// Implements every mount/unmount <see cref="Lifecycle"/> hook and appends a
 /// "<paramref name="label"/>.HookName" entry to a shared log - the Lifecycle-hook counterpart of
 /// <see cref="RecordingViewModel"/>, used to pin the exact order Aquarius's own Mounted/Unmounted

@@ -125,6 +125,13 @@ public sealed class RouteRecord
     /// <c>to =&gt; "/target"</c> is barely more verbose than a bare string and C# has no clean
     /// value-or-function duck typing.
     /// </summary>
+    /// <remarks>
+    /// Redirects chain - a target that itself redirects is followed in turn - but not forever:
+    /// after 30 hops in one navigation (counted together with guard redirects)
+    /// <see cref="Router.Push"/> throws <see cref="InvalidOperationException"/>. Vue Router has no
+    /// such limit on static redirects; here a cycle would otherwise recurse synchronously until a
+    /// stack overflow, which .NET cannot catch and which ends the process.
+    /// </remarks>
     public Func<RouteLocation, RouteLocationRaw>? Redirect { get; init; }
 
     /// <summary>
@@ -185,16 +192,20 @@ public sealed class RouteRecord
     /// a keyboard shortcut, in-app search, a URI activation. Nothing has to know it is a window.
     /// <para>
     /// One router, one history: going Back closes the dialog, and closing the dialog navigates
-    /// back - see <see cref="Xaml.RouterWindows"/>, which is the piece that actually opens and
+    /// back - the window goes once that navigation commits, and stays open if a guard refuses
+    /// it. See <see cref="Xaml.RouterWindows"/>, which is the piece that actually opens and
     /// closes it (the <see cref="Router"/> itself stays free of any window knowledge, so it
     /// remains testable with no <see cref="Application"/> at all). A dialog that instead needs a
     /// navigation stack genuinely independent of the app's needs its own <see cref="Router"/> -
     /// see <see cref="Xaml.RouterScope"/>.
     /// </para>
     /// <para>
-    /// Give the record a named outlet (<see cref="Views"/>) rather than a bare <see cref="View"/>,
-    /// and host a matching <c>&lt;aqr:RouterView OutletName="..."/&gt;</c> inside the window - a
-    /// plain <see cref="View"/> would also be claimed by the main window's default outlet.
+    /// Prefer a named outlet (<see cref="Views"/>) to a bare <see cref="View"/>, with a matching
+    /// <c>&lt;aqr:RouterView OutletName="..."/&gt;</c> inside the window. A plain <see cref="View"/>
+    /// goes to the <c>"default"</c> outlet, so it is also claimed by any default outlet in the main
+    /// window that reaches this record's depth - typically a nested <c>&lt;aqr:RouterView /&gt;</c>
+    /// inside the parent's View. Where the parent's View has no nested outlet, a plain
+    /// <see cref="View"/> works; a named outlet keeps working if one is added later.
     /// </para>
     /// </remarks>
     public Type? Window { get; init; }

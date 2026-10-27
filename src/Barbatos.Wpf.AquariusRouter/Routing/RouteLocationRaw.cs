@@ -20,9 +20,12 @@ namespace Barbatos.Wpf.AquariusRouter.Routing;
 /// (or build the full path string yourself) to get real substitution.
 /// <code>
 /// await router.Push("/users/42");                                            // implicit from string
-/// await router.Push(new RouteLocationRaw { Name = "user", Params = new() { ["id"] = "42" } });
-/// await router.Push(new RouteLocationRaw { Path = "/search", Query = new() { ["q"] = "hello" } });
+/// await router.Push(new RouteLocationRaw { Name = "user", Params = new Dictionary&lt;string, object?&gt; { ["id"] = "42" } });
+/// await router.Push(new RouteLocationRaw { Path = "/search", Query = new Dictionary&lt;string, string?&gt; { ["q"] = "hello" } });
 /// </code>
+/// <see cref="Params"/> and <see cref="Query"/> are read-only dictionary interfaces, so a
+/// target-typed <c>new() { ... }</c> does not compile against them - name the concrete
+/// <see cref="Dictionary{TKey, TValue}"/>.
 /// </remarks>
 public sealed record RouteLocationRaw
 {
@@ -70,13 +73,19 @@ public sealed record RouteLocationRaw
     /// <para>
     /// The other is protocol activation: a WPF app registered as a custom URI-scheme handler is
     /// handed something like <c>myapp://users/42?ref=mail#detail</c> on startup, and this is what
-    /// turns it into something <see cref="Router.Push"/> accepts. Strip the scheme/host with
-    /// <see cref="Uri"/> first - the fragment is not part of <see cref="Uri.PathAndQuery"/>:
+    /// turns it into something <see cref="Router.Push"/> accepts. Take it apart with
+    /// <see cref="Uri"/> first, minding two things: <see cref="Uri"/> reads the first segment after
+    /// <c>//</c> as the <i>host</i> (<c>users</c> here), so <see cref="Uri.PathAndQuery"/> alone is
+    /// only <c>/42?ref=mail</c>; and the fragment is not part of <see cref="Uri.PathAndQuery"/> either:
     /// </para>
     /// <code>
-    /// var uri = new Uri(activationArgument);
-    /// await router.Push(RouteLocationRaw.Parse(uri.PathAndQuery + uri.Fragment));
+    /// var uri = new Uri(activationArgument);   // myapp://users/42?ref=mail#detail
+    /// await router.Push(RouteLocationRaw.Parse($"/{uri.Host}{uri.PathAndQuery}{uri.Fragment}"));
     /// </code>
+    /// A scheme whose URIs carry an empty authority instead (<c>myapp:///users/42</c>) has an empty
+    /// <see cref="Uri.Host"/> and the whole path in <see cref="Uri.PathAndQuery"/>, so there it is
+    /// <c>uri.PathAndQuery + uri.Fragment</c> on its own - pick one form for the scheme and parse
+    /// that form.
     /// </remarks>
     /// <param name="fullPath">e.g. <c>"/search?q=hello%20world#results"</c>.</param>
     public static RouteLocationRaw Parse(string fullPath)

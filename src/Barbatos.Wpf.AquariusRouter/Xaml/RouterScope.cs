@@ -27,11 +27,18 @@ using RoutingRouter = Routing.Router;
 ///     &lt;/DockPanel&gt;
 /// &lt;/Window&gt;
 /// </code>
+/// <c>ReportRouter</c> is a second <see cref="Routing.Router"/> with a route table of its own,
+/// and it needs its own first navigation - <c>await ReportRouter.Start("/summary")</c> - before
+/// the dialog shows anything: a router's <see cref="Routing.Router.CurrentRoute"/> starts at
+/// <see cref="Routing.RouteLocation.Start"/>, which matches nothing, so until then the outlet
+/// above renders empty.
+/// <para>
 /// This is the ergonomic half of multi-router support. <see cref="RouterView.Router"/> and
 /// <see cref="RouterLink.RouterProperty"/> could always be set explicitly, but that meant setting
 /// them on <i>every single link</i> in a dialog - miss one and it silently navigates the main
 /// window instead. An inherited attached property is set once, at the root, and every descendant
 /// picks it up.
+/// </para>
 /// <para>
 /// <b>Resolution order</b> for both controls: an explicit <c>Router</c> on the control itself, then
 /// the nearest inherited <see cref="RouterProperty"/>, then (for a nested

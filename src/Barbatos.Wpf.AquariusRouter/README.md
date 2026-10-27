@@ -1,6 +1,6 @@
 # Barbatos.Wpf.AquariusRouter
 
-![Barbatos.Wpf.AquariusRouter logo](https://github.com/Barbatos-Labs/Barbatos.Wpf/blob/main/build/aquariusrouter-logo.svg?raw=true)
+![Barbatos.Wpf.AquariusRouter logo](https://raw.githubusercontent.com/Barbatos-Labs/Barbatos.Wpf/main/build/aquariusrouter-logo.svg)
 
 ### *A Vue Router-style navigation system - for WPF*
 
@@ -31,16 +31,19 @@ outlets via `RouterView`, navigation guards, redirect/alias, per-window router s
 * **[Dialog windows](#dialog-windows)**
   * [Modal routes](#modal-routes---a-route-that-renders-into-a-window)
   * [Independent stacks](#independent-stacks---a-window-with-its-own-router)
+  * [Choosing](#choosing)
 * **[RouterLink](#routerlink)**
   * [RouteTo](#routeto)
 * **[Navigation Guards](#navigation-guards)**
   * [The Full Pipeline Order](#the-full-pipeline-order)
 * **[Navigation Failures](#navigation-failures)**
 * **[In-App Search](#in-app-search)**
+  * [Searching in more than one language](#searching-in-more-than-one-language)
 * **[Path Matching](#path-matching)**
 * **[History](#history)**
 * **[Deliberately Out of Scope](#deliberately-out-of-scope)**
 * **[Ecosystem](#ecosystem)**
+  * [Repository layout](#repository-layout)
 * **[API Reference](#api-reference)**
 * **[Community](#community)**
 
@@ -86,8 +89,16 @@ itself is an application concern, outside this package's own scope.
 
 ```csharp
 var uri = new Uri(activationArgument);          // myapp://users/42?ref=mail#detail
-await router.Push(RouteLocationRaw.Parse(uri.PathAndQuery + uri.Fragment));
+await router.Push(RouteLocationRaw.Parse($"/{uri.Host}{uri.PathAndQuery}{uri.Fragment}"));
 ```
+
+`System.Uri` reads the first segment after `//` as the *host*, so for `myapp://users/42` the
+`users` is in `uri.Host` and `uri.PathAndQuery` is only `/42?ref=mail` - hence putting it back in
+front. The fragment is not part of `PathAndQuery` either. A scheme whose URIs carry an empty
+authority instead (`myapp:///users/42`) has an empty `Host` and the whole path in `PathAndQuery`,
+so there `uri.PathAndQuery + uri.Fragment` is the whole target; pick one form for your scheme and
+parse that one. (`uri.Host` also comes back lower-cased - harmless under the default
+case-insensitive matching, but not with `PathParserOptions.Sensitive`.)
 
 ### Quick Start
 
@@ -103,8 +114,8 @@ Everything in this document lives behind a single XAML namespace:
 ```
 
 That one `aqr:` prefix reaches every namespace below (`Barbatos.Wpf.AquariusRouter.Matching`,
-`.Routing`, `.Xaml`) - deliberately distinct from Aquarius's own `aq:` prefix, since both are
-commonly used together in the same XAML file.
+`.Routing`, `.Searching`, `.Xaml`) - deliberately distinct from Aquarius's own `aq:` prefix, since
+both are commonly used together in the same XAML file.
 
 A minimal app:
 
@@ -165,7 +176,9 @@ new RouteRecord
   nesting. An empty string (`""`) is the "index" case - it resolves to exactly the parent's own
   path, the closest thing to a default child.
 - **`Name`** - a unique key for navigating without hardcoding a path string:
-  `router.Push(new RouteLocationRaw { Name = "user", Params = new() { ["id"] = "42" } })`.
+  `router.Push(new RouteLocationRaw { Name = "user", Params = new Dictionary<string, object?> { ["id"] = "42" } })`.
+  `Params` and `Query` are read-only dictionary interfaces, so a target-typed `new() { ... }` does
+  not compile against them - name the `Dictionary` (`Dictionary<string, string?>` for `Query`).
   Registering a second record under an already-used name silently replaces the first.
 - **`View`** - the `FrameworkElement`-derived View type rendered into the default outlet. For
   multiple simultaneous outlets, use **`Views`** instead (a `Dictionary<string, Type>` keyed by
@@ -187,7 +200,8 @@ new RouteRecord
   immediately resolves to a different target instead, *before any navigation guard runs* - only
   the target's own guards ever run, never this record's. Always a delegate (`to => "/somewhere"`),
   collapsing Vue Router's string-or-function union since a static redirect is barely more verbose
-  as a lambda.
+  as a lambda. Redirects chain, up to the 30-hop limit described under
+  [The Full Pipeline Order](#the-full-pipeline-order).
 - **`Alias`** - alternate paths that resolve to this exact same record. Unlike `Redirect`, no
   resolution substitution happens - it's simply reachable under more than one path, and (a
   deliberate simplification from Vue Router - see the type's own XML docs) shares the exact same
@@ -235,6 +249,69 @@ The difference: an index child keeps the URL at `/settings`, a redirect changes 
 > is whatever you pass to `Router.Start("/")` - explicit, because unlike a browser there is no
 > ambient URL to fall back on - and anything unmatched is handled by a catch-all
 > (`/:pathMatch(.*)*`, see [Path Matching](#path-matching)).
+
+### Pairing a View with its ViewModel
+
+There are three ways to give a routed View its `DataContext`. Pick by **how much of the code you
+are allowed to change**:
+
+| Your situation | Use |
+| --- | --- |
+| You own the View, names follow the convention | `aq:Setup.Enable="True"` in the View |
+| You own the View, names/namespaces differ | `aq:Setup.ViewModel="{x:Type ...}"` in the View |
+| **You own neither** - both ship inside libraries | **`RouteRecord.ViewModel`** in the route table |
+
+The first two are Aquarius's own wiring and live in the View's XAML. The third exists because that
+is exactly what a component library denies you: `AccountSummaryView` ships in one library,
+`AccountSummaryPresenter` in another, both under change control, and neither may be edited to
+mention the other. Declare the pairing where you *do* have authority - the route table:
+
+```csharp
+new RouteRecord
+{
+    Path = "/accounts/:id",
+    Name = "account-summary",
+    View = typeof(AccountSummaryView),           // from one library, no aq:Setup wiring at all
+    ViewModel = typeof(AccountSummaryPresenter), // from another - neither knows the other exists
+}
+```
+
+That is the whole job. `Router` constructs the View, then assigns the ViewModel as its
+`DataContext`, resolving it through `Setup.ServiceProvider` when one is set - so a
+constructor-injected ViewModel works normally. Nothing downstream changes: route params,
+`IOnRouteEnter`, and every guard interface reach the paired ViewModel exactly as they would one the
+View wired up itself.
+
+Use **`ViewModels`** (a `Dictionary<string, Type>` keyed by outlet name) to pair
+[named outlets](#named-outlets) individually; outlets you leave out keep whatever their own View
+resolved. A route-declared ViewModel is assigned after the View is constructed, so it deliberately
+**wins over** that View's own `aq:Setup` - which is the point when the View's built-in wiring names
+a ViewModel this particular route doesn't want.
+
+Two mistakes are rejected while the route table is built, rather than surfacing later as a blank
+outlet: setting both `ViewModel` and `ViewModels`, and declaring a ViewModel for an outlet that has
+no View.
+
+> **One limit to know.** Aquarius's mount hooks (`IOnMounted`, `IOnBeforeUnmount`, …) are opt-in
+> *per View*, via `aq:Lifecycle.Enable` in the View's own XAML - and pairing a ViewModel from the
+> route table does not change that. A ViewModel paired onto a View that never opted in still gets
+> everything **the router itself** dispatches (`IOnRouteEnter`/`IOnRouteUpdate` and every guard
+> interface), but no mount hooks, because nothing is dispatching them for that View. If you need
+> both and cannot edit the View, do the loading from `IOnRouteEnter` instead.
+
+> **Know the convention's actual rule before relying on it.** `aq:Setup.Enable` matches on the
+> *namespace-qualified* name (`Some.Ns.FooView` → `Some.Ns.FooViewModel`), checking the View's own
+> assembly first and then every **already-loaded** assembly. So a different assembly on its own is
+> fine; a different **namespace** or a different **name** is not. And when it finds nothing the
+> default is to leave `DataContext` null rather than throw - the View just renders empty. To make
+> that loud, register Aquarius with `builder.Services.AddAquarius(o => o.ThrowOnUnresolvedViewModels = true)`.
+> Setting `Setup.ThrowOnUnresolved = true` by hand does not stick in an app that calls
+> `AddAquarius`: `UseAquarius()` then overwrites it with that option's value.
+
+`samples/Barbatos.Wpf.AquariusRouter.Sample`'s `/accounts/:id` route is a working example of the
+third row: the View is compiled into the sample with no wiring of any kind, its
+`AccountSummaryPresenter` ViewModel into `Barbatos.Wpf.Samples.Shared` - different assembly,
+different namespace, non-conventional name.
 
 ---
 
@@ -297,70 +374,18 @@ app.Services.UseAquarius().UseAquariusRouter();
 `AddAquariusRouter` registers the `Router` singleton, an `IRouterHistory` and `RouterOptions`
 (`PathOptions`); `UseAquariusRouter` publishes the resolved router as
 `Router.Current` and returns it. Both the `Router` and the history go in with `TryAdd`, so an app
-that needs something else - a history that persists across restarts, say - registers it first and
-wins. It is optional: `new Router(routes)` plus `Router.Current = router` still works exactly as
-before.
+that needs something else - a history that persists across restarts, or a `Router` constructed
+differently (`AddSingleton(sp => new Router(...))`; `Router` is sealed, so never a subclass) -
+registers it first and wins. It is optional: `new Router(routes)` plus `Router.Current = router`
+still works exactly as before.
 
-### Pairing a View with its ViewModel
-
-There are three ways to give a routed View its `DataContext`. Pick by **how much of the code you
-are allowed to change**:
-
-| Your situation | Use |
-| --- | --- |
-| You own the View, names follow the convention | `aq:Setup.Enable="True"` in the View |
-| You own the View, names/namespaces differ | `aq:Setup.ViewModel="{x:Type ...}"` in the View |
-| **You own neither** - both ship inside libraries | **`RouteRecord.ViewModel`** in the route table |
-
-The first two are Aquarius's own wiring and live in the View's XAML. The third exists because that
-is exactly what a component library denies you: `AccountSummaryView` ships in one library,
-`AccountSummaryPresenter` in another, both under change control, and neither may be edited to
-mention the other. Declare the pairing where you *do* have authority - the route table:
-
-```csharp
-new RouteRecord
-{
-    Path = "/accounts/:id",
-    Name = "account-summary",
-    View = typeof(AccountSummaryView),           // from one library, no aq:Setup wiring at all
-    ViewModel = typeof(AccountSummaryPresenter), // from another - neither knows the other exists
-}
-```
-
-That is the whole job. `Router` constructs the View, then assigns the ViewModel as its
-`DataContext`, resolving it through `Setup.ServiceProvider` when one is set - so a
-constructor-injected ViewModel works normally. Nothing downstream changes: route params,
-`IOnRouteEnter`, and every guard interface reach the paired ViewModel exactly as they would one the
-View wired up itself.
-
-Use **`ViewModels`** (a `Dictionary<string, Type>` keyed by outlet name) to pair
-[named outlets](#named-outlets) individually; outlets you leave out keep whatever their own View
-resolved. A route-declared ViewModel is assigned after the View is constructed, so it deliberately
-**wins over** that View's own `aq:Setup` - which is the point when the View's built-in wiring names
-a ViewModel this particular route doesn't want.
-
-Two mistakes are rejected while the route table is built, rather than surfacing later as a blank
-outlet: setting both `ViewModel` and `ViewModels`, and declaring a ViewModel for an outlet that has
-no View.
-
-> **One limit to know.** Aquarius's mount hooks (`IOnMounted`, `IOnBeforeUnmount`, …) are opt-in
-> *per View*, via `aq:Lifecycle.Enable` in the View's own XAML - and pairing a ViewModel from the
-> route table does not change that. A ViewModel paired onto a View that never opted in still gets
-> everything **the router itself** dispatches (`IOnRouteEnter`/`IOnRouteUpdate` and every guard
-> interface), but no mount hooks, because nothing is dispatching them for that View. If you need
-> both and cannot edit the View, do the loading from `IOnRouteEnter` instead.
-
-> **Know the convention's actual rule before relying on it.** `aq:Setup.Enable` matches on the
-> *namespace-qualified* name (`Some.Ns.FooView` → `Some.Ns.FooViewModel`), checking the View's own
-> assembly first and then every **already-loaded** assembly. So a different assembly on its own is
-> fine; a different **namespace** or a different **name** is not. And when it finds nothing the
-> default is to leave `DataContext` null rather than throw - the View just renders empty. Set
-> `Setup.ThrowOnUnresolved = true` to make that loud.
-
-`samples/Barbatos.Wpf.AquariusRouter.Sample`'s `/accounts/:id` route is a working example of the
-third row: the View is compiled into the sample with no wiring of any kind, its
-`AccountSummaryPresenter` ViewModel into `Barbatos.Wpf.Samples.Shared` - different assembly,
-different namespace, non-conventional name.
+`RouterOptions` is configured from code only, through the optional second argument
+(`options => options.PathOptions = new PathParserOptions { Strict = true }`). Nothing in this
+package binds it from configuration - it references only the DI and Options abstractions, not the
+configuration binder - so `RouterOptions.SectionName` (`"Barbatos:AquariusRouter"`) is a naming
+convention, not something read for you. To drive it from a settings file, bind the section
+yourself after `AddAquariusRouter`, so the file wins over the code delegate:
+`builder.Services.Configure<RouterOptions>(builder.Configuration.GetSection(RouterOptions.SectionName))`.
 
 ---
 
@@ -478,13 +503,26 @@ The dialog itself declares nothing:
 </Window>
 ```
 
+The plain `View` above goes to the `"default"` outlet, and works here because `DashboardView` has
+no nested outlet of its own. Had it one, that outlet would reach the inspector's depth and claim
+the same View as the dialog. A named outlet - `Views = { ["inspector"] = ... }` on the record and
+`<aqr:RouterView OutletName="inspector" />` in the window - cannot collide, and keeps working if
+the parent grows a nested outlet later.
+
 **One router, one history**, which is what makes it behave like a route rather than like a popup:
 
 - `/dashboard` stays matched, so the main window keeps showing the dashboard behind the dialog.
 - `Back` closes the dialog, because it is an ordinary entry on the ordinary history stack.
-- Closing the dialog with its own `[X]` navigates back to the parent route. The symmetry matters:
-  without it the route would go on claiming a window that is no longer on screen, and navigating to
-  it again would look like a no-op.
+- Closing the dialog with its own `[X]` (or a `Close()` of your own) is a request to navigate back
+  to the parent route (by name, current params kept; via `Back` if the parent has no name), and the
+  window goes once that navigation commits. A leave guard that refuses - an unsaved-changes
+  prompt answered "no" - keeps the window open on the route that still claims it; a guard still
+  awaiting something keeps it open until it decides. So does a guard that throws, and its
+  exception is rethrown on the Dispatcher, as it is for a `RouterLink` click, so it reaches
+  `Application.DispatcherUnhandledException` rather than leaving a window that silently will not
+  close. The first version closed the window first and navigated afterwards, so a refused
+  navigation left the route on a modal record with no window, and pushing that route again
+  returned `Duplicated` - nothing could reopen it.
 - Two sibling records naming the same `Window` type share one window - stepping between them keeps
   its position, size and focus and swaps only the outlet, which is what a dialog with its own
   internal navigation should look like. Nest them instead and the dialog hosts a nested
@@ -502,6 +540,24 @@ closed WPF `Window` cannot be shown again:
 ```csharp
 builder.Services.AddTransient<InspectorWindow>();
 ```
+
+Two things follow from the `[X]` being a navigation, for code of your own on the window: a
+`Window.Closing` handler of yours sees every attempt - including one that is then kept open - and
+runs again when a navigation that committed later closes the window, so do once-only work in
+`Closed`; and a `Closing` handler of yours that cancels is respected, with no navigation started,
+as long as it runs first - attached in XAML or in the window's constructor, or an `OnClosing`
+override that cancels before calling the base. `RouterWindows` subscribes once the window has been
+constructed, so a handler attached after that is too late to stop the navigation. The one close
+nothing can keep open is the owner's: WPF does not let an owned window veto its owner closing,
+nor any window veto application shutdown, so then the dialog goes regardless and its leave guards
+are asked once.
+
+> **Name the parent record.** With no name to push, the `[X]` falls back to `Back` - and on a route
+> the app *started* on (a deep link straight into the dialog) there is nothing to go back to, so
+> `Back` is a silent no-op. The window still closes then, since refusing would leave a window
+> nothing can close, but the route stays on the modal record, and pushing it again returns
+> `Duplicated` until something navigates elsewhere first. A named parent is always reachable, so
+> this never comes up.
 
 **How the outlet in a dialog knows what to render.** A dialog is its own visual-tree root, so a
 `RouterView` inside one cannot infer its depth by walking ancestors the way every other outlet
@@ -531,6 +587,11 @@ public InspectorWindow(InspectorRouter inspectorRouter)
     InitializeComponent();
     RouterScope.SetRouter(this, inspectorRouter.Router);
 }
+
+// Before showing the window: a second router needs its own first navigation, exactly like the
+// app's. Until then its CurrentRoute is RouteLocation.Start, which matches nothing, and the
+// window's outlet renders empty.
+await inspectorRouter.Router.Start("/summary");
 ```
 
 Property inheritance does not cross a `Window` boundary, which is exactly what makes this safe: the
@@ -551,8 +612,9 @@ against), so two routers must not share one route table - give the second scope 
 | Route table | one | one per router |
 
 Reach for the modal route by default - a dialog is usually *part of* where the user already is, and
-the modal route is the shape that keeps the route and the screen from ever disagreeing. Reach for
-`RouterScope` when the window is genuinely a second application surface.
+the modal route is the shape that keeps the route and the screen in step: the window opens and
+closes only as the route does, and its own `[X]` goes through the same guards as any other
+navigation away. Reach for `RouterScope` when the window is genuinely a second application surface.
 
 Resolution order for both `RouterView` and `RouterLink` is: an explicit `Router` on the control
 itself, then the nearest inherited `RouterScope.Router`, then (for a nested `RouterView`) whatever
@@ -689,6 +751,14 @@ public sealed partial class UserViewModel : ObservableObject, IOnRouteEnter
 }
 ```
 
+> **Unsaved changes and `IOnRouteUpdate` do not mix.** Every updating record's `IOnRouteUpdate`
+> runs before any `IOnBeforeRouteUpdate` (step 5 below), so a screen that reloads its state there
+> overwrites an edit - and whatever it is compared against - before its own update guard can ask
+> about it, and the prompt never appears. A screen with something to protect loads inside the
+> update guard instead, once the user has agreed to discard (or there was nothing to discard).
+> The sample's `UserSettingsViewModel` (`/users/:id/settings`, switching straight from one user to
+> another) is that shape.
+
 Global guards run for every navigation:
 
 ```csharp
@@ -704,7 +774,8 @@ Matches Vue Router's own documented "Full Navigation Resolution Flow," adjusted 
 construction-timing difference noted above:
 
 1. Static `RouteRecord.Redirect` on the resolved leaf (if any) - resolved immediately, before
-   anything else, looping while the newly-resolved leaf keeps redirecting.
+   anything else, looping while the newly-resolved leaf keeps redirecting (up to the hop limit
+   below).
 2. Duplicate check (same record/params/query/hash as the current route, and `Force` wasn't set) -
    short-circuits as `NavigationFailureType.Duplicated`.
 3. `IOnBeforeRouteLeave` on every record leaving entirely, **deepest-child-first**.
@@ -721,11 +792,15 @@ construction-timing difference noted above:
     show detecting a failure *inside* `AfterEach` as the canonical idiom, not a try/catch around
     `Push`).
 
-A guard-returned redirect abandons the current navigation and restarts at the new target (with a
-30-hop cycle detector, matching Vue Router's own dev-time safety net) - the static-redirect path
-in step 1 has no such counter, matching Vue Router's own real asymmetry between the two redirect
-sources. A second navigation racing an in-flight one correctly cancels the older one, re-checked
-after every single stage above (a guard can itself be slow/async).
+A guard-returned redirect abandons the current navigation and restarts at the new target. Both
+redirect sources count against one 30-hop limit per navigation (the number Vue Router's own
+dev-time guard-redirect detector uses); past it, `Push` throws `InvalidOperationException`
+("Infinite redirect loop detected ..."), and nothing is committed. **Unlike Vue Router**, static
+redirects in step 1 count too: Vue Router puts no counter on them, because there a cycle ends in a
+catchable `RangeError`. Here the recursion is synchronous - nothing awaits between static hops -
+and a .NET stack overflow cannot be caught: it ends the process. A second navigation racing an
+in-flight one correctly cancels the older one, re-checked after every single stage above (a guard
+can itself be slow/async).
 
 ---
 
@@ -745,7 +820,10 @@ Duplicated = 16`, matching Vue Router's own real bit values, not sequential ints
 `IsNavigationFailure(f, Aborted | Cancelled)` checks more than one type in one call. A guard that
 throws a genuine `Exception` is **not** wrapped as one of these - it propagates as-is, the same
 real distinction Vue Router itself draws between a guard returning `false`/redirecting and a guard
-throwing.
+throwing. The same goes for a data hook or a View constructor that throws, a target that matches
+no route, and the redirect-loop limit above. A throw still cleans up like a refusal: nothing is
+committed, and any View the navigation had already constructed is released, so the next attempt
+builds a fresh one instead of reusing the failed attempt's (`RouterRedirectAndFailureTests`).
 
 ---
 
@@ -796,10 +874,12 @@ if (results.Count > 0)
   explicit fold) - matching how a large share of real Vietnamese users actually type into a search
   box.
 - **Ranking** prefers whichever entries matched via `Title` itself over ones that only matched via
-  `Keywords`, with an exact/prefix title match ranked above a same-tier match; ties preserve
-  registration order. Always re-reads `Router.GetRoutes()` on every `Query` call rather than
-  snapshotting the route table once, so a route added/removed later via `Router.AddRoute`/
-  `RemoveRoute` is reflected on the very next query.
+  `Keywords`, with an exact/prefix title match ranked above a same-tier match. Ties keep
+  `Router.GetRoutes()` order, which is the matcher's ranking order - most specific path first,
+  declaration order only among equally ranked paths - and then each record's own `Search` order.
+  Always re-reads `Router.GetRoutes()` on every `Query` call rather than snapshotting the route
+  table once, so a route added/removed later via `Router.AddRoute`/`RemoveRoute` is reflected on
+  the very next query.
 - **`RouteSearchResult.To`** is a ready-to-`Push` `RouteLocationRaw`, always resolved by
   `RouteRecord.Name` (the only reliable way to target an arbitrary, possibly deeply-nested record) -
   it throws immediately, rather than silently resolving a wrong/relative navigation, if the matched
@@ -915,8 +995,8 @@ across app restarts) - implement `IRouterHistory` directly.
 
 ## Ecosystem
 
-Ships as a **single package** - Matching, Routing, and the Xaml layer are all included; there is
-nothing else to install beyond Aquarius itself.
+Ships as a **single package** - Matching, Routing, Searching and the Xaml layer are all included;
+there is nothing else to install beyond Aquarius itself.
 
 ### Repository layout
 
