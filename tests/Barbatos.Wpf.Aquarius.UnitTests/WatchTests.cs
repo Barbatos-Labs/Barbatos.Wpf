@@ -234,6 +234,42 @@ public class WatchTests
     }
 
     [Fact]
+    public void PostFlushFromAWorkerAfterTheWatchersThreadShutDownIsNotMovedToAnotherThread()
+    {
+        // The callback belongs to the thread that created the watcher and typically updates that
+        // thread's UI. Run on the Application's thread instead, once its own had shut down, those
+        // reads would throw on the main UI thread.
+        TestApplication.Invoke(() => { }); // an Application exists, as it does in any app
+
+        var ran = false;
+        Ref<int>? count = null;
+        IDisposable? stop = null;
+
+        StaThread.Run(() =>
+        {
+            _ = Dispatcher.CurrentDispatcher;
+            count = new Ref<int>(0);
+            stop = Watch.On(count, (_, _) => ran = true, flush: WatchFlush.Post);
+
+            Dispatcher.CurrentDispatcher.InvokeShutdown();
+        });
+
+        try
+        {
+            WorkerThread.Run(() => count!.Value = 1);
+
+            // Runs everything queued on the Application's dispatcher at Background or above.
+            TestApplication.Invoke(StaThread.PumpDispatcher);
+
+            Assert.False(ran);
+        }
+        finally
+        {
+            stop?.Dispose();
+        }
+    }
+
+    [Fact]
     public void EffectOnceStopsAfterTheFirstTriggeredRun()
     {
         var a = new Ref<int>(1);

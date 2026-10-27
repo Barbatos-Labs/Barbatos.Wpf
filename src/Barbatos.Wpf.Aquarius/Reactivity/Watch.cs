@@ -29,7 +29,8 @@ public enum WatchFlush
     /// callback acting on its arguments acted on a value that was already stale.) A burst that ends
     /// on the value it started from still produces its one callback, with both arguments equal.
     /// A change made on a worker thread still has its callback run on a UI thread - the one that
-    /// created the watcher, else <c>Application.Current</c>'s; see <see cref="NextTick"/> for the
+    /// created the watcher (never another one: once that thread's dispatcher has shut down, the
+    /// callback is dropped), else <c>Application.Current</c>'s; see <see cref="NextTick"/> for the
     /// full order. <see cref="Watch.Effect(Action, bool, WatchFlush, INotifyPropertyChanged[])"/>
     /// coalesces the same way.
     /// </remarks>
@@ -105,7 +106,8 @@ public static class Watch
         IDisposable stopHandle = null!;
 
         // The creating UI thread's dispatcher, if there is one: where a WatchFlush.Post callback
-        // belongs when the change itself arrives from a worker thread. Never created here.
+        // belongs when the change itself arrives from a worker thread - kept even after it shuts
+        // down, since the callback may touch that thread's UI. Never created here.
         var owner = NextTick.CurrentUiDispatcher();
 
         void RunCleanup()

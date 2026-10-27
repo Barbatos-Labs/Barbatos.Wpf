@@ -98,4 +98,32 @@ public class NextTickTests
         Assert.True(ran.Wait(TimeSpan.FromSeconds(5)), "NextTick.Run's callback never ran.");
         Assert.Equal(applicationThreadId, ranOnThreadId);
     }
+
+    [Fact]
+    public void RunOnAUiThreadWhoseDispatcherHasShutDownIsNotMovedToTheApplicationsThread()
+    {
+        // Work queued on a UI thread touches that thread's objects. Moved to the Application's
+        // thread because this one's dispatcher had shut down (a window thread closing while its
+        // last handlers still run), a callback reading one of them - Lifecycle's IOnUpdated reads
+        // its element - throws there instead, on the main UI thread, where it ends the app.
+        Dispatcher? applicationDispatcher = null;
+        TestApplication.Invoke(() => applicationDispatcher = Dispatcher.CurrentDispatcher);
+
+        var ran = false;
+        DispatcherOperation? operation = null;
+
+        StaThread.Run(() =>
+        {
+            Dispatcher.CurrentDispatcher.InvokeShutdown();
+
+            operation = NextTick.Run(() => ran = true);
+        });
+
+        // Runs everything queued on the Application's dispatcher at Background or above - where
+        // the callback would be waiting had it been moved there.
+        TestApplication.Invoke(StaThread.PumpDispatcher);
+
+        Assert.False(ran);
+        Assert.NotSame(applicationDispatcher, operation!.Dispatcher);
+    }
 }

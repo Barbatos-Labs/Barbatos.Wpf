@@ -72,18 +72,19 @@ public sealed class Computed<T> : ObservableObject, IDisposable
 - **`RunAsync(Action? callback = null)`** → `Task`
 
 Both schedule via `Dispatcher.BeginInvoke(DispatcherPriority.Background, ...)` on the first
-usable dispatcher (not shutting down, thread alive) of:
+that applies of:
 
-1. the calling thread's, when that thread is a UI thread - running a dispatcher operation right
-   now, or a dedicated (non-pool) STA thread;
+1. the calling thread's dispatcher (created if it has none yet), when that thread is a UI
+   thread - running a dispatcher operation right now, or a dedicated (non-pool) STA thread;
 2. for `Watch` and `Lifecycle` internally, the watcher's creating UI thread's or the element's;
-3. a new one for the calling thread, if it is such an STA thread with no dispatcher yet;
-4. `Application.Current.Dispatcher`;
-5. the calling thread's regardless - with no `Application` and nothing above, the callback runs
+3. `Application.Current.Dispatcher`, unless it has begun shutting down;
+4. the calling thread's regardless - with no `Application` and nothing above, the callback runs
    only if the calling thread pumps its dispatcher.
 
-A thread-pool thread never counts as a UI thread, even if it owns a dispatcher. So a call from a
-worker thread (a pool continuation, a `Task.Run` body) lands on the UI thread. See
+1 and 2 hold even when that dispatcher has shut down: the callback is then dropped, like any
+`BeginInvoke` after shutdown, never moved to another thread where reading that thread's objects
+would throw. A thread-pool thread never counts as a UI thread, even if it owns a dispatcher. So
+a call from a worker thread (a pool continuation, a `Task.Run` body) lands on the UI thread. See
 [Reactivity](README.md#reactivity) in the README for why.
 
 ---

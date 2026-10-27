@@ -30,20 +30,21 @@ namespace Barbatos.Wpf.Aquarius.Reactivity;
 /// <list type="number">
 /// <item>the calling thread's dispatcher, when that thread is a UI thread - it is running a
 /// dispatcher operation right now, or it is a dedicated (not thread-pool) STA thread, as every
-/// WPF UI thread is;</item>
+/// WPF UI thread is. One is created if that thread has none yet;</item>
 /// <item>for <see cref="Watch"/> and <c>Lifecycle</c>, the dispatcher of the UI thread that
 /// created the watcher, or of the element;</item>
-/// <item>a new dispatcher for the calling thread, if it is such an STA thread but has not created
-/// one yet;</item>
-/// <item><see cref="Application.Current"/>'s dispatcher;</item>
+/// <item><see cref="Application.Current"/>'s dispatcher, unless it has begun shutting down;</item>
 /// <item>the calling thread's own dispatcher regardless. With no <see cref="Application"/> and no
 /// UI thread above to fall back on there is nothing better to choose, and the callback runs only
 /// if the calling thread pumps that dispatcher itself.</item>
 /// </list>
-/// A dispatcher that has begun shutting down, or whose thread has exited, is skipped. A pool
-/// thread is never treated as a UI thread, even when it owns a dispatcher: one is created on any
-/// thread that merely reads <see cref="Dispatcher.CurrentDispatcher"/> or builds a
-/// <see cref="DispatcherObject"/>, and a pool thread never pumps it.
+/// The first two hold even when that dispatcher has shut down: the callback then never runs, as
+/// with any <c>Dispatcher.BeginInvoke</c> after shutdown. It is never moved to another thread
+/// instead. Work queued for one UI thread touches that thread's objects, and on the main UI thread
+/// those reads would throw and end the app. A pool thread is never treated as a UI thread, even
+/// when it owns a dispatcher: one is created on any thread that merely reads
+/// <see cref="Dispatcher.CurrentDispatcher"/> or builds a <see cref="DispatcherObject"/>, and a
+/// pool thread never pumps it.
 /// </para>
 /// </remarks>
 public static class NextTick
@@ -93,24 +94,26 @@ public static class NextTick
         ResolveDispatcher(owner).BeginInvoke(DispatcherPriority.Background, callback);
 
     /// <summary>
-    /// The calling thread's dispatcher if that thread is a UI thread with a usable one - what a
+    /// The calling thread's dispatcher if that thread is a UI thread that has one - what a
     /// watcher captures as its owner. Never creates a dispatcher.
     /// </summary>
     internal static Dispatcher? CurrentUiDispatcher() =>
-        IsUiThread() && Dispatcher.FromThread(Thread.CurrentThread) is { } current && IsUsable(current) ? current : null;
+        IsUiThread() ? Dispatcher.FromThread(Thread.CurrentThread) : null;
 
     private static Dispatcher ResolveDispatcher(Dispatcher? owner)
     {
-        if (CurrentUiDispatcher() is { } current)
-            return current;
-
-        if (owner is not null && IsUsable(owner))
-            return owner;
-
-        // A UI thread before its first DispatcherObject (a window's own thread, a test's STA
-        // thread) - the dispatcher created here is the one it is about to pump.
-        if (IsUiThread() && Dispatcher.FromThread(Thread.CurrentThread) is null)
+        // A UI thread keeps its own work, even once its dispatcher has begun shutting down (its
+        // window closing, ShutdownStarted handlers still running): the callback touches that
+        // thread's objects, and moved to Application.Current's thread it would throw there - on
+        // the main UI thread, ending the app - where a shut-down dispatcher just drops it. On a UI
+        // thread with no dispatcher yet (a window's own thread before its first DispatcherObject),
+        // the one created here is the one it is about to pump.
+        if (IsUiThread())
             return Dispatcher.CurrentDispatcher;
+
+        // A worker: the watcher's or element's thread, for the same reason whatever its state.
+        if (owner is not null)
+            return owner;
 
         if (Application.Current?.Dispatcher is { } application && IsUsable(application))
             return application;

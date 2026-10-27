@@ -162,7 +162,8 @@ public ReactivityDemoViewModel(Action<string> log)
   on the UI thread even when the `PropertyChanged` behind them was raised on a pool thread
   (`IOnBeforeUpdate` then fires once the UI thread gets to it, not inside the worker's setter).
   Only an app with no `Application` at all, calling from a worker, still queues onto that worker's
-  never-pumped dispatcher.
+  never-pumped dispatcher. Work for a UI thread whose dispatcher has shut down (a window thread
+  closing) is dropped, never moved to another thread.
 - Use `[ObservableProperty]` for plain state, `Computed<T>` for derived values, `Ref<T>` when the
   value itself is passed around (`Watch.On`, `Component.Is`, `Provide.Value`). They coexist.
 
