@@ -51,8 +51,8 @@ A failure is real only once it reproduces with that class alone, on that one TFM
 - Match the project's using style: the Aquarius-family test projects take package namespaces
   from `<Using Include="…"/>` in the `.csproj`; Core's test project globalizes only `Xunit` and
   `Barbatos.Wpf.Hosting`, and each Core test file writes its other namespaces as `using` lines.
-- MIT file header on every new test file. Core's tests all carry it; **none** of the files in the
-  three Aquarius-family test projects do, so copy it from `src/` or a Core test, not from a
-  neighbour. Nothing catches a missing one at build time (`IDE0073` is not enforced in the build).
+- MIT file header on every new test file, copied from any neighbouring `.cs` file (every file in
+  `src/` and `tests/` carries it). Nothing catches a missing one at build time (`IDE0073` is not
+  enforced in the build).
 - **Never add `InternalsVisibleTo`.** Test through public API, or make the behaviour real public
   API first (`barbatos-package-authoring`).

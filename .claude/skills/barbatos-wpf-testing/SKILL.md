@@ -268,8 +268,8 @@ the platform interfaces and `Router`'s window-free pipeline exist partly so test
   (`Barbatos.Wpf.Storage`, `Microsoft.Extensions.DependencyInjection`, ...) - match the project.
 - Shared doubles: `TestDoubles.cs` (`internal sealed`, Aquarius and Router) and
   `FeatureTestFakes.cs` (`public sealed`, Core). Reuse before adding.
-- Start every new file with the MIT header from `.editorconfig` - copy it from any Core test file.
-  No Aquarius-family test file carries it yet; do not copy their headerless first line.
+- Start every new file with the MIT header from `.editorconfig` - copy it from any neighbouring
+  test file; every file in `tests/` carries it.
 
 ## Symptom → cause → fix
 
